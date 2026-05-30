@@ -2,9 +2,18 @@
 
 namespace Database\Seeders;
 
+use App\Models\Tenant;
 use Illuminate\Database\Seeder;
-use Spatie\Multitenancy\Models\Tenant;
 
+/**
+ * Seeds the landlord database with initial tenants.
+ *
+ * Each Tenant::create() call automatically triggers the provisioning
+ * lifecycle callback (createDatabase, configureTenantConnection,
+ * runMigrations) defined in the Tenant model.
+ *
+ * This seeder creates two test tenants with dedicated databases.
+ */
 class TenantsSeeder extends Seeder
 {
     /**

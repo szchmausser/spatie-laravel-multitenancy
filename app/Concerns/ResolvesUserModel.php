@@ -3,8 +3,8 @@
 namespace App\Concerns;
 
 use App\Models\Landlord;
+use App\Models\Tenant;
 use App\Models\User;
-use Spatie\Multitenancy\Models\Tenant;
 
 /**
  * Concern que proporciona lógica centralizada para resolver el modelo de usuario
@@ -20,7 +20,7 @@ trait ResolvesUserModel
      * Resuelve el modelo de usuario apropiado basado en el contexto de tenancy actual.
      *
      * @return string Nombre de clase FQDN del modelo a usar
-     * 
+     *
      * Lógica:
      * - Si Tenant::current() retorna null (dominio landlord) → Usar Landlord
      * - Si Tenant::current() retorna una instancia de Tenant (dominio tenant) → Usar User
