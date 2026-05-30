@@ -84,6 +84,10 @@ return [
             ]) : [],
         ],
 
+        /** Conexión default de Laravel (sesiones, caché, jobs, etc.)
+         *  Apunta a la misma BD que landlord. Mantenida separada para
+         * no interferir con el driver interno de Laravel.
+         */
         'pgsql' => [
             'driver' => 'pgsql',
             'url' => env('DB_URL'),
@@ -91,6 +95,44 @@ return [
             'port' => env('DB_PORT', '5432'),
             'database' => env('DB_DATABASE', 'laravel'),
             'username' => env('DB_USERNAME', 'root'),
+            'password' => env('DB_PASSWORD', ''),
+            'charset' => env('DB_CHARSET', 'utf8'),
+            'prefix' => '',
+            'prefix_indexes' => true,
+            'search_path' => 'public',
+            'sslmode' => env('DB_SSLMODE', 'prefer'),
+        ],
+
+        /** Conexión landlord — Spatie la usa para leer la tabla tenants
+         * y para modelos con UsesLandlordConnection.
+         * Apunta a la misma BD que pgsql, pero con nombre semántico propio.
+         */
+        'landlord' => [
+            'driver' => 'pgsql',
+            'url' => env('DB_URL'),
+            'host' => env('DB_HOST', '127.0.0.1'),
+            'port' => env('DB_PORT', '5432'),
+            'database' => env('DB_DATABASE', 'laravel'),
+            'username' => env('DB_USERNAME', 'root'),
+            'password' => env('DB_PASSWORD', ''),
+            'charset' => env('DB_CHARSET', 'utf8'),
+            'prefix' => '',
+            'prefix_indexes' => true,
+            'search_path' => 'public',
+            'sslmode' => env('DB_SSLMODE', 'prefer'),
+        ],
+
+        /** Conexión dinámica (tenant).
+         * Spatie inyecta aquí el nombre de la BD del tenant activo
+         * en tiempo de ejecución. database DEBE ser null.
+         */
+        'tenant' => [
+            'driver' => 'pgsql',
+            'url' => env('DB_URL'),
+            'host' => env('DB_HOST', '127.0.0.1'),
+            'port' => env('DB_PORT', '5432'),
+            'database' => null, // OBLIGATORIO: Spatie inyectará el nombre de la BD aquí. Se establecerá dinámicamente en tiempo de ejecución
+            'username' => env('DB_USERNAME', 'root'), // Mismo usuario con permisos para leer/manipular la base de datos del inquilino
             'password' => env('DB_PASSWORD', ''),
             'charset' => env('DB_CHARSET', 'utf8'),
             'prefix' => '',
