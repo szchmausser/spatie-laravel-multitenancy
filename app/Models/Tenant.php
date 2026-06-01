@@ -57,12 +57,28 @@ class Tenant extends SpatieTenant implements IsTenant
     /**
      * Create the physical PostgreSQL database for this tenant.
      *
+     * Idempotent: queries the `pg_database` system catalog on the landlord
+     * connection before issuing the CREATE. This lets `Tenant::create()` be
+     * called repeatedly (e.g. by seeders, by the admin UI, or by retries
+     * after a partial provisioning failure) without raising
+     * "42P04 database already exists" errors.
+     *
+     * PostgreSQL does not support `CREATE DATABASE IF NOT EXISTS`, so checking
+     * the system catalog is the canonical idempotent pattern for this DDL.
+     *
      * The database name comes from the 'database' attribute set during creation.
-     * This runs on the landlord connection (default pgsql).
+     * Always runs on the landlord connection (the catalog lives there).
      */
     protected function createDatabase(): void
     {
-        DB::unprepared('CREATE DATABASE "'.$this->database.'"');
+        $exists = DB::connection('landlord')->select(
+            'SELECT 1 FROM pg_database WHERE datname = ?',
+            [$this->database]
+        );
+
+        if (empty($exists)) {
+            DB::unprepared('CREATE DATABASE "'.$this->database.'"');
+        }
     }
 
     /**

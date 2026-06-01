@@ -20,7 +20,7 @@ use Illuminate\Support\Facades\Route;
 
 Route::middleware(['auth', 'verified', EnsureUserIsAdmin::class])->prefix('admin')->name('landlord.')->group(function () {
 
-    // Dashboard
+    // Panel (home del landlord)
     Route::get('/', [AdminPanelController::class, 'index'])->name('admin-panel');
 
     // Tenant management

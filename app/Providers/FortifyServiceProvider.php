@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use App\Actions\Fortify\CreateNewUser;
 use App\Actions\Fortify\ResetUserPassword;
+use App\Http\Responses\RoleAwareAuthResponse;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
@@ -11,6 +12,8 @@ use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rules\Password;
 use Inertia\Inertia;
+use Laravel\Fortify\Contracts\LoginResponse;
+use Laravel\Fortify\Contracts\RegisterResponse;
 use Laravel\Fortify\Features;
 use Laravel\Fortify\Fortify;
 
@@ -21,7 +24,16 @@ class FortifyServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        // Post-auth redirects (login + register) are role-aware:
+        // landlords land on /admin, tenants on /dashboard. Both Fortify
+        // contracts share the same implementation because the logic is
+        // identical.
+        foreach ([
+            LoginResponse::class,
+            RegisterResponse::class,
+        ] as $contract) {
+            $this->app->singleton($contract, RoleAwareAuthResponse::class);
+        }
     }
 
     /**

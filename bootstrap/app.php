@@ -2,6 +2,7 @@
 
 use App\Http\Middleware\HandleAppearance;
 use App\Http\Middleware\HandleInertiaRequests;
+use App\Http\Middleware\RedirectIfAuthenticated;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -18,6 +19,17 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->encryptCookies(except: ['appearance', 'sidebar_state']);
+
+        // Override del alias `guest` para que el redirect post-guest sea
+        // role-aware: landlord → /admin, user → /dashboard. Sin esto,
+        // un landlord autenticado que visite /login sería redirigido
+        // a /dashboard (defaultRedirectUri del default), que no le
+        // corresponde. El middleware vive en app/Http/Middleware/
+        // RedirectIfAuthenticated.php — extiende el default de Laravel
+        // y override del único método que computa el destino.
+        $middleware->alias([
+            'guest' => RedirectIfAuthenticated::class,
+        ]);
 
         $middleware->web(append: [
             HandleAppearance::class,
