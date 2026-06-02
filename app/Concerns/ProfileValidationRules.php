@@ -43,7 +43,6 @@ trait ProfileValidationRules
      * Ahora usa resolución dinámica de modelos para asegurar que la validación
      * de unicidad ocurra contra la conexión de base de datos correcta.
      *
-     * @param  int|null  $userId
      * @return array<int, ValidationRule|array<mixed>|string>
      */
     protected function emailRules(?int $userId = null): array

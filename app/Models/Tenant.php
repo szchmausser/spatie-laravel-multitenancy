@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Spatie\Multitenancy\Contracts\IsTenant;
 use Spatie\Multitenancy\Models\Concerns\ImplementsTenant;
 use Spatie\Multitenancy\Models\Concerns\UsesLandlordConnection;
@@ -17,6 +18,7 @@ use Spatie\Multitenancy\Models\Tenant as SpatieTenant;
  * automatically provision the tenant database when a new tenant is created.
  *
  * Provisioning steps (executed in the `creating` callback):
+ * 0. assertTenantsTableExists() - Validates the landlords table exists
  * 1. createDatabase() - Creates the physical PostgreSQL database
  * 2. configureTenantConnection() - Points the 'tenant' connection to the new DB
  * 3. runMigrations() - Runs Laravel migrations on the new tenant database
@@ -41,17 +43,45 @@ class Tenant extends SpatieTenant implements IsTenant
      * Register lifecycle callbacks for automatic provisioning.
      *
      * When a tenant is created, automatically:
-     * - Creates the physical database
-     * - Configures the tenant connection to point to the new database
-     * - Runs all pending migrations on the new tenant database
+     * 0. Validates the tenants table exists in the landlord DB (fails early)
+     * 1. Creates the physical database
+     * 2. Configures the tenant connection to point to the new database
+     * 3. Runs all pending migrations on the new tenant database
+     *
+     * Step 0 is a precondition guard: without the tenants table the Eloquent
+     * INSERT itself will fail, but only after the irreversible provisioning
+     * work (DB creation + migrations) has already happened. This guard fails
+     * first with an actionable message.
      */
     protected static function booted(): void
     {
         static::creating(function (Tenant $tenant) {
+            $tenant->assertTenantsTableExists();
             $tenant->createDatabase();
             $tenant->configureTenantConnection();
             $tenant->runMigrations();
         });
+    }
+
+    /**
+     * Assert that the tenants table exists in the landlord database.
+     *
+     * Without this table the Eloquent INSERT inside Tenant::create() will
+     * fail with a "table not found" exception, but only after the creating
+     * callback has already done irreversible work (creating the tenant DB
+     * and running migrations). This guard fails early with a clear message
+     * so the developer knows exactly what to run.
+     *
+     * @throws \RuntimeException when the tenants table is missing
+     */
+    protected function assertTenantsTableExists(): void
+    {
+        if (! Schema::connection('landlord')->hasTable('tenants')) {
+            throw new \RuntimeException(
+                'The tenants table does not exist in the landlord database. '
+                .'Run `php artisan migrate --path=database/migrations/landlord --database=landlord` first.'
+            );
+        }
     }
 
     /**

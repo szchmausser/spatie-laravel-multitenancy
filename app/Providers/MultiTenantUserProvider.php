@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use App\Concerns\ResolvesUserModel; // ← AGREGADO: Fuente única de verdad
 use Illuminate\Auth\EloquentUserProvider;
+use Illuminate\Database\Eloquent\Model;
 
 /**
  * Proveedor de usuarios personalizado que adapta el EloquentUserProvider estándar
@@ -19,7 +20,7 @@ class MultiTenantUserProvider extends EloquentUserProvider
     /**
      * Crea una nueva instancia del modelo de usuario apropiado.
      *
-     * @return \Illuminate\Database\Eloquent\Model  Instancia de Landlord o User según tenancy
+     * @return Model Instancia de Landlord o User según tenancy
      */
     public function createModel()
     {

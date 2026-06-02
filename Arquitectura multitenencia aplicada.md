@@ -216,6 +216,7 @@ Esto crea la tabla `tenants` en la BD landlord.
 
 use App\Http\Middleware\HandleAppearance;
 use App\Http\Middleware\HandleInertiaRequests;
+use App\Http\Middleware\RedirectIfAuthenticated;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -232,6 +233,17 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->encryptCookies(except: ['appearance', 'sidebar_state']);
+
+        // Override del alias `guest` para que el redirect post-guest sea
+        // role-aware: landlord → /admin, user → /dashboard. Sin esto,
+        // un landlord autenticado que visite /login sería redirigido
+        // a /dashboard (defaultRedirectUri del default), que no le
+        // corresponde. El middleware vive en app/Http/Middleware/
+        // RedirectIfAuthenticated.php — extiende el default de Laravel
+        // y override del único método que computa el destino.
+        $middleware->alias([
+            'guest' => RedirectIfAuthenticated::class,
+        ]);
 
         $middleware->web(append: [
             HandleAppearance::class,
@@ -260,39 +272,66 @@ return Application::configure(basePath: dirname(__DIR__))
 
 use Illuminate\Support\Facades\Route;
 
-// -------------------------------------------------------
-// Rutas públicas — sin restricciones, cualquier dominio
-// -------------------------------------------------------
+/*
+|--------------------------------------------------------------------------
+| 1. Rutas públicas
+|--------------------------------------------------------------------------
+| Sin autenticación. Accesibles desde cualquier dominio (principal o
+| subdominio de tenant). Para welcome, marketing, etc.
+|
+| NOTA: login, register, password reset, 2FA, etc. los maneja Fortify
+| automáticamente, no se definen acá.
+*/
 Route::inertia('/', 'welcome')->name('home');
 
-// -------------------------------------------------------
-// Rutas compartidas (admin y tenants) — requieren auth
-// -------------------------------------------------------
-Route::middleware(['auth', 'verified'])->group(function () {
-    Route::inertia('dashboard', 'dashboard')->name('dashboard');
-});
+/*
+|--------------------------------------------------------------------------
+| 2. Rutas compartidas — autenticadas, sin distinción de rol
+|--------------------------------------------------------------------------
+| Requieren auth + email verificado. Accesibles tanto para Landlord
+| como para User, desde cualquier dominio.
+|
+| Uso típico: edición de perfil propio, sesiones del navegador, etc.
+| Definidas en settings.php.
+*/
+require __DIR__.'/settings.php';
 
-// -------------------------------------------------------
-// Rutas del producto SaaS — requieren tenant activo
-// Accesibles desde subdominios de tenant.
-// Middleware: tenant + auth + verified
-// -------------------------------------------------------
+/*
+|--------------------------------------------------------------------------
+| 3. Rutas del producto SaaS (tenants)
+|--------------------------------------------------------------------------
+| Middleware: tenant + auth + verified
+|
+| - `tenant`: el request debe llegar desde un subdominio de tenant
+|   activo. Sin tenant, retorna 404 (defensa: un Landlord en el
+|   dominio principal no puede acceder a estas rutas).
+| - `auth` + `verified`: el usuario debe estar logueado y con email
+|   verificado.
+|
+| El `dashboard` del tenant vive acá, NO en el grupo compartido.
+*/
 Route::middleware(['tenant', 'auth', 'verified'])->group(function () {
+    Route::inertia('dashboard', 'dashboard')->name('dashboard');
+
     // Aquí van las rutas del producto SaaS para cada cliente.
 });
 
-// -------------------------------------------------------
-// Rutas del admin/landlord — SIN middleware tenant
-// Accesibles solo desde el dominio principal.
-// Protegidas por EnsureUserIsAdmin.
-// (Carga el archivo routes/landlord.php — ver sección 8.1)
-// -------------------------------------------------------
+/*
+|--------------------------------------------------------------------------
+| 4. Rutas del admin (landlord)
+|--------------------------------------------------------------------------
+| Middleware: auth + verified + EnsureUserIsAdmin
+|
+| Accesibles SOLO desde el dominio principal (sin subdominio de tenant).
+| Protegidas por EnsureUserIsAdmin: si el usuario no es instancia de
+| Landlord, retorna 403.
+|
+| Definidas en landlord.php.
+*/
 require __DIR__.'/landlord.php';
-
-require __DIR__.'/settings.php';
 ```
 
-> **Punto clave:** `web.php` separa las rutas en **tres grupos**: públicas (home), compartidas con auth (dashboard), y de subdominio tenant (producto SaaS). Las rutas del panel admin viven en `routes/landlord.php` y se cargan aquí con `require` — no usan el middleware `tenant` y se protegen con `EnsureUserIsAdmin` (ver sección 16).
+> **Punto clave:** `web.php` separa las rutas en **cuatro grupos** bien delimitados: públicas (`/`), compartidas con auth (settings, perfil), del producto SaaS (con `tenant` middleware — el `dashboard` del tenant vive acá), y del admin landlord (con `EnsureUserIsAdmin`, accesibles solo desde el dominio principal). Las rutas del panel admin viven en `routes/landlord.php` y se cargan con `require`. Ver §16 para la defensa role-aware (3 capas: redirect POST-auth, redirect guest, tenant middleware).
 
 ### 8.1 Rutas del panel admin — `routes/landlord.php`
 
@@ -321,7 +360,7 @@ use Illuminate\Support\Facades\Route;
 
 Route::middleware(['auth', 'verified', EnsureUserIsAdmin::class])->prefix('admin')->name('landlord.')->group(function () {
 
-    // Dashboard
+    // Panel (home del landlord)
     Route::get('/', [AdminPanelController::class, 'index'])->name('admin-panel');
 
     // Tenant management
@@ -1443,11 +1482,66 @@ nslookup tenant1.spatie-laravel-multitenancy.test
 
 ---
 
-## 19. Archivos clave — Resumen
+## 19. Configuración tenant-aware de cache, session, queue y mail
 
-> Esta sección lista los 33 archivos clave del proyecto en dos vistas complementarias: **19.1** los agrupa por tipo de archivo (útil para entender la arquitectura — "qué hace cada pieza de código"); **19.2** los lista por sección del doc, en orden cronológico del build (útil para entender el orden de creación — "cuándo se agregó cada pieza"). El nombre del archivo es la columna compartida entre las dos vistas — usalo como join key para cruzar de una a otra.
+En multitenancy, los subsistemas de Laravel que persisten estado (cache, session, queue) deben garantizar que los datos de un tenant no contaminen a otro. Esta sección documenta qué subsistemas ya son tenant-aware por diseño o por default de Spatie, y cuáles requieren acción explícita.
 
-### 19.1 Vista por tipo de archivo
+> **Acción concreta de esta sección:** habilitar `PrefixCacheTask` en `config/multitenancy.php` (ver §19.1). El resto de los subsistemas (session, queue, mail) ya están cubiertos por los defaults del proyecto y no requieren cambio.
+
+### 19.1 Cache (`CACHE_STORE=database`)
+
+**Problema:** Con `CACHE_STORE=database`, Laravel guarda las entradas en la tabla `cache` de la conexión default (landlord). Sin tenant-awareness, las keys NO están prefijadas: si tenant1 cachea `settings:5` y tenant2 hace `Cache::get('settings:5')`, recibe data de tenant1.
+
+**Solución:** Habilitar `Spatie\Multitenancy\Tasks\PrefixCacheTask` en `config/multitenancy.php` dentro de `switch_tenant_tasks` (de la lista comentada que viene por default en §4). Esta tarea prepende el identificador del tenant activo a cada key:
+
+- Tenant1 activo: `settings:5` → `tenant1:settings:5`
+- Tenant2 activo: `settings:5` → `tenant2:settings:5`
+
+```php
+'switch_tenant_tasks' => [
+    \Spatie\Multitenancy\Tasks\PrefixCacheTask::class,
+    SwitchTenantDatabaseTask::class,
+],
+```
+
+> **Punto clave:** `PrefixCacheTask` va **primero** en la lista — corre antes que cualquier lectura/escritura de cache en el ciclo del request, así las keys ya salen prefijadas desde el primer acceso. El orden importa: si va después de `SwitchTenantDatabaseTask`, los caches leídos durante el switch podrían no llevar el prefijo correcto.
+
+### 19.2 Session (`SESSION_DRIVER=database`)
+
+**Decisión:** Mantener `SESSION_DRIVER=database` con la BD landlord y `SESSION_DOMAIN=null`.
+
+**Por qué es seguro:**
+
+- Las sesiones viven en la tabla `sessions` de la BD landlord (centralizada).
+- `SESSION_DOMAIN=null` (default) scopea las cookies de sesión al subdomain exacto (`tenant1.example.com` y `tenant2.example.com` son dominios distintos a nivel de cookie).
+- Combinado: la cookie de sesión de tenant1 no se envía cuando el browser pide tenant2.example.com. Cada subdomain tiene su propio espacio de sesión.
+
+> **Tradeoff conocido:** si en el futuro se quiere `SESSION_DOMAIN=.example.com` (cookie compartida entre subdomains para Single Sign-On entre tenants), habrá que cambiar la estrategia (regenerar sesión al cambiar de tenant, o prefijar la key de sesión por tenant). Por ahora no se necesita.
+
+### 19.3 Queue (`QUEUE_CONNECTION=database`)
+
+**Decisión:** Mantener `QUEUE_CONNECTION=database` con la BD landlord. Ya es tenant-aware por default de Spatie.
+
+**Por qué ya funciona:** dos defaults en `config/multitenancy.php` lo garantizan:
+
+- `'queues_are_tenant_aware_by_default' => true` — todo job despachado en contexto de tenant lleva el tenant ID automáticamente.
+- `'make_queue_tenant_aware_action' => MakeQueueTenantAwareAction::class` — al ejecutar el job, lo primero que hace es restaurar el tenant ID antes de procesarlo.
+
+Resultado: el job sabe en qué BD tenant correr, sin config extra.
+
+### 19.4 Mail (`MAIL_MAILER=log` en dev)
+
+**Decisión:** Mantener `MAIL_MAILER=log` en dev. Sin impacto en multitenancy porque no toca DB.
+
+> **Nota para producción:** si se usa SMTP, el `MAIL_FROM_ADDRESS` puede ser global de la plataforma. Si en el futuro se quiere un remitente por tenant, se puede resolver con un `Mailable` que lea `Tenant::current()->mail_from_address` con fallback al default global.
+
+---
+
+## 20. Archivos clave — Resumen
+
+> Esta sección lista los 33 archivos clave del proyecto en dos vistas complementarias: **20.1** los agrupa por tipo de archivo (útil para entender la arquitectura — "qué hace cada pieza de código"); **20.2** los lista por sección del doc, en orden cronológico del build (útil para entender el orden de creación — "cuándo se agregó cada pieza"). El nombre del archivo es la columna compartida entre las dos vistas — usalo como join key para cruzar de una a otra.
+
+### 20.1 Vista por tipo de archivo
 
 #### Modelos
 
@@ -1489,7 +1583,7 @@ nslookup tenant1.spatie-laravel-multitenancy.test
 
 | Archivo | Sección | Función |
 |---|---|---|
-| `config/multitenancy.php` | 4 | Usa `DomainTenantFinder`, `SwitchTenantDatabaseTask` y `tenant_model => Tenant::class`. |
+| `config/multitenancy.php` | 4, 19 | Usa `DomainTenantFinder`, `SwitchTenantDatabaseTask`, `PrefixCacheTask` (en este orden — ver §19.1) y `tenant_model => Tenant::class`. |
 | `config/database.php` | 5 | Define las conexiones `pgsql`, `landlord` y `tenant` (con `database => null`) apuntando a PostgreSQL. |
 | `config/auth.php` | 13 | Provider `users` con `driver => multi-tenant` para resolución tenant-aware del modelo. |
 
@@ -1529,7 +1623,7 @@ nslookup tenant1.spatie-laravel-multitenancy.test
 | `resources/js/pages/landlord/tenants/create.tsx` | general | `useForm` que postea name/domain/database a `/admin/tenants`. |
 | `resources/js/pages/landlord/tenants/show.tsx` | general | Renderiza tarjeta de detalle del tenant (id, domain, database, created_at). |
 
-### 19.2 Vista cronológica — Archivos por sección del doc
+### 20.2 Vista cronológica — Archivos por sección del doc
 
 | Sección | Archivo | Función |
 |---|---|---|
@@ -1571,7 +1665,7 @@ nslookup tenant1.spatie-laravel-multitenancy.test
 
 ---
 
-## 20. Verificación
+## 21. Verificación
 
 | Flujo | Dominio Landlord | Dominio Tenant |
 |-------|------------------|----------------|

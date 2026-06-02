@@ -5,7 +5,8 @@ namespace App\Actions\Fortify;
 use App\Concerns\PasswordValidationRules;
 use App\Concerns\ProfileValidationRules;
 use App\Concerns\ResolvesUserModel; // ← AGREGADO: Fuente única de verdad
-use Illuminate\Foundation\Auth\User as BaseUser; // ← CORREGIDO: Tipo de contrato Fortify
+use Illuminate\Foundation\Auth\User; // ← CORREGIDO: Tipo de contrato Fortify
+use Illuminate\Foundation\Auth\User as BaseUser;
 use Illuminate\Support\Facades\Validator;
 use Laravel\Fortify\Contracts\CreatesNewUsers;
 
@@ -22,7 +23,7 @@ class CreateNewUser implements CreatesNewUsers
      * Valida y crea un nuevo usuario registrado.
      *
      * @param  array<string, string>  $input  Datos de entrada del formulario de registro
-     * @return \Illuminate\Foundation\Auth\User  Instancia del usuario creado (Landlord o User según tenancy)
+     * @return User Instancia del usuario creado (Landlord o User según tenancy)
      */
     public function create(array $input): BaseUser
     {

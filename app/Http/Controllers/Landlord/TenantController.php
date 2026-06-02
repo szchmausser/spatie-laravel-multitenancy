@@ -78,4 +78,49 @@ class TenantController extends Controller
             'tenant' => $tenant,
         ]);
     }
+
+    /**
+     * Show the edit tenant form.
+     */
+    public function edit(Tenant $tenant)
+    {
+        return Inertia::render('landlord/tenants/edit', [
+            'tenant' => $tenant,
+        ]);
+    }
+
+    /**
+     * Update an existing tenant.
+     *
+     * All fields are editable since this is an admin-only operation.
+     * The provisioning (DB creation, migrations) is NOT re-run:
+     * the tenant database already exists and is left untouched.
+     */
+    public function update(Request $request, Tenant $tenant)
+    {
+        $validated = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'domain' => ['required', 'string', 'max:255', 'unique:tenants,domain,'.$tenant->id],
+            'database' => ['required', 'string', 'max:255', 'unique:tenants,database,'.$tenant->id],
+        ]);
+
+        $tenant->update($validated);
+
+        return redirect()->route('landlord.tenants.index');
+    }
+
+    /**
+     * Delete a tenant and its database.
+     *
+     * Drops the physical PostgreSQL database first, then removes
+     * the tenant record from the landlord database.
+     */
+    public function destroy(Tenant $tenant)
+    {
+        DB::unprepared('DROP DATABASE IF EXISTS "'.$tenant->database.'"');
+
+        $tenant->delete();
+
+        return redirect()->route('landlord.tenants.index');
+    }
 }

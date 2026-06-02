@@ -20,9 +20,8 @@ class ResetUserPassword implements ResetsUserPasswords
     /**
      * Valida y resetea la contraseña de un usuario olvidada.
      *
-     * @param  \Illuminate\Contracts\Auth\Authenticatable  $user  Instancia del usuario (Landlord o User)
+     * @param  Authenticatable  $user  Instancia del usuario (Landlord o User)
      * @param  array<string, string>  $input  Datos de entrada conteniendo la nueva contraseña
-     * @return void
      */
     public function reset(Authenticatable $user, array $input): void
     {
