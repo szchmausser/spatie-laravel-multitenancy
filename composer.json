@@ -16,6 +16,8 @@
         "laravel/framework": "^13.7",
         "laravel/tinker": "^3.0",
         "laravel/wayfinder": "^0.1.14",
+        "league/flysystem-path-prefixing": "*",
+        "spatie/laravel-medialibrary": "^11.23",
         "spatie/laravel-multitenancy": "^4.1"
     },
     "require-dev": {

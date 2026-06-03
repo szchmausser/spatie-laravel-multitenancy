@@ -138,35 +138,40 @@
 
 ### Subtasks
 
-#### T3.1: Install league/flysystem-path-prefixing
+#### T3.1: Install league/flysystem-path-prefixing [x] **DONE**
 - **Command**: `composer require league/flysystem-path-prefixing`
 - **What**: Required for Laravel's `scoped` disk driver. It's a transitive dep of Laravel but must be explicitly installed.
 - **Lines**: +1 (composer.json change)
 
-#### T3.2: Add tenant disk to filesystems config
+#### T3.2: Add tenant disk to filesystems config [x] **DONE**
 - **File**: `config/filesystems.php`
 - **What**: Add `'tenant'` disk with `driver => 'scoped'`, `disk => 'local'`, `prefix => 'tenant'`
 - **Lines**: +5
 
-#### T3.3: Create SwitchFilesystemTask
+#### T3.3: Create SwitchFilesystemTask [x] **DONE**
 - **File**: `app/Multitenancy/Tasks/SwitchFilesystemTask.php`
 - **What**: Implements `SwitchTenantTask`. Follows community pattern from GitHub Discussion #480. Saves original prefix and MediaLibrary disk on construction. `makeCurrent()` sets `config('filesystems.disks.tenant.prefix')` to `'tenant_{id}'` and `config('media-library.disk_name')` to `'tenant'`. `forgetCurrent()` restores originals. Calls `app()->forgetInstance('filesystem')` on both.
 - **Lines**: ~35
 
-#### T3.4: Register in config
+#### T3.4: Register in config [x] **DONE**
 - **File**: `config/multitenancy.php`
-- **What**: Add `SwitchFilesystemTask::class` to `switch_tenant_tasks` array (before logging task)
+- **What**: Add `SwitchFilesystemTask::class` to `switch_tenant_tasks` array (after SwitchTenantLoggingTask)
 - **Lines**: +2
 
-#### T3.5: SwitchFilesystemTaskTest (Feature)
+#### T3.5: SwitchFilesystemTaskTest (Feature) [x] **DONE**
 - **File**: `tests/Feature/Tenant/SwitchFilesystemTaskTest.php`
-- **Tests**:
+- **Tests** (10 tests):
   - `test_make_current_sets_tenant_prefix` — creates tenant (ID 7), calls makeCurrent, asserts `config('filesystems.disks.tenant.prefix')` equals `'tenant_7'`
   - `test_forget_current_restores_original_prefix` — calls forgetCurrent, asserts prefix restored to `'tenant'`
   - `test_tenant_prefixes_are_different_per_tenant` — tenants 1 and 2 get different prefixes
   - `test_make_current_sets_media_library_disk` — asserts `config('media-library.disk_name')` equals `'tenant'`
   - `test_forget_current_restores_media_library_disk` — asserts original value restored
-- **Lines**: ~55
+  - `test_filesystem_manager_cache_flushed_on_make_current` — verifies new FilesystemManager after flush
+  - `test_filesystem_manager_cache_flushed_on_forget_current` — verifies flush on forgetCurrent
+  - `test_task_implements_switch_tenant_task_interface` — interface contract
+  - `test_switch_tenant_tasks_config_includes_filesystem_task` — config registration
+  - `test_tenant_disk_uses_scoped_driver` — config assertions on filesystems.disks.tenant
+- **Lines**: ~126
 - **Skill**: pest-testing — `test()` syntax, config assertions
 
 ---

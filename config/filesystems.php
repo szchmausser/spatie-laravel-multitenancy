@@ -60,6 +60,12 @@ return [
             'report' => false,
         ],
 
+        'tenant' => [
+            'driver' => 'scoped',
+            'disk' => 'public',
+            'prefix' => 'tenant',
+        ],
+
     ],
 
     /*

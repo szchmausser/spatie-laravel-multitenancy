@@ -22,7 +22,9 @@ APP_NAME=Laravel
 APP_ENV=local
 APP_KEY=base64:...
 APP_DEBUG=true
-APP_URL=http://localhost:8000
+# En local con Laragon, usar el dominio en vez de localhost para que las URLs
+# absolutas de archivos (avatares, imágenes subidas) resuelvan correctamente.
+APP_URL=http://spatie-laravel-multitenancy.test
 
 APP_LOCALE=en
 APP_FALLBACK_LOCALE=en
@@ -62,6 +64,8 @@ CACHE_STORE=database
 
 > **Nota sobre el `.env` completo:** El bloque de arriba muestra **solo las claves relevantes para multitenancy**. Un `.env` recién generado por el starter kit también tiene claves de mail, redis, vite, aws, etc., que se mantienen con sus valores default y no necesitan tocarse para que la multitenancy funcione.
 
+> **Entorno de testing:** El proyecto usa `.env.testing` (gitignoreado) con sus propios valores. Ver §22 para el detalle completo. `phpunit.xml` solo define `APP_ENV=testing`; el resto de la config de testing vive en `.env.testing`.
+
 ---
 
 ## 2. Migración inicial del proyecto base
@@ -74,14 +78,31 @@ Esto crea las tablas base (`users`, `sessions`, `cache`, `jobs`) en la BD landlo
 
 ---
 
-## 3. Instalar Spatie Multitenancy
+## 3. Instalar Spatie Multitenancy y dependencias adicionales
 
 ```bash
 composer require spatie/laravel-multitenancy
 php artisan vendor:publish --provider="Spatie\Multitenancy\MultitenancyServiceProvider" --tag="multitenancy-config"
 ```
 
-Esto crea `config/multitenancy.php`.
+Dependencias adicionales para filesystem isolation por tenant y avatar upload:
+
+```bash
+composer require spatie/laravel-medialibrary "^11.23"
+composer require league/flysystem-path-prefixing
+```
+
+> `spatie/laravel-medialibrary` maneja la subida de imágenes de perfil (avatares) con conversiones (thumbnails). `league/flysystem-path-prefixing` permite el disco `scoped` que wrappea el disco `public` con un prefijo dinámico por tenant (ver §19.5).
+
+### 3.1 Publicar config de medialibrary
+
+```bash
+php artisan vendor:publish --provider="Spatie\MediaLibrary\MediaLibraryServiceProvider" --tag="media-library-config"
+php artisan vendor:publish --provider="Spatie\MediaLibrary\MediaLibraryServiceProvider" --tag="media-library-migrations"
+php artisan migrate --database=landlord
+```
+
+> La migración de `media` se corre en la BD landlord (y en cada BD tenant vía el callback de provisioning). La tabla `media` vive donde se suban los archivos; en el caso del avatar, que es del usuario, se guarda en la BD del tenant activo o en la BD landlord según quién suba el archivo.
 
 ---
 
@@ -93,7 +114,11 @@ Los valores relevantes a modificar:
 'tenant_finder' => DomainTenantFinder::class,
 
 'switch_tenant_tasks' => [
-    SwitchTenantDatabaseTask::class,
+    \Spatie\Multitenancy\Tasks\PrefixCacheTask::class,       // Prefijo tenant_{id}_ en cache keys
+    SwitchTenantDatabaseTask::class,                         // BD dedicada por tenant
+    \App\Multitenancy\Tasks\SwitchFilesystemTask::class,     // Directorio tenant_{id} en filesystem (ver §19.5)
+    \App\Multitenancy\Tasks\SwitchTenantLoggingTask::class,  // tenant_id en contexto de log (ver §19.6)
+    // \Spatie\Multitenancy\Tasks\SwitchRouteCacheTask::class,
 ],
 
 'tenant_database_connection_name' => 'tenant',
@@ -167,6 +192,24 @@ Agregar las conexiones `landlord` y `tenant`:
 ```
 
 > **Punto clave:** La conexión `tenant` tiene `database => null` porque Spatie la resuelve dinámicamente según el tenant activo.
+
+**`config/media-library.php`** — configuración de spatie/laravel-medialibrary. El valor clave para multitenancy es `disk_name`, que se sobreescribe en runtime por `SwitchFilesystemTask` (ver §19.5). Las configs relevantes:
+
+```php
+return [
+    'disk_name' => env('MEDIA_DISK', 'public'),
+    'conversions_disk_name' => env('MEDIA_CONVERSIONS_DISK', null),
+    'max_file_size' => 1024 * 1024 * 10, // 10MB
+    'queue_connection_name' => env('QUEUE_CONNECTION', 'sync'),
+    'queue_conversions_by_default' => env('QUEUE_CONVERSIONS_BY_DEFAULT', true),
+    'media_model' => Spatie\MediaLibrary\MediaCollections\Models\Media::class,
+    'image_driver' => env('IMAGE_DRIVER', 'gd'),
+    'default_loading_attribute_value' => null,
+    'prefix' => env('MEDIA_PREFIX', ''),
+];
+```
+
+> **Punto clave:** El resto de las 360+ líneas de `config/media-library.php` son configs de optimización de imágenes, conversiones, responsive images, etc. — no relevantes para multitenancy. El archivo completo incluye generadores de thumbnail, optimizers (Jpegoptim, Pngquant, Svgo, etc.) y configs de FFMPEG para video, pero ninguna de esas opciones afecta el aislamiento entre tenants.
 
 ---
 
@@ -368,6 +411,9 @@ Route::middleware(['auth', 'verified', EnsureUserIsAdmin::class])->prefix('admin
     Route::get('/tenants/create', [TenantController::class, 'create'])->name('tenants.create');
     Route::post('/tenants', [TenantController::class, 'store'])->name('tenants.store');
     Route::get('/tenants/{tenant}', [TenantController::class, 'show'])->name('tenants.show');
+    Route::get('/tenants/{tenant}/edit', [TenantController::class, 'edit'])->name('tenants.edit');
+    Route::put('/tenants/{tenant}', [TenantController::class, 'update'])->name('tenants.update');
+    Route::delete('/tenants/{tenant}', [TenantController::class, 'destroy'])->name('tenants.destroy');
 });
 ```
 
@@ -384,20 +430,24 @@ Route::middleware(['auth', 'verified', EnsureUserIsAdmin::class])->prefix('admin
 
 namespace App\Models;
 
+// use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Spatie\MediaLibrary\HasMedia;
+use Spatie\MediaLibrary\InteractsWithMedia;
+use Spatie\MediaLibrary\MediaCollections\Models\Media;
 use Spatie\Multitenancy\Models\Concerns\UsesTenantConnection;
 
 #[Fillable(['name', 'email', 'password'])]
 #[Hidden(['password', 'two_factor_secret', 'two_factor_recovery_codes', 'remember_token'])]
-class User extends Authenticatable
+class User extends Authenticatable implements HasMedia
 {
     /** @use HasFactory<UserFactory> */
-    use HasFactory, Notifiable, UsesTenantConnection;
+    use HasFactory, InteractsWithMedia, Notifiable, UsesTenantConnection;
 
     protected function casts(): array
     {
@@ -405,6 +455,40 @@ class User extends Authenticatable
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
         ];
+    }
+
+    /**
+     * The accessors to append to the model's array form.
+     *
+     * @var array<int, string>
+     */
+    protected $appends = [
+        'avatar',
+    ];
+
+    /**
+     * Get the URL of the first avatar media item.
+     */
+    protected function getAvatarAttribute(): ?string
+    {
+        /** @var Media|null $media */
+        $media = $this->getFirstMedia('avatar');
+
+        return $media?->getUrl();
+    }
+
+    public function registerMediaCollections(): void
+    {
+        $this
+            ->addMediaCollection('avatar')
+            ->singleFile()
+            ->registerMediaConversions(function (): void {
+                $this
+                    ->addMediaConversion('thumb')
+                    ->width(150)
+                    ->height(150)
+                    ->nonQueued();
+            });
     }
 }
 ```
@@ -420,20 +504,24 @@ class User extends Authenticatable
 
 namespace App\Models;
 
+// use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Database\Factories\LandlordFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Spatie\MediaLibrary\HasMedia;
+use Spatie\MediaLibrary\InteractsWithMedia;
+use Spatie\MediaLibrary\MediaCollections\Models\Media;
 use Spatie\Multitenancy\Models\Concerns\UsesLandlordConnection;
 
 #[Fillable(['name', 'email', 'password'])]
 #[Hidden(['password', 'two_factor_secret', 'two_factor_recovery_codes', 'remember_token'])]
-class Landlord extends Authenticatable
+class Landlord extends Authenticatable implements HasMedia
 {
     /** @use HasFactory<LandlordFactory> */
-    use HasFactory, Notifiable, UsesLandlordConnection;
+    use HasFactory, InteractsWithMedia, Notifiable, UsesLandlordConnection;
 
     /**
      * Reutiliza la tabla users del landlord (ya creada por Laravel por defecto).
@@ -447,6 +535,40 @@ class Landlord extends Authenticatable
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
         ];
+    }
+
+    /**
+     * The accessors to append to the model's array form.
+     *
+     * @var array<int, string>
+     */
+    protected $appends = [
+        'avatar',
+    ];
+
+    /**
+     * Get the URL of the first avatar media item.
+     */
+    protected function getAvatarAttribute(): ?string
+    {
+        /** @var Media|null $media */
+        $media = $this->getFirstMedia('avatar');
+
+        return $media?->getUrl();
+    }
+
+    public function registerMediaCollections(): void
+    {
+        $this
+            ->addMediaCollection('avatar')
+            ->singleFile()
+            ->registerMediaConversions(function (): void {
+                $this
+                    ->addMediaConversion('thumb')
+                    ->width(150)
+                    ->height(150)
+                    ->nonQueued();
+            });
     }
 }
 ```
@@ -609,7 +731,194 @@ CREATE DATABASE "tenant1-spatie-laravel-multitenancy";
 CREATE DATABASE "tenant2-spatie-laravel-multitenancy";
 ```
 
-> **Nota — automatización actual:** En el flujo normal de seeders y del panel de admin, este paso es automático. El callback `creating` de `app/Models/Tenant.php` (método `createDatabase()`) crea la BD física cada vez que se invoca `Tenant::create()`. Además, `createDatabase()` es **idempotente**: chequea el catálogo `pg_database` antes de crear, así que puede llamarse varias veces seguidas sin provocar errores de tipo "42P04 database already exists". Por eso, ejecutar este paso a mano sólo tiene sentido si querés crear una BD de tenant por fuera del modelo (por ejemplo, durante una recuperación manual o para experimentar en psql).
+> **Nota — automatización actual:** En el flujo normal de seeders y del panel de admin, este paso es automático. El callback `creating` de `app/Models/Tenant.php` (ver recuadro abajo) se encarga de todo: verifica precondiciones, crea la BD física, configura la conexión y corre migraciones. Todo eso ocurre cada vez que se invoca `Tenant::create()`. Además, `createDatabase()` es **idempotente**: chequea `pg_database` antes de crear.
+
+El modelo `Tenant` completo, con su callback de provisioning automático y el guard de precondiciones:
+
+```php
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+use Spatie\Multitenancy\Contracts\IsTenant;
+use Spatie\Multitenancy\Models\Concerns\ImplementsTenant;
+use Spatie\Multitenancy\Models\Concerns\UsesLandlordConnection;
+use Spatie\Multitenancy\Models\Tenant as SpatieTenant;
+
+class Tenant extends SpatieTenant implements IsTenant
+{
+    use HasFactory, ImplementsTenant, UsesLandlordConnection;
+
+    protected $fillable = ['name', 'domain', 'database'];
+
+    protected static function booted(): void
+    {
+        static::creating(function (Tenant $tenant) {
+            $tenant->assertTenantsTableExists();  // ← GUARD: falla temprano si falta la tabla
+            $tenant->createDatabase();            // CREATE DATABASE si no existe
+            $tenant->configureTenantConnection(); // apunta 'tenant' connection a esta BD
+            $tenant->runMigrations();             // migrate --database=tenant --force
+        });
+    }
+
+    protected function assertTenantsTableExists(): void
+    {
+        if (! Schema::connection('landlord')->hasTable('tenants')) {
+            throw new \RuntimeException(
+                'The tenants table does not exist. Run: php artisan migrate '
+                .'--path=database/migrations/landlord --database=landlord'
+            );
+        }
+    }
+
+    protected function createDatabase(): void
+    {
+        $exists = DB::connection('landlord')->select(
+            'SELECT 1 FROM pg_database WHERE datname = ?', [$this->database]
+        );
+        if (empty($exists)) {
+            DB::unprepared('CREATE DATABASE "'.$this->database.'"');
+        }
+    }
+
+    protected function configureTenantConnection(): void
+    {
+        config(['database.connections.tenant.database' => $this->database]);
+        DB::purge('tenant');
+    }
+
+    protected function runMigrations(): void
+    {
+        Artisan::call('migrate', [
+            '--database' => 'tenant',
+            '--force' => true,
+        ]);
+    }
+}
+```
+
+> **Por qué el guard `assertTenantsTableExists()`:** Sin esta precondición, si la tabla `tenants` no existe en la BD landlord, el `INSERT` de Eloquent falla después de que el callback `creating` ya creó la BD física y corrió migraciones — dejando una BD huérfana. El guard falla PRIMERO con un mensaje claro. Ver [`analisis-pendientes-fase-temprana.md`](./analisis-pendientes-fase-temprana.md) para contexto.
+
+**`database/factories/TenantFactory.php`** — factory para crear tenants en seeders y tests:
+
+```php
+<?php
+
+namespace Database\Factories;
+
+use App\Models\Tenant;
+use Illuminate\Database\Eloquent\Factories\Factory;
+
+class TenantFactory extends Factory
+{
+    protected $model = Tenant::class;
+
+    public function definition(): array
+    {
+        return [
+            'name' => fake()->company(),
+            'domain' => fake()->unique()->domainName(),
+            'database' => 'tenant_'.fake()->unique()->randomNumber(5),
+        ];
+    }
+
+    public function forDatabase(string $dbName): static
+    {
+        return $this->state(['database' => $dbName]);
+    }
+}
+```
+
+> **Punto clave:** `forDatabase()` permite pinchar un nombre de BD específico sin modificar la definición base de la factory. Usado en tests que necesitan verificar el comportamiento con un database name conocido.
+
+**`app/Http/Controllers/Landlord/TenantController.php`** — CRUD completo de tenants desde el panel admin:
+
+```php
+<?php
+
+namespace App\Http\Controllers\Landlord;
+
+use App\Http\Controllers\Controller;
+use App\Models\Tenant;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Inertia\Inertia;
+
+class TenantController extends Controller
+{
+    public function index()
+    {
+        return Inertia::render('landlord/tenants/index', [
+            'tenants' => Tenant::all(),
+        ]);
+    }
+
+    public function create()
+    {
+        return Inertia::render('landlord/tenants/create');
+    }
+
+    public function store(Request $request)
+    {
+        $validated = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'domain' => ['required', 'string', 'max:255', 'unique:tenants,domain'],
+            'database' => ['required', 'string', 'max:255', 'unique:tenants,database'],
+        ]);
+
+        try {
+            Tenant::create($validated);
+        } catch (\Exception $e) {
+            // Rollback: si el callback creating falla (createDatabase,
+            // configureTenantConnection, runMigrations), dropear la BD.
+            DB::unprepared('DROP DATABASE IF EXISTS "'.$validated['database'].'"');
+            throw $e;
+        }
+
+        return redirect()->route('landlord.tenants.index');
+    }
+
+    public function show(Tenant $tenant)
+    {
+        return Inertia::render('landlord/tenants/show', [
+            'tenant' => $tenant,
+        ]);
+    }
+
+    public function edit(Tenant $tenant)
+    {
+        return Inertia::render('landlord/tenants/edit', [
+            'tenant' => $tenant,
+        ]);
+    }
+
+    public function update(Request $request, Tenant $tenant)
+    {
+        $validated = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'domain' => ['required', 'string', 'max:255', 'unique:tenants,domain,'.$tenant->id],
+            'database' => ['required', 'string', 'max:255', 'unique:tenants,database,'.$tenant->id],
+        ]);
+
+        $tenant->update($validated);
+
+        return redirect()->route('landlord.tenants.index');
+    }
+
+    public function destroy(Tenant $tenant)
+    {
+        DB::unprepared('DROP DATABASE IF EXISTS "'.$tenant->database.'"');
+        $tenant->delete();
+        return redirect()->route('landlord.tenants.index');
+    }
+}
+```
+
+> **Punto clave:** `store()` envuelve `Tenant::create()` en un try/catch — si el callback `creating` del modelo falla (ej: PostgreSQL no disponible, migración falla), el catch dropea la BD física y relanza la excepción. Sin este rollback manual, la BD quedaría huérfana. `destroy()` dropea la BD física primero, luego elimina el registro.
 
 ---
 
@@ -1330,8 +1639,109 @@ El proyecto incluye dos scripts PHP standalone en `scripts/` que automatizan la 
 
 **Scripts disponibles:**
 
-- `scripts/add-host.php <hostname> [ip]` — agrega una entrada. IP por defecto: `127.0.0.1`. Si el hostname ya existe, sale con código 0 sin hacer nada (idempotente).
-- `scripts/remove-host.php <hostname>` — elimina la entrada para ese hostname. Si no existe, sale con código 0.
+**`scripts/add-host.php`** — agrega una entrada al hosts. IP por defecto: `127.0.0.1`. Si el hostname ya existe, sale con código 0 (idempotente):
+
+```php
+#!/usr/bin/env php
+<?php
+
+$hostname = $argv[1] ?? null;
+$ip = $argv[2] ?? '127.0.0.1';
+
+if (! $hostname) {
+    echo "Usage: php add-host.php <hostname> [ip]\n";
+    exit(1);
+}
+
+$hostsPath = strtoupper(substr(PHP_OS, 0, 3)) === 'WIN'
+    ? 'C:\Windows\System32\drivers\etc\hosts'
+    : '/etc/hosts';
+
+if (! is_writable($hostsPath)) {
+    echo "Error: Cannot write to {$hostsPath}\n";
+    echo "Run this script as administrator (Windows) or with sudo (Linux/macOS).\n";
+    exit(1);
+}
+
+$hosts = file_get_contents($hostsPath);
+
+// Check if hostname already exists (idempotent)
+$lines = explode("\n", $hosts);
+foreach ($lines as $line) {
+    $line = trim($line);
+    if ($line === '' || $line[0] === '#') continue;
+    if (preg_match('/\s+'.preg_quote($hostname, '/').'\b/', $line)) {
+        echo "Entry for '{$hostname}' already exists in hosts file.\n";
+        exit(0);
+    }
+}
+
+$entry = "{$ip}\t{$hostname}";
+if (substr($hosts, -1) !== "\n") $hosts .= "\n";
+$hosts .= $entry."\n";
+
+if (file_put_contents($hostsPath, $hosts) !== false) {
+    echo "Added: {$entry}\n";
+    exit(0);
+} else {
+    echo "Error: Failed to write to hosts file.\n";
+    exit(1);
+}
+```
+
+> **Punto clave:** El script parsea el archivo hosts línea por línea y usa `preg_match` para detectar si el hostname ya está registrado. Si ya existe, sale con 0 (idempotente). Detecta automáticamente Windows vs Linux/macOS para la ruta del archivo hosts.
+
+**`scripts/remove-host.php`** — elimina la entrada para ese hostname. Si no existe, sale con código 0:
+
+```php
+#!/usr/bin/env php
+<?php
+
+$hostname = $argv[1] ?? null;
+
+if (! $hostname) {
+    echo "Usage: php remove-host.php <hostname>\n";
+    exit(1);
+}
+
+$hostsPath = strtoupper(substr(PHP_OS, 0, 3)) === 'WIN'
+    ? 'C:\Windows\System32\drivers\etc\hosts'
+    : '/etc/hosts';
+
+if (! is_writable($hostsPath)) {
+    echo "Error: Cannot write to {$hostsPath}\n";
+    exit(1);
+}
+
+$hosts = file_get_contents($hostsPath);
+$lines = explode("\n", $hosts);
+$newLines = [];
+$removed = false;
+
+foreach ($lines as $line) {
+    $trimmed = trim($line);
+    if ($trimmed !== '' && $trimmed[0] !== '#' && preg_match('/\s+'.preg_quote($hostname, '/').'\b/', $trimmed)) {
+        $removed = true;
+        continue; // Skip this line
+    }
+    $newLines[] = $line;
+}
+
+if (! $removed) {
+    echo "No entry found for '{$hostname}' in hosts file.\n";
+    exit(0);
+}
+
+if (file_put_contents($hostsPath, implode("\n", $newLines)) !== false) {
+    echo "Removed: '{$hostname}' from hosts file.\n";
+    exit(0);
+} else {
+    echo "Error: Failed to write to hosts file.\n";
+    exit(1);
+}
+```
+
+> **Punto clave:** `remove-host.php` reconstruye el archivo hosts completo excluyendo la línea del hostname. Si el hostname no existe, sale con 0 (idempotente). Preserva comentarios y líneas en blanco.
 
 **Cómo correrlos** (requiere permisos elevados):
 
@@ -1354,7 +1764,7 @@ php scripts/add-host.php tenant1.spatie-laravel-multitenancy.test
 php scripts/remove-host.php tenant1.spatie-laravel-multitenancy.test
 ```
 
-> **Nota sobre el callback `creating` de `Tenant`:** el callback del modelo (`app/Models/Tenant.php`) sólo automatiza la creación de la BD física y la ejecución de migraciones en esa BD. **No toca el archivo `hosts`** por la razón explicada arriba. Después de cada `Tenant::create()` (manual, seeder, o desde el panel admin) tenés que correr `add-host.php` con el dominio del nuevo tenant. La sección 18 incluye este paso en el flujo completo de reset.
+> **Nota sobre el callback `creating` de `Tenant`:** el callback del modelo (ver código completo en §11) automatiza la creación de la BD física y la ejecución de migraciones en esa BD, además de incluir un guard que verifica que la tabla `tenants` exista antes de hacer cualquier cosa (evita BDs huérfanas). **No toca el archivo `hosts`** por la razón explicada arriba. Después de cada `Tenant::create()` (manual, seeder, o desde el panel admin) tenés que correr `add-host.php` con el dominio del nuevo tenant. La sección 18 incluye este paso en el flujo completo de reset.
 
 ### 17.3 Reiniciar Laragon
 
@@ -1482,11 +1892,11 @@ nslookup tenant1.spatie-laravel-multitenancy.test
 
 ---
 
-## 19. Configuración tenant-aware de cache, session, queue y mail
+## 19. Configuración tenant-aware de cache, session, queue, filesystem y logging
 
-En multitenancy, los subsistemas de Laravel que persisten estado (cache, session, queue) deben garantizar que los datos de un tenant no contaminen a otro. Esta sección documenta qué subsistemas ya son tenant-aware por diseño o por default de Spatie, y cuáles requieren acción explícita.
+En multitenancy, los subsistemas de Laravel que persisten estado (cache, session, queue, filesystem) deben garantizar que los datos de un tenant no contaminen a otro. Esta sección documenta qué subsistemas ya son tenant-aware por diseño o por default de Spatie, y cuáles requieren acción explícita.
 
-> **Acción concreta de esta sección:** habilitar `PrefixCacheTask` en `config/multitenancy.php` (ver §19.1). El resto de los subsistemas (session, queue, mail) ya están cubiertos por los defaults del proyecto y no requieren cambio.
+> **Acción concreta de esta sección:** habilitar `PrefixCacheTask`, `SwitchFilesystemTask` y `SwitchTenantLoggingTask` en `config/multitenancy.php` (ver §4). El resto de los subsistemas (session, queue, mail) ya están cubiertos por los defaults del proyecto y no requieren cambio.
 
 ### 19.1 Cache (`CACHE_STORE=database`)
 
@@ -1535,11 +1945,1061 @@ Resultado: el job sabe en qué BD tenant correr, sin config extra.
 
 > **Nota para producción:** si se usa SMTP, el `MAIL_FROM_ADDRESS` puede ser global de la plataforma. Si en el futuro se quiere un remitente por tenant, se puede resolver con un `Mailable` que lea `Tenant::current()->mail_from_address` con fallback al default global.
 
+### 19.5 Filesystem (`FILESYSTEM_DISK=local` + disco `tenant`)
+
+**Problema:** Sin aislamiento, dos tenants pueden subir archivos con el mismo nombre y pisarse, o un tenant puede leer archivos de otro.
+
+**Solución:** Se creó un disco `tenant` con driver `scoped` que envuelve el disco `public` con un prefijo dinámico. Un `SwitchFilesystemTask` actualiza el prefijo cuando cambia el tenant activo.
+
+**Paso 1 — Configurar el disco `tenant` en `config/filesystems.php`:**
+
+Agregar dentro del array `disks`:
+
+```php
+'tenant' => [
+    'driver' => 'scoped',
+    'disk' => 'public',
+    'prefix' => 'tenant', // Se sobreescribe en runtime por SwitchFilesystemTask
+],
+```
+
+> El driver `scoped` requiere `league/flysystem-path-prefixing` (instalado en §3). Sin él, Laravel lanza `DriverException: driver [scoped] is not defined`.
+
+**Paso 2 — Crear el symlink de storage:**
+
+```bash
+php artisan storage:link
+```
+
+Esto crea `public/storage → storage/app/public`. Sin este symlink, las URLs de archivos subidos (avatares, imágenes) no resuelven en el navegador.
+
+**Paso 3 — Instalar spatie/laravel-medialibrary (ya hecho en §3):**
+
+Publicar config y migración:
+```bash
+php artisan vendor:publish --provider="Spatie\MediaLibrary\MediaLibraryServiceProvider" --tag="media-library-config"
+php artisan vendor:publish --provider="Spatie\MediaLibrary\MediaLibraryServiceProvider" --tag="media-library-migrations"
+```
+
+Correr la migración en la BD landlord (y se propaga a cada tenant via el callback `creating` de Tenant):
+```bash
+php artisan migrate --database=landlord
+```
+
+Esto crea la tabla `media` con columnas para modelos, colecciones, disk, conversiones, etc.
+
+La migración `database/migrations/2026_06_03_175326_create_media_table.php`:
+
+```php
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::create('media', function (Blueprint $table) {
+            $table->id();
+            $table->morphs('model');
+            $table->uuid()->nullable()->unique();
+            $table->string('collection_name');
+            $table->string('name');
+            $table->string('file_name');
+            $table->string('mime_type')->nullable();
+            $table->string('disk');
+            $table->string('conversions_disk')->nullable();
+            $table->unsignedBigInteger('size');
+            $table->json('manipulations');
+            $table->json('custom_properties');
+            $table->json('generated_conversions');
+            $table->json('responsive_images');
+            $table->unsignedInteger('order_column')->nullable()->index();
+            $table->nullableTimestamps();
+        });
+    }
+};
+```
+
+> **Punto clave:** `$table->morphs('model')` es lo que permite que la misma tabla `media` sirva tanto para `User` (tenant) como para `Landlord` (landlord) — el `model_type` distingue a qué modelo pertenece cada media. En cada tenant se crea su propia tabla `media` vía el callback `creating` de Tenant.
+
+**Paso 4 — Agregar `InteractsWithMedia` a los modelos User y Landlord:**
+
+Ver §9 y §10 para el código completo. Cada modelo debe:
+1. Implementar `HasMedia`
+2. Usar `InteractsWithMedia`
+3. Agregar `registerMediaCollections()` con una colección `avatar`, singleFile, y conversión `thumb` 150×150 no-queued
+4. Agregar `getAvatarAttribute()` y `$appends = ['avatar']`
+
+**Paso 5 — El `SwitchFilesystemTask`:**
+
+```php
+// app/Multitenancy/Tasks/SwitchFilesystemTask.php
+<?php
+
+namespace App\Multitenancy\Tasks;
+
+use Illuminate\Support\Facades\Storage;
+use Spatie\Multitenancy\Contracts\IsTenant;
+use Spatie\Multitenancy\Tasks\SwitchTenantTask;
+
+class SwitchFilesystemTask implements SwitchTenantTask
+{
+    protected ?string $originalPrefix = null;
+    protected ?string $originalMediaLibraryDisk = null;
+
+    public function __construct()
+    {
+        $this->originalPrefix ??= config('filesystems.disks.tenant.prefix');
+        $this->originalMediaLibraryDisk ??= config('media-library.disk_name');
+    }
+
+    public function makeCurrent(IsTenant $tenant): void
+    {
+        config()->set('filesystems.disks.tenant.prefix', "tenant_{$tenant->getKey()}");
+        config()->set('media-library.disk_name', 'tenant');
+        app()->forgetInstance('filesystem');
+        Storage::clearResolvedInstance('filesystem');
+    }
+
+    public function forgetCurrent(): void
+    {
+        config()->set('filesystems.disks.tenant.prefix', $this->originalPrefix);
+        config()->set('media-library.disk_name', $this->originalMediaLibraryDisk);
+        app()->forgetInstance('filesystem');
+        Storage::clearResolvedInstance('filesystem');
+    }
+}
+```
+
+> **Punto clave:** Sin `app()->forgetInstance('filesystem')` + `Storage::clearResolvedInstance('filesystem')`, el `FilesystemManager` retiene el prefix anterior en su instancia cacheada, y los archivos se escriben en el directorio del tenant incorrecto. Ver [spatie/laravel-multitenancy Discussion #480](https://github.com/spatie/laravel-multitenancy/discussions/480).
+
+**Registro en `config/multitenancy.php`:** `SwitchFilesystemTask::class` en `switch_tenant_tasks` (ver §4).
+
+**Paso 6 — Avatar upload en el frontend:**
+
+`resources/js/components/avatar-upload.tsx` (ver código completo en §19.8) renderiza un preview, un botón de cámara (input file oculto) y un botón "Remove" cuando existe avatar. La página de perfil completa que lo integra (`resources/js/pages/settings/profile.tsx`):
+
+```tsx
+import { Form, Head, usePage } from '@inertiajs/react';
+import ProfileController from '@/actions/App/Http/Controllers/Settings/ProfileController';
+import AvatarUpload from '@/components/avatar-upload';
+import DeleteUser from '@/components/delete-user';
+import Heading from '@/components/heading';
+import InputError from '@/components/input-error';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Separator } from '@/components/ui/separator';
+import { edit } from '@/routes/profile';
+import type { Auth } from '@/types';
+
+type PageProps = { auth: Auth };
+
+export default function Profile() {
+    const { auth } = usePage<PageProps>().props;
+
+    return (
+        <>
+            <Head title="Profile settings" />
+            <h1 className="sr-only">Profile settings</h1>
+            <div className="space-y-6">
+                <Heading variant="small" title="Profile" description="Update your name and email address" />
+                <AvatarUpload currentUrl={auth.user.avatar ?? null} userName={auth.user.name} />
+                <Separator />
+                <Form {...ProfileController.update.form()} options={{ preserveScroll: true }} className="space-y-6">
+                    {({ processing, errors }) => (
+                        <>
+                            <div className="grid gap-2">
+                                <Label htmlFor="name">Name</Label>
+                                <Input id="name" className="mt-1 block w-full" defaultValue={auth.user.name} name="name" required autoComplete="name" placeholder="Full name" />
+                                <InputError className="mt-2" message={errors.name} />
+                            </div>
+                            <div className="grid gap-2">
+                                <Label htmlFor="email">Email address</Label>
+                                <Input id="email" type="email" className="mt-1 block w-full" defaultValue={auth.user.email} name="email" required autoComplete="username" placeholder="Email address" />
+                                <InputError className="mt-2" message={errors.email} />
+                            </div>
+                            <div className="flex items-center gap-4">
+                                <Button disabled={processing} data-test="update-profile-button">Save</Button>
+                            </div>
+                        </>
+                    )}
+                </Form>
+            </div>
+            <DeleteUser />
+        </>
+    );
+}
+Profile.layout = { breadcrumbs: [{ title: 'Profile settings', href: edit() }] };
+```
+
+Las rutas del avatar viven en `routes/settings.php` (archivo completo):
+
+```php
+<?php
+
+use App\Http\Controllers\Settings\AvatarController;
+use App\Http\Controllers\Settings\ProfileController;
+use App\Http\Controllers\Settings\SecurityController;
+use Illuminate\Support\Facades\Route;
+
+Route::middleware(['auth'])->group(function () {
+    Route::redirect('settings', '/settings/profile');
+    Route::get('settings/profile', [ProfileController::class, 'edit'])->name('profile.edit');
+    Route::patch('settings/profile', [ProfileController::class, 'update'])->name('profile.update');
+    Route::post('settings/profile/avatar', [AvatarController::class, 'store'])->name('profile.avatar.store');
+    Route::delete('settings/profile/avatar', [AvatarController::class, 'destroy'])->name('profile.avatar.destroy');
+});
+Route::middleware(['auth', 'verified'])->group(function () {
+    Route::delete('settings/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
+    Route::get('settings/security', [SecurityController::class, 'edit'])->name('security.edit');
+    Route::put('settings/password', [SecurityController::class, 'update'])->middleware('throttle:6,1')->name('user-password.update');
+    Route::inertia('settings/appearance', 'settings/appearance')->name('appearance.edit');
+});
+```
+
+Y el controller `app/Http/Controllers/Settings/AvatarController.php` completo:
+
+```php
+<?php
+
+namespace App\Http\Controllers\Settings;
+
+use App\Http\Controllers\Controller;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
+use Inertia\Inertia;
+
+class AvatarController extends Controller
+{
+    public function store(Request $request): RedirectResponse
+    {
+        $request->validate([
+            'avatar' => ['required', 'image', 'mimes:jpeg,png,jpg,webp', 'max:2048'],
+        ]);
+
+        $request->user()
+            ->addMediaFromRequest('avatar')
+            ->sanitizingFileName(fn (string $fileName): string =>
+                strtolower((string) str($fileName)->replace(['#', '/', '\\', ' '], '-')))
+            ->toMediaCollection('avatar');
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Avatar updated.')]);
+
+        return to_route('profile.edit');
+    }
+
+    public function destroy(Request $request): RedirectResponse
+    {
+        $request->user()->clearMediaCollection('avatar');
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Avatar removed.')]);
+        return to_route('profile.edit');
+    }
+}
+```
+
+> **Nota sobre cambios del snippet original a la implementación real:** La validación usa `mimes:jpeg,png,jpg,webp` (no solo `image`). El upload usa `addMediaFromRequest()` con `sanitizingFileName()` para normalizar nombres. Retorna `to_route()` en vez de `back()`, y muestra un toast vía `Inertia::flash()`. Los endpoints se resuelven con Wayfinder desde el frontend (`AvatarController.store.form()`).
+
+> **APP_URL importa:** Las URLs de imágenes (como avatares) se generan con la URL absoluta de la app. `APP_URL` debe coincidir con el dominio real (ej: `http://spatie-laravel-multitenancy.test`) para que las URLs resuelvan en el navegador. Si está en `localhost`, las URLs de archivos apuntan a `localhost` en vez del dominio real y las imágenes no se ven.
+
+### 19.6 Logging context
+
+**Problema:** Sin contexto de tenant en los logs, no se puede filtrar por tenant al debuggear. Dos tenants mezclan entradas en el mismo archivo de log sin distinción.
+
+**Solución:** `SwitchTenantLoggingTask` inyecta el `tenant_id` en el contexto compartido del logger usando `Log::shareContext()`.
+
+**`app/Multitenancy/Tasks/SwitchTenantLoggingTask.php`:**
+
+```php
+<?php
+
+namespace App\Multitenancy\Tasks;
+
+use Illuminate\Support\Facades\Log;
+use Spatie\Multitenancy\Contracts\IsTenant;
+use Spatie\Multitenancy\Tasks\SwitchTenantTask;
+
+class SwitchTenantLoggingTask implements SwitchTenantTask
+{
+    public function makeCurrent(IsTenant $tenant): void
+    {
+        Log::shareContext(['tenant_id' => $tenant->getKey()]);
+    }
+
+    public function forgetCurrent(): void
+    {
+        Log::withoutContext();
+        Log::flushSharedContext();
+    }
+}
+```
+
+**Registro en `config/multitenancy.php`:** `SwitchTenantLoggingTask::class` en `switch_tenant_tasks` (ver §4).
+
+> **Resultado:** cada entrada de log emitida dentro de un request de tenant incluye `{"tenant_id": 42}`. En producción podés filtrar `grep '"tenant_id":42' storage/logs/laravel.log` sin tocar ningún call site.
+
+---
+
+### 19.7 Frontend: sidebar role-aware
+
+El sidebar se adapta al rol del usuario usando `auth.is_admin` (compartido vía `HandleInertiaRequests` — ver §16). Dos componentes coordinan esta lógica:
+
+**`resources/js/components/app-sidebar.tsx`** — estructura del sidebar. Usa `auth.is_admin` para decidir qué items de navegación mostrar y adónde apunta el logo. Los landlords ven un grupo "Admin" con enlace a Tenants; los tenants ven solo su Dashboard.
+
+```tsx
+import { Link, usePage } from '@inertiajs/react';
+import { BookOpen, Building2, FolderGit2, LayoutGrid, Shield } from 'lucide-react';
+import AppLogo from '@/components/app-logo';
+import { NavFooter } from '@/components/nav-footer';
+import { NavMain } from '@/components/nav-main';
+import { NavUser } from '@/components/nav-user';
+import {
+    Sidebar,
+    SidebarContent,
+    SidebarFooter,
+    SidebarHeader,
+    SidebarMenu,
+    SidebarMenuButton,
+    SidebarMenuItem,
+} from '@/components/ui/sidebar';
+import { dashboard } from '@/routes';
+import type { NavItem } from '@/types';
+
+const adminNavItems: NavItem[] = [
+    {
+        title: 'Tenants',
+        href: '/admin/tenants',
+        icon: Building2,
+    },
+];
+
+const footerNavItems: NavItem[] = [
+    {
+        title: 'Repository',
+        href: 'https://github.com/laravel/react-starter-kit',
+        icon: FolderGit2,
+    },
+    {
+        title: 'Documentation',
+        href: 'https://laravel.com/docs/starter-kits#react',
+        icon: BookOpen,
+    },
+];
+
+export function AppSidebar() {
+    const { auth } = usePage().props;
+    const isAdmin = (auth as any)?.is_admin ?? false;
+
+    const mainNavItems: NavItem[] = isAdmin
+        ? [{ title: 'Panel', href: '/admin', icon: Shield }]
+        : [{ title: 'Dashboard', href: dashboard(), icon: LayoutGrid }];
+
+    return (
+        <Sidebar collapsible="icon" variant="inset">
+            <SidebarHeader>
+                <SidebarMenu>
+                    <SidebarMenuItem>
+                            <SidebarMenuButton size="lg" asChild>
+                                <Link
+                                    href={isAdmin ? '/admin' : dashboard()}
+                                    prefetch
+                                >
+                                    <AppLogo />
+                                </Link>
+                            </SidebarMenuButton>
+                    </SidebarMenuItem>
+                </SidebarMenu>
+            </SidebarHeader>
+
+            <SidebarContent>
+                <NavMain items={mainNavItems} />
+                {isAdmin && <NavMain items={adminNavItems} label="Admin" />}
+            </SidebarContent>
+
+            <SidebarFooter>
+                <NavFooter items={footerNavItems} className="mt-auto" />
+                <NavUser />
+            </SidebarFooter>
+        </Sidebar>
+    );
+}
+```
+
+> **Punto clave:** El sidebar renderiza contenido distinto según el rol sin necesidad de dos archivos separados. `isAdmin` controla: (1) el item de navegación principal (Panel vs Dashboard), (2) el link del logo, y (3) la visibilidad del grupo "Admin". El middleware `EnsureUserIsAdmin` es la defensa backend; este componente es solo la UI signal — si un tenant llegara a `/admin` igual recibe 403 (ver §16).
+
+**`resources/js/components/nav-main.tsx`** — renderizador genérico de grupo de navegación. Consumido por `app-sidebar` tanto para el nav principal como para la sección Admin. Resalta la ruta activa automáticamente:
+
+```tsx
+import { Link } from '@inertiajs/react';
+import {
+    SidebarGroup,
+    SidebarGroupLabel,
+    SidebarMenu,
+    SidebarMenuButton,
+    SidebarMenuItem,
+} from '@/components/ui/sidebar';
+import { useCurrentUrl } from '@/hooks/use-current-url';
+import type { NavItem } from '@/types';
+
+export function NavMain({ items = [], label = 'Platform' }: { items: NavItem[]; label?: string }) {
+    const { isCurrentUrl } = useCurrentUrl();
+
+    return (
+        <SidebarGroup className="px-2 py-0">
+            <SidebarGroupLabel>{label}</SidebarGroupLabel>
+            <SidebarMenu>
+                {items.map((item) => (
+                    <SidebarMenuItem key={item.title}>
+                        <SidebarMenuButton
+                            asChild
+                            isActive={isCurrentUrl(item.href)}
+                            tooltip={{ children: item.title }}
+                        >
+                            <Link href={item.href} prefetch>
+                                {item.icon && <item.icon />}
+                                <span>{item.title}</span>
+                            </Link>
+                        </SidebarMenuButton>
+                    </SidebarMenuItem>
+                ))}
+            </SidebarMenu>
+        </SidebarGroup>
+    );
+}
+```
+
+> **Punto clave:** `NavMain` es agnóstico del rol — recibe `items` y un `label`. Esto permite que `app-sidebar` lo use dos veces (nav principal + grupo Admin) sin duplicar lógica de render.
+
+### 19.8 Frontend: avatar upload full component
+
+The code de `resources/js/components/avatar-upload.tsx` completo (actualizando el snippet de §19.5):
+
+```tsx
+import { Form } from '@inertiajs/react';
+import { Camera, Trash2, User } from 'lucide-react';
+import { useRef, type FormEvent } from 'react';
+import AvatarController from '@/actions/App/Http/Controllers/Settings/AvatarController';
+import { Button } from '@/components/ui/button';
+import {
+    Avatar,
+    AvatarFallback,
+    AvatarImage,
+} from '@/components/ui/avatar';
+
+type AvatarUploadProps = {
+    currentUrl: string | null;
+    userName: string;
+};
+
+export default function AvatarUpload({ currentUrl, userName }: AvatarUploadProps) {
+    const fileInputRef = useRef<HTMLInputElement>(null);
+
+    const initials = userName
+        .split(' ')
+        .map((n) => n[0])
+        .join('')
+        .toUpperCase()
+        .slice(0, 2);
+
+    return (
+        <div className="flex items-center gap-6">
+            <div className="relative">
+                <Avatar className="size-20">
+                    {currentUrl ? (
+                        <AvatarImage src={currentUrl} alt={userName} />
+                    ) : null}
+                    <AvatarFallback className="text-lg">{initials}</AvatarFallback>
+                </Avatar>
+
+                <Form
+                    {...AvatarController.store.form()}
+                    options={{ preserveScroll: true }}
+                    encType="multipart/form-data"
+                    className="absolute -bottom-1 -right-1"
+                >
+                    {({ processing }) => (
+                        <>
+                            <input
+                                ref={fileInputRef}
+                                type="file"
+                                name="avatar"
+                                accept="image/jpeg,image/png,image/webp"
+                                className="hidden"
+                                onChange={(e: FormEvent<HTMLInputElement>) => {
+                                    if (e.currentTarget.files?.length) {
+                                        e.currentTarget.form?.requestSubmit();
+                                    }
+                                }}
+                            />
+                            <Button
+                                type="button"
+                                size="icon"
+                                variant="secondary"
+                                className="size-7 rounded-full"
+                                disabled={processing}
+                                onClick={() => fileInputRef.current?.click()}
+                            >
+                                <Camera className="size-3.5" />
+                            </Button>
+                        </>
+                    )}
+                </Form>
+            </div>
+
+            {currentUrl && (
+                <Form
+                    {...AvatarController.destroy.form()}
+                    options={{ preserveScroll: true }}
+                >
+                    {({ processing }) => (
+                        <Button
+                            type="submit"
+                            variant="outline"
+                            size="sm"
+                            disabled={processing}
+                        >
+                            <Trash2 className="mr-1.5 size-3.5" />
+                            Remove
+                        </Button>
+                    )}
+                </Form>
+            )}
+        </div>
+    );
+}
+```
+
+> **Punto clave:** El formulario de upload usa `requestSubmit()` en el `onChange` del input file — el usuario selecciona el archivo y se envía automáticamente sin botón intermedio. El botón "Remove" solo se muestra cuando existe avatar. Las rutas se resuelven con Wayfinder (`AvatarController.store.form()`), lo que garantiza type-safety en los endpoints.
+
+### 19.9 Frontend: admin panel (landlord)
+
+Todas las páginas del landlord viven bajo `/admin` y están protegidas por `EnsureUserIsAdmin` (ver §16). Usan `useForm` de Inertia para el manejo de formularios y Wayfinder para las rutas.
+
+**`app/Http/Controllers/Landlord/AdminPanelController.php`** — sirve la página de inicio del landlord:
+
+```php
+<?php
+
+namespace App\Http\Controllers\Landlord;
+
+use App\Http\Controllers\Controller;
+use Inertia\Inertia;
+
+class AdminPanelController extends Controller
+{
+    public function index()
+    {
+        return Inertia::render('landlord/admin-panel');
+    }
+}
+```
+
+> **Punto clave:** El controller no lee datos de tenant ni aplica middleware `tenant`. Es deliberadamente simple — renderiza un placeholder que puede recibir widgets más adelante (cantidad de tenants, estado de BDs, actividad reciente). La ruta está protegida por `EnsureUserIsAdmin`, por lo que solo un `Landlord` autenticado puede acceder.
+
+#### Admin panel home — `resources/js/pages/landlord/admin-panel.tsx`
+
+Página de inicio del landlord. Renderiza un layout placeholder con cards para métricas futuras:
+
+```tsx
+import { Head } from '@inertiajs/react';
+import { PlaceholderPattern } from '@/components/ui/placeholder-pattern';
+import { type BreadcrumbItem } from '@/types';
+
+const breadcrumbs: BreadcrumbItem[] = [
+    { title: 'Panel', href: '/admin' },
+];
+
+export default function AdminPanel() {
+    return (
+        <>
+            <Head title="Panel" />
+            <div className="flex h-full flex-1 flex-col gap-4 overflow-x-auto rounded-xl p-4">
+                <div className="grid auto-rows-min gap-4 md:grid-cols-3">
+                    <div className="relative aspect-video overflow-hidden rounded-xl border border-sidebar-border/70 dark:border-sidebar-border">
+                        <PlaceholderPattern className="absolute inset-0 size-full stroke-neutral-900/20 dark:stroke-neutral-100/20" />
+                    </div>
+                    <div className="relative aspect-video overflow-hidden rounded-xl border border-sidebar-border/70 dark:border-sidebar-border">
+                        <PlaceholderPattern className="absolute inset-0 size-full stroke-neutral-900/20 dark:stroke-neutral-100/20" />
+                    </div>
+                    <div className="relative aspect-video overflow-hidden rounded-xl border border-sidebar-border/70 dark:border-sidebar-border">
+                        <PlaceholderPattern className="absolute inset-0 size-full stroke-neutral-900/20 dark:stroke-neutral-100/20" />
+                    </div>
+                </div>
+                <div className="relative min-h-[100vh] flex-1 overflow-hidden rounded-xl border border-sidebar-border/70 md:min-h-min dark:border-sidebar-border">
+                    <PlaceholderPattern className="absolute inset-0 size-full stroke-neutral-900/20 dark:stroke-neutral-100/20" />
+                </div>
+            </div>
+        </>
+    );
+}
+
+AdminPanel.layout = { breadcrumbs };
+```
+
+> **Punto clave:** `AdminPanel` es un placeholder intencional — el homepage del landlord está diseñado para recibir widgets de dashboard (cantidad de tenants, estado de BDs, últimas actividades) sin necesidad de cambiar la estructura del layout.
+
+#### Tenant list — `resources/js/pages/landlord/tenants/index.tsx`
+
+Lista todos los tenants con botones de acción por fila:
+
+```tsx
+import { type BreadcrumbItem } from '@/types';
+import { create, show, edit } from '@/routes/landlord/tenants';
+import { Button } from '@/components/ui/button';
+import { Plus, Pencil, Eye, Building, Globe, Database } from 'lucide-react';
+
+const breadcrumbs: BreadcrumbItem[] = [
+    { title: 'Admin', href: '/admin' },
+    { title: 'Tenants', href: '/admin/tenants' },
+];
+
+export default function TenantIndex({ tenants }: { tenants: any[] }) {
+    return (
+        <div className="p-6">
+            <div className="flex justify-between items-center mb-6">
+                <h1 className="text-2xl font-bold">Tenants</h1>
+                <Button asChild data-testid="create-tenant-btn">
+                    <a href={create().url}>
+                        <Plus className="h-4 w-4" />
+                        Create Tenant
+                    </a>
+                </Button>
+            </div>
+            <div className="border rounded-lg divide-y">
+                {tenants.length === 0 ? (
+                    <p className="p-4 text-gray-500">No tenants yet.</p>
+                ) : (
+                    tenants.map((tenant: any) => (
+                        <div key={tenant.id} className="p-4 flex justify-between items-center" data-testid={`tenant-row-${tenant.id}`}>
+                            <div className="space-y-1">
+                                <p className="font-medium flex items-center gap-2" data-testid={`tenant-name-${tenant.id}`}>
+                                    <Building className="h-4 w-4 text-muted-foreground" />
+                                    {tenant.name}
+                                </p>
+                                <p className="text-sm text-gray-500 flex items-center gap-2" data-testid={`tenant-domain-${tenant.id}`}>
+                                    <Globe className="h-3.5 w-3.5 text-muted-foreground" />
+                                    {tenant.domain}
+                                </p>
+                                <p className="text-sm text-gray-400 flex items-center gap-2" data-testid={`tenant-database-${tenant.id}`}>
+                                    <Database className="h-3.5 w-3.5 text-muted-foreground" />
+                                    {tenant.database}
+                                </p>
+                            </div>
+                            <div className="flex gap-2">
+                                <Button variant="outline" size="sm" asChild data-testid={`edit-tenant-btn-${tenant.id}`}>
+                                    <a href={edit(tenant.id).url}>
+                                        <Pencil className="h-4 w-4" />
+                                        Edit
+                                    </a>
+                                </Button>
+                                <Button variant="outline" size="sm" asChild data-testid={`view-tenant-btn-${tenant.id}`}>
+                                    <a href={show(tenant.id).url}>
+                                        <Eye className="h-4 w-4" />
+                                        View
+                                    </a>
+                                </Button>
+                            </div>
+                        </div>
+                    ))
+                )}
+            </div>
+        </div>
+    );
+}
+```
+
+> **Punto clave:** Cada fila muestra name/domain/database y ofrece botones Edit y View. Los `data-testid` habilitan selectores para los browser tests (ver §22). Usa Wayfinder para las URLs (`create().url`, `edit(tenant.id).url`, `show(tenant.id).url`).
+
+#### Create tenant — `resources/js/pages/landlord/tenants/create.tsx`
+
+Formulario de creación con validación y auto-provisioning de BD:
+
+```tsx
+import { type BreadcrumbItem } from '@/types';
+import { FormEventHandler } from 'react';
+import { useForm } from '@inertiajs/react';
+import { store, index } from '@/routes/landlord/tenants';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+    Card,
+    CardContent,
+    CardDescription,
+    CardHeader,
+    CardTitle,
+} from '@/components/ui/card';
+import InputError from '@/components/input-error';
+import { Building, Globe, Database, X, Plus } from 'lucide-react';
+
+const breadcrumbs: BreadcrumbItem[] = [
+    { title: 'Admin', href: '/admin' },
+    { title: 'Tenants', href: '/admin/tenants' },
+    { title: 'Create', href: '/admin/tenants/create' },
+];
+
+export default function TenantCreate() {
+    const { data, setData, post, processing, errors } = useForm({
+        name: '',
+        domain: '',
+        database: '',
+    });
+
+    const submit: FormEventHandler = (e) => {
+        e.preventDefault();
+        post(store().url);
+    };
+
+    return (
+        <form onSubmit={submit}>
+            <div className="p-6">
+                <div className="flex justify-between items-center mb-6">
+                    <h1 className="text-2xl font-bold w-[200px] truncate">Create Tenant</h1>
+                    <div className="flex gap-2 shrink-0">
+                        <Button variant="outline" asChild>
+                            <a href={index().url}>
+                                <X className="h-4 w-4" />
+                                Cancel
+                            </a>
+                        </Button>
+                        <Button type="submit" disabled={processing} data-testid="submit-tenant-btn">
+                            <Plus className="h-4 w-4" />
+                            {processing ? 'Creating...' : 'Create Tenant'}
+                        </Button>
+                    </div>
+                </div>
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Tenant details</CardTitle>
+                        <CardDescription>
+                            Configure the basic information for the new tenant.
+                            The database will be created and migrated automatically.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                        <div className="grid gap-2">
+                            <Label htmlFor="name" className="flex items-center gap-2">
+                                <Building className="h-4 w-4" />
+                                Name
+                            </Label>
+                            <Input
+                                id="name"
+                                data-testid="input-name"
+                                value={data.name}
+                                onChange={(e) => setData('name', e.target.value)}
+                                placeholder="Acme Corp"
+                            />
+                            <InputError message={errors.name} />
+                        </div>
+                        <div className="grid gap-2">
+                            <Label htmlFor="domain" className="flex items-center gap-2">
+                                <Globe className="h-4 w-4" />
+                                Domain
+                            </Label>
+                            <Input
+                                id="domain"
+                                data-testid="input-domain"
+                                value={data.domain}
+                                onChange={(e) => setData('domain', e.target.value)}
+                                placeholder="tenant1.example.com"
+                            />
+                            <InputError message={errors.domain} />
+                        </div>
+                        <div className="grid gap-2">
+                            <Label htmlFor="database" className="flex items-center gap-2">
+                                <Database className="h-4 w-4" />
+                                Database
+                            </Label>
+                            <Input
+                                id="database"
+                                data-testid="input-database"
+                                value={data.database}
+                                onChange={(e) => setData('database', e.target.value)}
+                                placeholder="tenant1_database"
+                            />
+                            <InputError message={errors.database} />
+                        </div>
+                    </CardContent>
+                </Card>
+            </div>
+        </form>
+    );
+}
+```
+
+> **Punto clave:** El formulario POSTea a `store().url` (ruta Wayfinder). Al recibir los datos, el controller llama a `Tenant::create()` que dispara el callback `creating` del modelo (ver §11): crea la BD física, configura la conexión y corre migraciones. La card description le avisa al admin que el provisioning es automático.
+
+#### Tenant detail — `resources/js/pages/landlord/tenants/show.tsx`
+
+Muestra la información completa del tenant con opciones de edición y borrado (con confirmación):
+
+```tsx
+import { type BreadcrumbItem } from '@/types';
+import { router } from '@inertiajs/react';
+import { destroy, edit, index } from '@/routes/landlord/tenants';
+import {
+    Dialog,
+    DialogClose,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogTitle,
+    DialogTrigger,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
+import {
+    Card,
+    CardContent,
+    CardDescription,
+    CardHeader,
+    CardTitle,
+} from '@/components/ui/card';
+import { Building, Globe, Database, Calendar, ArrowLeft, Pencil, Trash2 } from 'lucide-react';
+
+const breadcrumbs: BreadcrumbItem[] = [
+    { title: 'Admin', href: '/admin' },
+    { title: 'Tenants', href: '/admin/tenants' },
+    { title: 'Details', href: '#' },
+];
+
+export default function TenantShow({ tenant }: { tenant: { id: number; name: string; domain: string; database: string; created_at: string } }) {
+    return (
+        <div className="p-6">
+            <div className="flex justify-between items-center mb-6">
+                <h1 className="text-2xl font-bold w-[200px] truncate">{tenant.name}</h1>
+                <div className="flex gap-2 shrink-0">
+                    <Button variant="outline" asChild>
+                        <a href={index().url}>
+                            <ArrowLeft className="h-4 w-4" />
+                            Back
+                        </a>
+                    </Button>
+                    <Button variant="outline" asChild>
+                        <a href={edit(tenant.id).url}>
+                            <Pencil className="h-4 w-4" />
+                            Edit
+                        </a>
+                    </Button>
+                    <Dialog>
+                        <DialogTrigger asChild>
+                            <Button variant="destructive" data-testid="delete-tenant-trigger">
+                                <Trash2 className="h-4 w-4" />
+                                Delete
+                            </Button>
+                        </DialogTrigger>
+                        <DialogContent>
+                            <DialogTitle>Delete "{tenant.name}"?</DialogTitle>
+                            <DialogDescription>
+                                This will permanently delete the tenant and drop its database.
+                                This action cannot be undone.
+                            </DialogDescription>
+                            <DialogFooter className="gap-2">
+                                <DialogClose asChild>
+                                    <Button variant="secondary">Cancel</Button>
+                                </DialogClose>
+                                <Button
+                                    variant="destructive"
+                                    data-testid="confirm-delete-btn"
+                                    onClick={() => router.delete(destroy(tenant.id).url)}
+                                >
+                                    <Trash2 className="h-4 w-4" />
+                                    Delete
+                                </Button>
+                            </DialogFooter>
+                        </DialogContent>
+                    </Dialog>
+                </div>
+            </div>
+            <Card>
+                <CardHeader>
+                    <CardTitle>Tenant details</CardTitle>
+                    <CardDescription>
+                        The tenant's current configuration and database information.
+                    </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                    <div className="grid gap-2">
+                        <Label htmlFor="name" className="flex items-center gap-2">
+                            <Building className="h-4 w-4" />
+                            Name
+                        </Label>
+                        <div
+                            id="name"
+                            className="flex h-9 w-full min-w-0 items-center rounded-md border border-input bg-muted/30 px-3 py-1 text-base md:text-sm shadow-xs"
+                        >
+                            {tenant.name}
+                        </div>
+                    </div>
+                    <div className="grid gap-2">
+                        <Label htmlFor="domain" className="flex items-center gap-2">
+                            <Globe className="h-4 w-4" />
+                            Domain
+                        </Label>
+                        <div
+                            id="domain"
+                            className="flex h-9 w-full min-w-0 items-center rounded-md border border-input bg-muted/30 px-3 py-1 text-base md:text-sm shadow-xs"
+                        >
+                            {tenant.domain}
+                        </div>
+                    </div>
+                    <div className="grid gap-2">
+                        <Label htmlFor="database" className="flex items-center gap-2">
+                            <Database className="h-4 w-4" />
+                            Database
+                        </Label>
+                        <div
+                            id="database"
+                            className="flex h-9 w-full min-w-0 items-center rounded-md border border-input bg-muted/30 px-3 py-1 text-base md:text-sm shadow-xs"
+                        >
+                            {tenant.database}
+                        </div>
+                    </div>
+                    <div className="grid gap-2">
+                        <Label htmlFor="created_at" className="flex items-center gap-2">
+                            <Calendar className="h-4 w-4" />
+                            Created
+                        </Label>
+                        <div
+                            id="created_at"
+                            className="flex h-9 w-full min-w-0 items-center rounded-md border border-input bg-muted/30 px-3 py-1 text-base md:text-sm shadow-xs"
+                        >
+                            {tenant.created_at}
+                        </div>
+                    </div>
+                </CardContent>
+            </Card>
+        </div>
+    );
+}
+```
+
+> **Punto clave:** El botón Delete abre un `Dialog` de confirmación — acción destructiva irreversible (dropea la BD física). Usa `router.delete()` directo para evitar el formulario. Los `data-testid` (`delete-tenant-trigger`, `confirm-delete-btn`) son los mismos que usan los browser tests (ver §22).
+
+#### Edit tenant — `resources/js/pages/landlord/tenants/edit.tsx`
+
+Formulario pre-poblado con los datos actuales del tenant:
+
+```tsx
+import { type BreadcrumbItem } from '@/types';
+import { FormEventHandler } from 'react';
+import { useForm } from '@inertiajs/react';
+import { update, index } from '@/routes/landlord/tenants';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+    Card,
+    CardContent,
+    CardDescription,
+    CardHeader,
+    CardTitle,
+} from '@/components/ui/card';
+import InputError from '@/components/input-error';
+import { Building, Globe, Database, X, Save } from 'lucide-react';
+
+const breadcrumbs: BreadcrumbItem[] = [
+    { title: 'Admin', href: '/admin' },
+    { title: 'Tenants', href: '/admin/tenants' },
+    { title: 'Edit', href: '#' },
+];
+
+export default function TenantEdit({ tenant }: { tenant: { id: number; name: string; domain: string; database: string } }) {
+    const { data, setData, put, processing, errors } = useForm({
+        name: tenant.name,
+        domain: tenant.domain,
+        database: tenant.database,
+    });
+
+    const submit: FormEventHandler = (e) => {
+        e.preventDefault();
+        put(update(tenant.id).url);
+    };
+
+    return (
+        <form onSubmit={submit}>
+            <div className="p-6">
+                <div className="flex justify-between items-center mb-6">
+                    <h1 className="text-2xl font-bold w-[200px] truncate">Edit Tenant</h1>
+                    <div className="flex gap-2 shrink-0">
+                        <Button variant="outline" asChild>
+                            <a href={index().url}>
+                                <X className="h-4 w-4" />
+                                Cancel
+                            </a>
+                        </Button>
+                        <Button type="submit" disabled={processing} data-testid="edit-tenant-submit-btn">
+                            <Save className="h-4 w-4" />
+                            {processing ? 'Saving...' : 'Save'}
+                        </Button>
+                    </div>
+                </div>
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Tenant details</CardTitle>
+                        <CardDescription>
+                            Update the tenant information. The database
+                            structure is not affected by these changes.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                        <div className="grid gap-2">
+                            <Label htmlFor="name" className="flex items-center gap-2">
+                                <Building className="h-4 w-4" />
+                                Name
+                            </Label>
+                            <Input
+                                id="name"
+                                data-testid="edit-input-name"
+                                value={data.name}
+                                onChange={(e) => setData('name', e.target.value)}
+                            />
+                            <InputError message={errors.name} />
+                        </div>
+                        <div className="grid gap-2">
+                            <Label htmlFor="domain" className="flex items-center gap-2">
+                                <Globe className="h-4 w-4" />
+                                Domain
+                            </Label>
+                            <Input
+                                id="domain"
+                                value={data.domain}
+                                onChange={(e) => setData('domain', e.target.value)}
+                                placeholder="tenant1.example.com"
+                            />
+                            <InputError message={errors.domain} />
+                        </div>
+                        <div className="grid gap-2">
+                            <Label htmlFor="database" className="flex items-center gap-2">
+                                <Database className="h-4 w-4" />
+                                Database
+                            </Label>
+                            <Input
+                                id="database"
+                                value={data.database}
+                                onChange={(e) => setData('database', e.target.value)}
+                                placeholder="tenant1_database"
+                            />
+                            <InputError message={errors.database} />
+                        </div>
+                    </CardContent>
+                </Card>
+            </div>
+        </form>
+    );
+}
+```
+
+> **Punto clave:** PUT a `update(tenant.id).url` (Wayfinder). La card description aclara que cambios en name/domain/database NO afectan la BD física ya creada — solo actualizan el registro en la tabla `tenants`. El `data-testid="edit-tenant-submit-btn"` es usado por el browser test de edición.
+
 ---
 
 ## 20. Archivos clave — Resumen
 
-> Esta sección lista los 33 archivos clave del proyecto en dos vistas complementarias: **20.1** los agrupa por tipo de archivo (útil para entender la arquitectura — "qué hace cada pieza de código"); **20.2** los lista por sección del doc, en orden cronológico del build (útil para entender el orden de creación — "cuándo se agregó cada pieza"). El nombre del archivo es la columna compartida entre las dos vistas — usalo como join key para cruzar de una a otra.
+> Esta sección lista los 66 archivos clave del proyecto en dos vistas complementarias: **20.1** los agrupa por tipo de archivo (útil para entender la arquitectura — "qué hace cada pieza de código"); **20.2** los lista por sección del doc, en orden cronológico del build (útil para entender el orden de creación — "cuándo se agregó cada pieza"). El nombre del archivo es la columna compartida entre las dos vistas — usalo como join key para cruzar de una a otra.
 
 ### 20.1 Vista por tipo de archivo
 
@@ -1551,12 +3011,13 @@ Resultado: el job sabe en qué BD tenant correr, sin config extra.
 | `app/Models/Landlord.php` | 10 | Modelo `Authenticatable` para landlord; usa `UsesLandlordConnection`; reusa la tabla `users` del landlord. |
 | `app/Models/Tenant.php` | 11 | Modelo Spatie `Tenant`; el callback `creating` ejecuta `createDatabase()` (idempotente — chequea `pg_database`), configura la conexión `tenant` y corre migraciones. |
 
-#### Controllers (Landlord)
+#### Controllers (Landlord & Settings)
 
 | Archivo | Sección | Función |
 |---|---|---|
 | `app/Http/Controllers/Landlord/AdminPanelController.php` | general | Renderiza la página Inertia `landlord/admin-panel` en `/admin` (home del landlord, ver §16.4); nunca entra en contexto tenant. |
-| `app/Http/Controllers/Landlord/TenantController.php` | 11 | CRUD de tenants; `store()` llama a `Tenant::create()` y dropea la BD si el callback de provisioning lanza excepción. |
+| `app/Http/Controllers/Landlord/TenantController.php` | 11 | CRUD completo de tenants; `store()` llama a `Tenant::create()` y dropea la BD si el callback de provisioning lanza excepción; `destroy()` dropea la BD física y elimina el registro. |
+| `app/Http/Controllers/Settings/AvatarController.php` | 19 | Subida y borrado de avatar de perfil (usando spatie/laravel-medialibrary); `store()` valida y sube, `destroy()` limpia la colección. |
 
 #### Middleware
 
@@ -1565,6 +3026,13 @@ Resultado: el job sabe en qué BD tenant correr, sin config extra.
 | `app/Http/Middleware/EnsureUserIsAdmin.php` | 16 | Aborta con 403 salvo que `$request->user()` sea instancia de `Landlord`. |
 | `app/Http/Middleware/HandleInertiaRequests.php` | 16 | Comparte `auth.is_admin` (true si el user es `Landlord`) — consumido por `app-sidebar` para el nav role-aware. |
 | `app/Http/Middleware/RedirectIfAuthenticated.php` | 16 | Extiende `Illuminate\Auth\Middleware\RedirectIfAuthenticated`; override de `redirectTo()` para que landlord vaya a `/admin` (no a `/dashboard`). Aplica al alias `guest` que Fortify usa en login/register (ver §16.5). |
+
+#### Multitenancy Tasks
+
+| Archivo | Sección | Función |
+|---|---|---|
+| `app/Multitenancy/Tasks/SwitchFilesystemTask.php` | 19.5 | Aísla el filesystem por tenant: sobreescribe el prefijo del disco `tenant` a `tenant_{id}` en `makeCurrent()`, lo restaura en `forgetCurrent()`. Incluye `Storage::clearResolvedInstance()` para evitar cache de instancia. |
+| `app/Multitenancy/Tasks/SwitchTenantLoggingTask.php` | 19.6 | Inyecta `tenant_id` en el contexto compartido del logger vía `Log::shareContext()` en `makeCurrent()`, lo limpia con `withoutContext()` en `forgetCurrent()`. |
 
 #### Auth System
 
@@ -1583,9 +3051,13 @@ Resultado: el job sabe en qué BD tenant correr, sin config extra.
 
 | Archivo | Sección | Función |
 |---|---|---|
+| `.env.example` | 1 | Template del `.env` local con las claves relevantes para multitenancy (DB, session, cache, queue). |
+| `.env.testing.example` | 22 | Template del `.env.testing` con base de datos `spatie-laravel-multitenancy-testing` y drivers array/sync para sesiones, cache, colas y mail. |
 | `config/multitenancy.php` | 4, 19 | Usa `DomainTenantFinder`, `SwitchTenantDatabaseTask`, `PrefixCacheTask` (en este orden — ver §19.1) y `tenant_model => Tenant::class`. |
 | `config/database.php` | 5 | Define las conexiones `pgsql`, `landlord` y `tenant` (con `database => null`) apuntando a PostgreSQL. |
 | `config/auth.php` | 13 | Provider `users` con `driver => multi-tenant` para resolución tenant-aware del modelo. |
+| `config/filesystems.php` | 19.5 | Define los discos `public` y `tenant` (driver `scoped` wrapping `public`); el prefix del disco `tenant` se sobreescribe en runtime. |
+| `config/media-library.php` | 19.5 | Configura spatie/laravel-medialibrary; `disk_name` se setea a `tenant` y se sobreescribe por SwitchFilesystemTask. |
 
 #### Bootstrap & Routes
 
@@ -1594,13 +3066,44 @@ Resultado: el job sabe en qué BD tenant correr, sin config extra.
 | `bootstrap/app.php` | 7, 16 | Registra el grupo `tenant` (`NeedsTenant` + `EnsureValidTenantSession`) y override del alias `guest` → `App\Http\Middleware\RedirectIfAuthenticated` (ver §16.5). |
 | `routes/web.php` | 8, 16 | Cuatro grupos bien delimitados: públicas, compartidas (carga `settings.php`), SaaS tenant (`tenant` + auth + verified, contiene `dashboard`), y admin (carga `landlord.php` con `EnsureUserIsAdmin`). El `dashboard` vive en el grupo `tenant` — un landlord en el dominio principal recibe 404 al tipearlo. |
 | `routes/landlord.php` | 8 | Rutas `/admin` con stack `auth` + `verified` + `EnsureUserIsAdmin`; namespace `landlord.*`. |
-| `routes/settings.php` | general | Rutas stock de profile/security/appearance requeridas por web.php; no es multitenancy-specific. |
+| `routes/settings.php` | general | Rutas de profile/security/appearance/avatar requeridas por web.php; incluye `POST /settings/profile/avatar` y `DELETE /settings/profile/avatar` para el avatar upload. No es multitenancy-specific (los endpoints son compartidos). |
 
-#### Migrations & Seeders
+#### Tests
+
+| Archivo | Categoría | Función |
+|---|---|---|
+| `tests/TestCase.php` | Base | Clase base de tests; configura el entorno con RefreshDatabase para landlord. |
+| `tests/Pest.php` | Base | Pest config: `RefreshDatabase` extendido (resuelve `RefreshLandlordDatabase`), `DB::extend('tenant', ...)` para conexión tenant sin tenant activo. |
+| `tests/Support/RefreshLandlordDatabase.php` | Support | Trait que ejecuta migraciones landlord (`database/migrations/landlord/`) antes de cada test. |
+| `tests/Feature/Auth/AuthenticationTest.php` | Feature (adaptado) | Login de landlord; usa `Landlord` factory (no `User`), assert redirect a `/admin`. |
+| `tests/Feature/Auth/PasswordResetTest.php` | Feature (adaptado) | Reset de contraseña de landlord; usa `Landlord` factory. |
+| `tests/Feature/Auth/RegistrationTest.php` | Feature (adaptado) | Registro de landlord; assert redirect a `/admin` en vez de `/dashboard`. |
+| `tests/Feature/DashboardTest.php` | Feature (adaptado) | Test renombrado: "landlord admin panel can be accessed by authenticated landlord"; usa `Landlord` factory, ruta `landlord.admin-panel`. |
+| `tests/Feature/ExampleTest.php` | Feature (adaptado) | Test de salud: `GET /` → 200; adaptado a la estructura multi-dominio. |
+| `tests/Feature/Settings/ProfileUpdateTest.php` | Feature (adaptado) | Profile update de landlord; usa `Landlord` factory con `createQuietly()`. |
+| `tests/Feature/Settings/SecurityTest.php` | Feature (adaptado) | Cambio de contraseña y 2FA de landlord; usa `Landlord` factory con `createQuietly()`. |
+| `tests/Feature/Tenant/TenantControllerTest.php` | Feature | 10 tests: CRUD completo de tenants (index, create, store, show, edit, update, destroy, validación, auth, forbidden). |
+| `tests/Feature/Tenant/TenantTest.php` | Feature | 5 tests: Tenant model, factory, scopes. |
+| `tests/Feature/Tenant/MultitenancyConfigTest.php` | Feature | 6 tests: Configuración de conexiones `tenant`/`landlord`, tareas de switch, tenant finder. |
+| `tests/Feature/Tenant/SwitchFilesystemTaskTest.php` | Feature | 10 tests: Aislamiento de prefix, compatibilidad medialibrary, cache flush, interface, config. |
+| `tests/Feature/Tenant/SwitchTenantLoggingTaskTest.php` | Feature | 5 tests: Contexto compartido del logger, cambio entre tenants, limpieza. |
+| `tests/Unit/ExampleTest.php` | Unit | Test de humo: `expect(true)->toBeTrue()`. Solo se agregó un newline al final (EOF fix). |
+| `tests/Browser/BrowserTestCase.php` | Browser | Base class para browser tests; extiende `Tests\DuskTestCase` (o Pest + Playwright) con setup tenant-aware. |
+| `tests/Browser/Tenant/TenantCrudBrowserTest.php` | Browser | 8 tests: Playwright real para CRUD (index, create, show, edit, delete, validación, auth). |
+
+#### Factories
+
+| Archivo | Sección | Función |
+|---|---|---|
+| `database/factories/LandlordFactory.php` | 10 | Factory para `Landlord` con estado `admin` por defecto (`is_admin = true`). |
+| `database/factories/TenantFactory.php` | 11 | Factory para `Tenant` usada en seeders y tests; genera name/domain/database únicos para `Tenant::create()`. |
+
+#### Seeders & Migrations
 
 | Archivo | Sección | Función |
 |---|---|---|
 | `database/migrations/landlord/2026_05_29_183736_create_landlord_tenants_table.php` | 6 | Crea la tabla `tenants` en la BD landlord (columnas: name, domain unique, database unique). |
+| `database/migrations/2026_06_03_175326_create_media_table.php` | 19.5 | Migración de spatie/laravel-medialibrary; crea la tabla `media` con columnas para modelos, colecciones, disk, conversiones. Corre en landlord y se propaga a cada tenant vía el callback `creating` de Tenant. |
 | `database/seeders/LandlordUserSeeder.php` | 10 | Crea el Landlord `admin@example.test` vía factory. |
 | `database/seeders/TenantsSeeder.php` | 11 | Crea dos tenants de prueba; cada `Tenant::create()` dispara el provisioning automático (BD + conexión + migraciones). |
 | `database/seeders/DatabaseSeeder.php` | 11 | Llama a `LandlordUserSeeder` y luego `TenantsSeeder` para `php artisan db:seed`. |
@@ -1618,25 +3121,34 @@ Resultado: el job sabe en qué BD tenant correr, sin config extra.
 |---|---|---|
 | `resources/js/components/app-sidebar.tsx` | general | Sidebar role-aware: `mainNavItems` (Panel → `/admin` para landlords, Dashboard → `/dashboard` para tenants) y el link del logo (también role-aware: `/admin` o `/dashboard`) cambian según `auth.is_admin`. Admin suma grupo "Tenants". **Landlords nunca aterrizan en `/dashboard` por flujo normal** — ver §16.4 (POST-auth redirect) + §16.5 (guest redirect) + §7 (`tenant` middleware → 404). |
 | `resources/js/components/nav-main.tsx` | general | Renderer genérico de grupo de sidebar; consumido por `app-sidebar` para ambos roles. |
+| `resources/js/components/avatar-upload.tsx` | 19.5 | Componente de subida de avatar con preview, botón de cámara (input file oculto), y botón "Remove" cuando existe avatar. Consume endpoint `POST /settings/profile/avatar` y `DELETE /settings/profile/avatar`. |
+| `resources/js/pages/settings/profile.tsx` | 19.5 | Página de perfil de usuario; integra `AvatarUpload` con preview del avatar actual, más el formulario de nombre/email. |
 | `resources/js/pages/landlord/admin-panel.tsx` | general | Página Inertia para `/admin` (home del landlord). NO usar `dashboard.tsx` en sesión landlord. |
-| `resources/js/pages/landlord/tenants/index.tsx` | general | Lista tenants con link a las páginas create/show. |
+| `resources/js/pages/landlord/tenants/index.tsx` | general | Lista tenants con botones Edit (link a edit) y View (link a show) por fila, y botón Create Tenant. |
 | `resources/js/pages/landlord/tenants/create.tsx` | general | `useForm` que postea name/domain/database a `/admin/tenants`. |
-| `resources/js/pages/landlord/tenants/show.tsx` | general | Renderiza tarjeta de detalle del tenant (id, domain, database, created_at). |
+| `resources/js/pages/landlord/tenants/show.tsx` | general | Renderiza tarjeta de detalle del tenant (id, domain, database, created_at) con botones Edit y Delete (con diálogo de confirmación). |
+| `resources/js/pages/landlord/tenants/edit.tsx` | 8.1 | `useForm` con PUT a `/admin/tenants/{id}` para editar name/domain/database. Incluye validación y botones Save/Cancel. |
 
 ### 20.2 Vista cronológica — Archivos por sección del doc
 
 | Sección | Archivo | Función |
 |---|---|---|
 | 4 | `config/multitenancy.php` | Usa `DomainTenantFinder`, `SwitchTenantDatabaseTask` y `tenant_model => Tenant::class`. |
+| 1 | `.env.example` | Template del `.env` local con claves relevantes para multitenancy. |
 | 5 | `config/database.php` | Define las conexiones `pgsql`, `landlord` y `tenant` (con `database => null`) apuntando a PostgreSQL. |
+| 5 | `config/filesystems.php` | Define discos `public` y `tenant` (driver `scoped` wrapping `public`). |
+| 5 | `config/media-library.php` | Configura medialibrary; `disk_name` se sobreescribe por SwitchFilesystemTask. |
 | 6 | `database/migrations/landlord/2026_05_29_183736_create_landlord_tenants_table.php` | Crea la tabla `tenants` en la BD landlord (columnas: name, domain unique, database unique). |
+| 6 | `database/migrations/2026_06_03_175326_create_media_table.php` | Migración de spatie/laravel-medialibrary; tabla `media` para modelos, colecciones, conversiones. |
 | 7 | `bootstrap/app.php` | Registra el grupo `tenant` (`NeedsTenant` + `EnsureValidTenantSession`) y override del alias `guest` → `App\Http\Middleware\RedirectIfAuthenticated` (ver §16.5). |
 | 8 | `routes/web.php` | Cuatro grupos bien delimitados: públicas, compartidas (carga `settings.php`), SaaS tenant (`tenant` + auth + verified, contiene `dashboard`), y admin (carga `landlord.php` con `EnsureUserIsAdmin`). El `dashboard` vive en el grupo `tenant` — un landlord en el dominio principal recibe 404 al tipearlo. |
 | 8 | `routes/landlord.php` | Rutas `/admin` con stack `auth` + `verified` + `EnsureUserIsAdmin`; namespace `landlord.*`. |
 | 9 | `app/Models/User.php` | Modelo `Authenticatable` para tenants; usa el trait `UsesTenantConnection`; las queries corren sobre la conexión `tenant`. |
 | 10 | `app/Models/Landlord.php` | Modelo `Authenticatable` para landlord; usa `UsesLandlordConnection`; reusa la tabla `users` del landlord. |
+| 10 | `database/factories/LandlordFactory.php` | Factory para `Landlord` con estado `admin` por defecto. |
 | 10 | `database/seeders/LandlordUserSeeder.php` | Crea el Landlord `admin@example.test` vía factory. |
 | 11 | `app/Models/Tenant.php` | Modelo Spatie `Tenant`; el callback `creating` ejecuta `createDatabase()` (idempotente — chequea `pg_database`), configura la conexión `tenant` y corre migraciones. |
+| 11 | `database/factories/TenantFactory.php` | Factory para `Tenant` usada en seeders y tests. |
 | 11 | `app/Http/Controllers/Landlord/TenantController.php` | CRUD de tenants; `store()` llama a `Tenant::create()` y dropea la BD si el callback de provisioning lanza excepción. |
 | 11 | `database/seeders/TenantsSeeder.php` | Crea dos tenants de prueba; cada `Tenant::create()` dispara el provisioning automático (BD + conexión + migraciones). |
 | 11 | `database/seeders/DatabaseSeeder.php` | Llama a `LandlordUserSeeder` y luego `TenantsSeeder` para `php artisan db:seed`. |
@@ -1654,14 +3166,31 @@ Resultado: el job sabe en qué BD tenant correr, sin config extra.
 | 16 | `app/Http/Responses/RoleAwareAuthResponse.php` | Implementa `LoginResponse` y `RegisterResponse` de Fortify; redirige a `/admin` si el user es `Landlord`, a `/dashboard` en caso contrario. Usa `redirect()->intended()`. |
 | 17 | `scripts/add-host.php` | CLI standalone; agrega `<ip> <tenant-host>` al archivo hosts de Windows/Linux (requiere admin). |
 | 17 | `scripts/remove-host.php` | CLI standalone; elimina la línea coincidente del archivo hosts del sistema. |
+| 19.5 | `app/Multitenancy/Tasks/SwitchFilesystemTask.php` | Aísla el filesystem por tenant; sobreescribe el prefijo del disco `tenant` a `tenant_{id}`. |
+| 19.5 | `app/Http/Controllers/Settings/AvatarController.php` | Subida y borrado de avatar de perfil con spatie/laravel-medialibrary. |
+| 19.5 | `resources/js/components/avatar-upload.tsx` | Componente React de avatar con preview, upload y remove. |
+| 19.5 | `resources/js/pages/settings/profile.tsx` | Página de perfil; integra `AvatarUpload` con preview del avatar. |
+| 19.6 | `app/Multitenancy/Tasks/SwitchTenantLoggingTask.php` | Inyecta `tenant_id` en el contexto compartido del logger. |
+| 22 | `tests/TestCase.php` | Clase base de tests; configura entorno con RefreshDatabase para landlord. |
+| 22 | `tests/Pest.php` | Pest config: RefreshDatabase extendido, DB::extend para conexión tenant. |
+| 22 | `tests/Support/RefreshLandlordDatabase.php` | Trait que ejecuta migraciones landlord antes de cada test. |
+| 22 | `tests/Browser/BrowserTestCase.php` | Base class para browser tests con setup tenant-aware. |
+| 22 | `tests/Feature/Auth/AuthenticationTest.php` | Login de landlord (User → Landlord, redirect a /admin). |
+| 22 | `tests/Feature/Auth/PasswordResetTest.php` | Reset de password de landlord (User → Landlord). |
+| 22 | `tests/Feature/Auth/RegistrationTest.php` | Registro de landlord (redirect a /admin). |
+| 22 | `tests/Feature/DashboardTest.php` | Test renombrado: landlord admin panel, ruta landlord.admin-panel. |
+| 22 | `tests/Feature/Settings/ProfileUpdateTest.php` | Profile de landlord (User → Landlord, createQuietly). |
+| 22 | `tests/Feature/Settings/SecurityTest.php` | 2FA/password de landlord (User → Landlord, createQuietly). |
+| 22 | `tests/Unit/ExampleTest.php` | Test de humo: `expect(true)->toBeTrue()`. Solo EOF fix. |
 | general | `app/Http/Controllers/Landlord/AdminPanelController.php` | Renderiza la página Inertia `landlord/admin-panel` en `/admin` (home del landlord, ver §16.4); nunca entra en contexto tenant. |
 | general | `routes/settings.php` | Rutas stock de profile/security/appearance requeridas por web.php; no es multitenancy-specific. |
 | general | `resources/js/components/app-sidebar.tsx` | Sidebar role-aware: `mainNavItems` y el link del logo cambian según `auth.is_admin` (landlord → `/admin`, tenant → `/dashboard`). Admin suma grupo "Tenants". **Landlords nunca aterrizan en `/dashboard` por flujo normal** — ver §16.4 (POST-auth redirect) + §16.5 (guest redirect) + §7 (`tenant` middleware → 404). |
 | general | `resources/js/components/nav-main.tsx` | Renderer genérico de grupo de sidebar; consumido por `app-sidebar` para ambos roles. |
 | general | `resources/js/pages/landlord/admin-panel.tsx` | Página Inertia para `/admin` (home del landlord). NO usar `dashboard.tsx` en sesión landlord. |
-| general | `resources/js/pages/landlord/tenants/index.tsx` | Lista tenants con link a las páginas create/show. |
+| general | `resources/js/pages/landlord/tenants/index.tsx` | Lista tenants con botones Edit y View por fila, más botón Create Tenant. |
 | general | `resources/js/pages/landlord/tenants/create.tsx` | `useForm` que postea name/domain/database a `/admin/tenants`. |
-| general | `resources/js/pages/landlord/tenants/show.tsx` | Renderiza tarjeta de detalle del tenant (id, domain, database, created_at). |
+| general | `resources/js/pages/landlord/tenants/show.tsx` | Renderiza tarjeta de detalle del tenant (id, domain, database, created_at) con botones Edit y Delete con confirmación. |
+| general | `resources/js/pages/landlord/tenants/edit.tsx` | `useForm` con PUT a `/admin/tenants/{id}` para editar name/domain/database. |
 
 ---
 
@@ -1692,9 +3221,974 @@ Resultado: el job sabe en qué BD tenant correr, sin config extra.
 
 | Capa | Tests | Stack | Estado |
 |---|---|---|---|
-| **Feature** | 46 | Pest, HTTP simulado, PostgreSQL | ✅ 43 pass, 3 skip* |
+| **Feature** | ~61 | Pest, HTTP simulado, PostgreSQL | ✅ ~58 pass, 3 skip* |
 | **Browser** | 9 | Pest + Playwright, Chromium real | ✅ 9 pass |
 | **Unit** | 1 | Pest | ✅ 1 pass |
-| **Total** | **56** | | ✅ **53 pass, 3 skip** |
+| **Total** | **~70** | | ✅ **~67 pass, 3 skip** |
 
 \* Los 3 skipped corresponden a `SecurityTest` — dependen de `Features::twoFactorAuthentication()` que no está habilitado en `config/fortify.php`.
+
+### Entorno de testing
+
+Tests contra PostgreSQL, no SQLite en memoria. Las conexiones `pgsql` standard y `landlord` apuntan a una BD de testing separada. Configurado vía `.env.testing`:
+
+```env
+# .env.testing
+DB_CONNECTION=pgsql
+DB_DATABASE=spatie-laravel-multitenancy-testing
+SESSION_DRIVER=array      # Sin sesiones persistentes en tests
+CACHE_STORE=array          # Sin cache persistente
+QUEUE_CONNECTION=sync      # Jobs se ejecutan inline
+MAIL_MAILER=array          # Sin envio real de emails
+BROADCAST_CONNECTION=null
+BCRYPT_ROUNDS=4            # Hasheo rápido
+```
+
+> **Punto clave:** NO se usa SQLite en memoria. Las migraciones de tenants (`CREATE DATABASE`) requieren conexión real a PostgreSQL. `DB_CONNECTION=sqlite` haría fallar el callback `creating` de `Tenant` que necesita `pg_database` y `CREATE DATABASE` — operaciones exclusivas de PostgreSQL.
+
+### Archivos de test — código completo
+
+#### Base test infrastructure
+
+Estos archivos configuran el entorno de testing para multitenancy. Veamos cada uno:
+
+**`phpunit.xml`** (en la raíz del proyecto) es mínimo — solo define `APP_ENV=testing`. El resto de la configuración de testing vive en `.env.testing` (gitignoreado, copia local de `.env.testing.example` con credenciales reales de BD). `tests/TestCase.php` es la clase base que extienden todos los tests:
+
+```php
+<?php
+
+namespace Tests;
+
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
+
+abstract class TestCase extends BaseTestCase
+{
+    use RefreshDatabase;
+}
+```
+
+**`tests/Pest.php`** — configura Pest para que use la conexión landlord y la extensión de la conexión tenant:
+
+```php
+<?php
+
+use Illuminate\Support\Facades\DB;
+use Tests\Support\RefreshLandlordDatabase;
+
+/*
+|--------------------------------------------------------------------------
+| Test Case
+|--------------------------------------------------------------------------
+*/
+uses(
+    Tests\TestCase::class,
+    RefreshLandlordDatabase::class,
+)->in('Feature')->in('Unit');
+
+uses(
+    Tests\Browser\BrowserTestCase::class,
+)->in('Browser');
+
+/*
+|--------------------------------------------------------------------------
+| Extender la conexión tenant para tests
+|--------------------------------------------------------------------------
+|
+| Spatie espera que la conexión 'tenant' esté definida, pero en los tests
+| no hay un tenant activo (el request no pasa por el middleware de Spatie).
+| Sin esta extensión de base de datos, cualquier query contra la conexión
+| 'tenant' falla porque 'database' es null en config/database.php (ver §5).
+|
+| Esta extensión mockea la conexión 'tenant' apuntando a la misma BD que
+| la conexión 'pgsql' (la BD landlord de testing), lo que permite que los
+| tests de Feature que usan User::factory() (el modelo de tenant) funcionen
+| sin un tenant HTTP activo. La BD tenant real se crea dinámicamente en el
+| callback creating de Tenant (ver §11) -- pero en los tests no llegamos a
+| ese código a menos que estemos probando el modelo Tenant directamente.
+*/
+DB::extend('tenant', function ($config, $name) {
+    $config['database'] = config('database.connections.pgsql.database');
+    return DB::connectUsing('tenant', $config);
+});
+```
+
+> **Punto clave:** `DB::extend('tenant', ...)` es esencial — sin esto, la conexión `tenant` tiene `database => null` y cualquier query contra el modelo `User` (que usa `UsesTenantConnection`) falla en los tests. La extensión redirige temporalmente a la BD landlord de testing.
+
+**`tests/Support/RefreshLandlordDatabase.php`** — trait que refresca las migraciones de la carpeta landlord antes de cada test:
+
+```php
+<?php
+
+namespace Tests\Support;
+
+use Illuminate\Contracts\Console\Kernel;
+use Illuminate\Foundation\Testing\RefreshDatabaseState;
+
+trait RefreshLandlordDatabase
+{
+    protected function refreshTestDatabase(): void
+    {
+        if (! RefreshDatabaseState::$migrated) {
+            $this->artisan('migrate:fresh');
+
+            $this->artisan('migrate', [
+                '--path' => 'database/migrations/landlord',
+                '--database' => 'landlord',
+                '--force' => true,
+            ]);
+
+            $this->app[Kernel::class]->setArtisan(null);
+
+            RefreshDatabaseState::$migrated = true;
+        }
+
+        $this->beforeApplicationDestroyed(fn () => RefreshDatabaseState::$migrated = false);
+    }
+}
+```
+
+> **Punto clave:** `refreshTestDatabase()` corre `migrate:fresh` (migraciones default de Laravel) y luego las migraciones de `database/migrations/landlord/` (creación de la tabla `tenants`). Sin este paso, la tabla `tenants` no existe en la BD de testing y `Tenant::factory()->create()` falla porque `assertTenantsTableExists()` lanza `RuntimeException`.
+
+**`tests/Browser/BrowserTestCase.php`** — base class para browser tests. Extiende `TestCase` pero overridea `refreshDatabase()` porque el HTTP server de browser tests corre en un proceso PHP separado y no puede ver datos no commiteados:
+
+```php
+<?php
+
+namespace Tests\Browser;
+
+use Illuminate\Contracts\Console\Kernel;
+use Illuminate\Foundation\Testing\RefreshDatabaseState;
+use Tests\TestCase;
+
+class BrowserTestCase extends TestCase
+{
+    protected function refreshDatabase(): void
+    {
+        if (! RefreshDatabaseState::$migrated) {
+            $this->artisan('migrate:fresh', $this->migrateFreshUsing());
+
+            $this->artisan('migrate', [
+                '--path' => 'database/migrations/landlord',
+                '--database' => 'landlord',
+                '--force' => true,
+            ]);
+
+            $this->app[Kernel::class]->setArtisan(null);
+            RefreshDatabaseState::$migrated = true;
+        }
+        // Intentionally skip database transactions — the browser HTTP
+        // server runs in a separate PHP process and cannot see uncommitted
+        // data. Per-test cleanup is handled in setUp() instead.
+    }
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $landlord = $this->app->make('db')->connection('landlord');
+        $landlord->table('tenants')->delete();
+        $landlord->table('users')->delete();
+    }
+}
+```
+
+> **Punto clave:** Los browser tests no pueden usar transacciones (el servidor HTTP está en otro proceso). En vez de eso, `setUp()` hace DELETE manual de las tablas que los tests escriben (`tenants`, `users`). `refreshDatabase()` solo corre las migraciones una vez vía `RefreshDatabaseState::$migrated`.
+
+---
+
+#### Feature tests — Auth
+
+Adaptados para usar `Landlord` factory en vez de `User`, y assert redirect a `/admin` en vez de `/dashboard`.
+
+**`tests/Feature/Auth/AuthenticationTest.php`** — login de landlord:
+
+```php
+<?php
+
+use App\Models\Landlord;
+use App\Models\User;
+use Illuminate\Support\Facades\RateLimiter;
+use Laravel\Fortify\Features;
+
+test('login screen can be rendered', function () {
+    $response = $this->get(route('login'));
+    $response->assertOk();
+});
+
+test('users can authenticate using the login screen', function () {
+    $user = Landlord::factory()->create();
+    $response = $this->post(route('login.store'), [
+        'email' => $user->email,
+        'password' => 'password',
+    ]);
+    $this->assertAuthenticated();
+    $response->assertRedirect('/admin');
+});
+
+test('users with two factor enabled are redirected to two factor challenge', function () {
+    $this->skipUnlessFortifyHas(Features::twoFactorAuthentication());
+    Features::twoFactorAuthentication(['confirm' => true, 'confirmPassword' => true]);
+    $user = User::factory()->withTwoFactor()->create();
+    $response = $this->post(route('login'), [
+        'email' => $user->email,
+        'password' => 'password',
+    ]);
+    $response->assertRedirect(route('two-factor.login'));
+    $response->assertSessionHas('login.id', $user->id);
+    $this->assertGuest();
+});
+
+test('users can not authenticate with invalid password', function () {
+    $user = Landlord::factory()->create();
+    $this->post(route('login.store'), [
+        'email' => $user->email,
+        'password' => 'wrong-password',
+    ]);
+    $this->assertGuest();
+});
+
+test('users can logout', function () {
+    $user = User::factory()->create();
+    $response = $this->actingAs($user)->post(route('logout'));
+    $response->assertRedirect(route('home'));
+    $this->assertGuest();
+});
+
+test('users are rate limited', function () {
+    $user = Landlord::factory()->create();
+    RateLimiter::increment(md5('login'.implode('|', [$user->email, '127.0.0.1'])), amount: 5);
+    $response = $this->post(route('login.store'), [
+        'email' => $user->email,
+        'password' => 'wrong-password',
+    ]);
+    $response->assertTooManyRequests();
+});
+```
+
+> **Cambio clave respecto al starter kit original:** `Landlord` factory en vez de `User` para los tests de login en el dominio landlord. El redirect post-login va a `/admin` (ver §16.4). El test de 2FA usa `User` factory porque el challenge de 2FA ocurre ANTES de que se resuelva el rol (el redirect a `/two-factor-challenge` no depende del modelo).
+
+**`tests/Feature/Auth/PasswordResetTest.php`** — reset de password de landlord:
+
+```php
+<?php
+
+use App\Models\Landlord;
+use Illuminate\Auth\Notifications\ResetPassword;
+use Illuminate\Support\Facades\Notification;
+use Laravel\Fortify\Features;
+
+beforeEach(function () {
+    $this->skipUnlessFortifyHas(Features::resetPasswords());
+});
+
+test('reset password link screen can be rendered', function () {
+    $response = $this->get(route('password.request'));
+    $response->assertOk();
+});
+
+test('reset password link can be requested', function () {
+    Notification::fake();
+    $user = Landlord::factory()->create();
+    $this->post(route('password.email'), ['email' => $user->email]);
+    Notification::assertSentTo($user, ResetPassword::class);
+});
+
+test('reset password screen can be rendered', function () {
+    Notification::fake();
+    $user = Landlord::factory()->create();
+    $this->post(route('password.email'), ['email' => $user->email]);
+    Notification::assertSentTo($user, ResetPassword::class, function ($notification) {
+        $response = $this->get(route('password.reset', $notification->token));
+        $response->assertOk();
+        return true;
+    });
+});
+
+test('password can be reset with valid token', function () {
+    Notification::fake();
+    $user = Landlord::factory()->create();
+    $this->post(route('password.email'), ['email' => $user->email]);
+    Notification::assertSentTo($user, ResetPassword::class, function ($notification) use ($user) {
+        $response = $this->post(route('password.update'), [
+            'token' => $notification->token,
+            'email' => $user->email,
+            'password' => 'password',
+            'password_confirmation' => 'password',
+        ]);
+        $response->assertSessionHasNoErrors()->assertRedirect(route('login'));
+        return true;
+    });
+});
+
+test('password cannot be reset with invalid token', function () {
+    $user = Landlord::factory()->create();
+    $response = $this->post(route('password.update'), [
+        'token' => 'invalid-token',
+        'email' => $user->email,
+        'password' => 'newpassword123',
+        'password_confirmation' => 'newpassword123',
+    ]);
+    $response->assertSessionHasErrors('email');
+});
+```
+
+> **Cambio clave:** `Landlord` factory en todos los tests. El flujo de reset usa `Notification::fake()` y `assertSentTo` — no depende del modelo porque Fortify resuelve el usuario por email y envía la notificación al modelo que corresponda (ver §15 para el fix del `TypeError` con `Authenticatable`).
+
+**`tests/Feature/Auth/RegistrationTest.php`** — registro de landlord:
+
+```php
+<?php
+
+use Laravel\Fortify\Features;
+
+beforeEach(function () {
+    $this->skipUnlessFortifyHas(Features::registration());
+});
+
+test('registration screen can be rendered', function () {
+    $response = $this->get(route('register'));
+    $response->assertOk();
+});
+
+test('new users can register', function () {
+    $response = $this->post(route('register.store'), [
+        'name' => 'Test User',
+        'email' => 'test@example.com',
+        'password' => 'password',
+        'password_confirmation' => 'password',
+    ]);
+    $this->assertAuthenticated();
+    $response->assertRedirect('/admin');
+});
+```
+
+> **Cambio clave:** Assert redirect a `/admin` en vez de `/dashboard`. `CreateNewUser` (ver §14) resuelve dinámicamente `Landlord` o `User` según el dominio, y `RoleAwareAuthResponse` (ver §16.4) redirige según `instanceof Landlord`. Como estos tests corren sin subdominio tenant, el auth provider devuelve `Landlord`.
+
+---
+
+#### Feature tests — Smoke
+
+**`tests/Feature/ExampleTest.php`** — verifica que la ruta home (`/`) responde 200. Test de humo para confirmar que el entorno de testing funciona:
+
+```php
+<?php
+
+test('returns a successful response', function () {
+    $response = $this->get(route('home'));
+    $response->assertOk();
+});
+```
+
+> **Cambio:** Se reemplazó `$response->assertStatus(200)` por el encadenamiento Pest `->assertOk()`. La ruta `route('home')` apunta a la página welcome — accesible sin autenticación desde cualquier dominio.
+
+---
+
+#### Feature tests — Dashboard
+
+**`tests/Feature/DashboardTest.php`** — acceso al admin panel de landlord:
+
+```php
+<?php
+
+use App\Models\Landlord;
+
+test('guests are redirected to the login page', function () {
+    $response = $this->get(route('dashboard'));
+    $response->assertRedirect(route('login'));
+});
+
+test('landlord admin panel can be accessed by authenticated landlord', function () {
+    $admin = Landlord::factory()->create();
+    $this->actingAs($admin);
+    $response = $this->get(route('landlord.admin-panel'));
+    $response->assertOk();
+});
+```
+
+> **Cambio clave respecto al original:** El test de "dashboard" fue renombrado conceptualmente a "admin panel". `Landlord::factory()` en vez de `User::factory()`. La ruta `landlord.admin-panel` reemplaza a `dashboard` para landlords.
+
+---
+
+#### Feature tests — Settings
+
+**`tests/Feature/Settings/ProfileUpdateTest.php`** — profile update de landlord:
+
+```php
+<?php
+
+use App\Models\Landlord;
+
+test('profile page is displayed', function () {
+    $user = Landlord::factory()->createQuietly();
+    $response = $this->actingAs($user)->get(route('profile.edit'));
+    $response->assertOk();
+});
+
+test('profile information can be updated', function () {
+    $user = Landlord::factory()->createQuietly();
+    $response = $this->actingAs($user)->patch(route('profile.update'), [
+        'name' => 'Test User',
+        'email' => 'test@example.com',
+    ]);
+    $response->assertSessionHasNoErrors()->assertRedirect(route('profile.edit'));
+    $user->refresh();
+    expect($user->name)->toBe('Test User');
+    expect($user->email)->toBe('test@example.com');
+    expect($user->email_verified_at)->toBeNull();
+});
+
+test('email verification status is unchanged when the email address is unchanged', function () {
+    $user = Landlord::factory()->createQuietly();
+    $response = $this->actingAs($user)->patch(route('profile.update'), [
+        'name' => 'Test User',
+        'email' => $user->email,
+    ]);
+    $response->assertSessionHasNoErrors()->assertRedirect(route('profile.edit'));
+    expect($user->refresh()->email_verified_at)->not->toBeNull();
+});
+
+test('user can delete their account', function () {
+    $user = Landlord::factory()->createQuietly();
+    $response = $this->actingAs($user)->delete(route('profile.destroy'), [
+        'password' => 'password',
+    ]);
+    $response->assertSessionHasNoErrors()->assertRedirect(route('home'));
+    $this->assertGuest();
+    expect($user->fresh())->toBeNull();
+});
+
+test('correct password must be provided to delete account', function () {
+    $user = Landlord::factory()->createQuietly();
+    $response = $this->actingAs($user)->from(route('profile.edit'))
+        ->delete(route('profile.destroy'), ['password' => 'wrong-password']);
+    $response->assertSessionHasErrors('password')->assertRedirect(route('profile.edit'));
+    expect($user->fresh())->not->toBeNull();
+});
+```
+
+> **Cambios clave:** `Landlord::factory()->createQuietly()` en vez de `User`. `createQuietly` evita disparar eventos Eloquent innecesarios en tests. Los asserts de perfil y borrado usan `expect()->toBe()` (sintaxis Pest en vez de `$this->assertX()`).
+
+**`tests/Feature/Settings/SecurityTest.php`** — cambio de contraseña y 2FA de landlord:
+
+```php
+<?php
+
+use App\Models\Landlord;
+use Illuminate\Support\Facades\Hash;
+use Inertia\Testing\AssertableInertia as Assert;
+use Laravel\Fortify\Features;
+
+test('security page is displayed', function () {
+    $this->skipUnlessFortifyHas(Features::twoFactorAuthentication());
+    Features::twoFactorAuthentication(['confirm' => true, 'confirmPassword' => true]);
+    $user = Landlord::factory()->createQuietly();
+    $this->actingAs($user)->get(route('security.edit'))
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('settings/security')
+            ->where('canManageTwoFactor', true)
+            ->where('twoFactorEnabled', false),
+        );
+});
+
+test('security page renders without two factor when feature is disabled', function () {
+    $this->skipUnlessFortifyHas(Features::twoFactorAuthentication());
+    config(['fortify.features' => []]);
+    $user = Landlord::factory()->createQuietly();
+    $this->actingAs($user)->get(route('security.edit'))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('settings/security')
+            ->where('canManageTwoFactor', false)
+            ->missing('twoFactorEnabled')
+            ->missing('requiresConfirmation'),
+        );
+});
+
+test('password can be updated', function () {
+    $user = Landlord::factory()->createQuietly();
+    $response = $this->actingAs($user)->from(route('security.edit'))
+        ->put(route('user-password.update'), [
+            'current_password' => 'password',
+            'password' => 'new-password',
+            'password_confirmation' => 'new-password',
+        ]);
+    $response->assertSessionHasNoErrors()->assertRedirect(route('security.edit'));
+    expect(Hash::check('new-password', $user->refresh()->password))->toBeTrue();
+});
+
+test('correct password must be provided to update password', function () {
+    $user = Landlord::factory()->createQuietly();
+    $response = $this->actingAs($user)->from(route('security.edit'))
+        ->put(route('user-password.update'), [
+            'current_password' => 'wrong-password',
+            'password' => 'new-password',
+            'password_confirmation' => 'new-password',
+        ]);
+    $response->assertSessionHasErrors('current_password')->assertRedirect(route('security.edit'));
+});
+```
+
+> **Cambios clave:** `Landlord::factory()` en vez de `User`. Usa `assertInertia` para verificar props del componente Inertia. Los 3 tests con `Features::twoFactorAuthentication()` son los que aparecen como "skipped" en el resumen — dependen de que el feature esté habilitado en `config/fortify.php`.
+
+---
+
+#### Feature tests — Tenant (models, config, and custom tasks)
+
+**`tests/Feature/Tenant/TenantControllerTest.php`** — 10 tests: CRUD completo de tenants (index, create, store, show, edit, update, destroy, validación, auth, forbidden):
+
+```php
+<?php
+
+use App\Models\Landlord;
+use App\Models\Tenant;
+use App\Models\User;
+use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
+use Illuminate\Support\Facades\DB;
+use Inertia\Testing\AssertableInertia as Assert;
+
+beforeEach(function () {
+    $this->withoutMiddleware(VerifyCsrfToken::class);
+});
+
+test('index returns ok', function () {
+    $admin = Landlord::factory()->createQuietly();
+    $tenants = Tenant::factory()->count(2)->createQuietly();
+    $this->actingAs($admin)->get(route('landlord.tenants.index'))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('landlord/tenants/index')
+            ->has('tenants', 2)
+        );
+});
+
+test('create returns ok', function () {
+    $admin = Landlord::factory()->createQuietly();
+    $this->actingAs($admin)->get(route('landlord.tenants.create'))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('landlord/tenants/create')
+        );
+});
+
+test('store creates a tenant', function () {
+    $admin = Landlord::factory()->createQuietly();
+    $dispatcher = Tenant::getEventDispatcher();
+    Tenant::unsetEventDispatcher();
+    try {
+        $this->actingAs($admin)->post(route('landlord.tenants.store'), [
+            'name' => 'New Tenant', 'domain' => 'newtenant.test', 'database' => 'new_tenant_db',
+        ])->assertRedirect(route('landlord.tenants.index'));
+    } finally {
+        Tenant::setEventDispatcher($dispatcher);
+    }
+    $this->assertDatabaseHas('tenants', [
+        'name' => 'New Tenant', 'domain' => 'newtenant.test', 'database' => 'new_tenant_db',
+    ], 'landlord');
+});
+
+test('store validates required fields', function () {
+    $admin = Landlord::factory()->createQuietly();
+    $this->actingAs($admin)->post(route('landlord.tenants.store'), [])
+        ->assertSessionHasErrors(['name', 'domain', 'database']);
+});
+
+test('show returns ok', function () {
+    $admin = Landlord::factory()->createQuietly();
+    $tenant = Tenant::factory()->createQuietly();
+    $this->actingAs($admin)->get(route('landlord.tenants.show', $tenant))
+        ->assertOk()->assertInertia(fn (Assert $page) => $page
+            ->component('landlord/tenants/show')->has('tenant')
+        );
+});
+
+test('edit returns ok', function () {
+    $admin = Landlord::factory()->createQuietly();
+    $tenant = Tenant::factory()->createQuietly();
+    $this->actingAs($admin)->get(route('landlord.tenants.edit', $tenant))
+        ->assertOk()->assertInertia(fn (Assert $page) => $page
+            ->component('landlord/tenants/edit')->has('tenant')
+        );
+});
+
+test('update modifies a tenant', function () {
+    $admin = Landlord::factory()->createQuietly();
+    $tenant = Tenant::factory()->createQuietly();
+    $this->actingAs($admin)->put(route('landlord.tenants.update', $tenant), [
+        'name' => 'Updated Name', 'domain' => $tenant->domain, 'database' => $tenant->database,
+    ])->assertRedirect(route('landlord.tenants.index'));
+    $this->assertDatabaseHas('tenants', ['id' => $tenant->id, 'name' => 'Updated Name'], 'landlord');
+});
+
+test('destroy processes deletion for admin', function () {
+    $admin = Landlord::factory()->createQuietly();
+    $tenant = Tenant::factory()->createQuietly();
+    DB::partialMock()->shouldReceive('unprepared')->andReturn(true);
+    $this->actingAs($admin)->delete(route('landlord.tenants.destroy', $tenant))
+        ->assertRedirect(route('landlord.tenants.index'));
+});
+
+test('unauthenticated user is redirected to login', function () {
+    $this->get(route('landlord.tenants.index'))->assertRedirect(route('login'));
+});
+
+test('non admin landlord user receives forbidden', function () {
+    $user = User::factory()->createQuietly();
+    $this->actingAs($user)->get(route('landlord.tenants.index'))->assertForbidden();
+});
+```
+
+> **Punto clave:** `store()` desactiva los eventos del modelo Tenant (porque `createDatabase()` necesita DDL que no corre en transacciones). `destroy()` mockea `DB::unprepared` porque `DROP DATABASE` tampoco corre dentro de una transacción. El último test verifica que un `User` (tenant user) recibe 403 al intentar acceder al panel — el middleware `EnsureUserIsAdmin` (ver §16) bloquea por `instanceof Landlord`.
+
+**`tests/Feature/Tenant/TenantTest.php`** — 5 tests: Tenant model, factory, guard de tabla faltante:
+
+```php
+<?php
+
+use App\Models\Tenant;
+use Illuminate\Support\Facades\DB;
+
+test('factory creates a valid tenant', function () {
+    $tenant = Tenant::factory()->createQuietly();
+    expect($tenant->name)->not->toBeEmpty();
+    expect($tenant->domain)->not->toBeEmpty();
+    expect($tenant->database)->not->toBeEmpty();
+    $this->assertDatabaseHas('tenants', [
+        'id' => $tenant->id, 'name' => $tenant->name,
+        'domain' => $tenant->domain, 'database' => $tenant->database,
+    ], 'landlord');
+});
+
+test('factory state override pins the database field', function () {
+    $tenant = Tenant::factory()->createQuietly(['database' => 'custom_db']);
+    expect($tenant->database)->toBe('custom_db');
+});
+
+test('tenant has required fillable attributes', function () {
+    $tenant = Tenant::withoutEvents(fn () => Tenant::create([
+        'name' => 'Test Tenant', 'domain' => 'test.example.com', 'database' => 'test_tenant_db',
+    ]));
+    expect($tenant->name)->toBe('Test Tenant');
+    expect($tenant->domain)->toBe('test.example.com');
+    expect($tenant->database)->toBe('test_tenant_db');
+    $this->assertDatabaseHas('tenants', ['id' => $tenant->id], 'landlord');
+});
+
+test('tenants table guard passes silently when table exists', function () {
+    $tenant = Tenant::factory()->make();
+    $reflection = new ReflectionMethod($tenant, 'assertTenantsTableExists');
+    $reflection->invoke($tenant);
+    expect(true)->toBeTrue();
+});
+
+test('tenants table guard throws actionable message on missing table', function () {
+    $tenant = Tenant::factory()->make();
+    $reflection = new ReflectionMethod($tenant, 'assertTenantsTableExists');
+    $originalDb = config('database.connections.landlord.database');
+    config(['database.connections.landlord.database' => 'postgres']);
+    DB::purge('landlord');
+    try {
+        $reflection->invoke($tenant);
+        $this->fail('Expected RuntimeException was not thrown.');
+    } catch (RuntimeException $e) {
+        expect($e->getMessage())->toContain('php artisan migrate');
+    } finally {
+        config(['database.connections.landlord.database' => $originalDb]);
+        DB::purge('landlord');
+        DB::connection('landlord')->getPdo();
+    }
+});
+```
+
+> **Punto clave:** El guard `assertTenantsTableExists()` (ver código completo en §11) detecta si la tabla `tenants` no existe en la BD landlord y lanza un mensaje de error con `php artisan migrate ...` para que el desarrollador sepa exactamente qué correr. El último test verifica ese mensaje — cambia temporalmente la conexión landlord a una BD sin la tabla.
+
+**`tests/Feature/Tenant/MultitenancyConfigTest.php`** — 6 tests: verifica que el archivo `config/multitenancy.php` tenga los valores correctos:
+
+```php
+<?php
+
+use App\Models\Tenant;
+use Spatie\Multitenancy\Tasks\PrefixCacheTask;
+use Spatie\Multitenancy\Tasks\SwitchTenantDatabaseTask;
+use Spatie\Multitenancy\TenantFinder\DomainTenantFinder;
+
+test('multitenancy config loads as an array', function () {
+    expect(config('multitenancy'))->toBeArray()->not->toBeEmpty();
+});
+
+test('tenant finder uses domain resolution', function () {
+    expect(config('multitenancy.tenant_finder'))->toBe(DomainTenantFinder::class);
+});
+
+test('switch tenant tasks include core spatie tasks', function () {
+    $tasks = config('multitenancy.switch_tenant_tasks');
+    expect($tasks)->toContain(PrefixCacheTask::class);
+    expect($tasks)->toContain(SwitchTenantDatabaseTask::class);
+});
+
+test('tenant model is the project Tenant class', function () {
+    expect(config('multitenancy.tenant_model'))->toBe(Tenant::class);
+});
+
+test('landlord connection name is landlord', function () {
+    expect(config('multitenancy.landlord_database_connection_name'))->toBe('landlord');
+});
+
+test('tenant connection name is tenant', function () {
+    expect(config('multitenancy.tenant_database_connection_name'))->toBe('tenant');
+});
+```
+
+> **Punto clave:** Tests de cordura que verifican que la configuración de Spatie no haya sido alterada. Si alguien cambia `tenant_finder` a `SubdomainTenantFinder` o modifica los nombres de conexión, estos tests fallan inmediatamente.
+
+**`tests/Feature/Tenant/SwitchFilesystemTaskTest.php`** — 10 tests sobre aislamiento de filesystem por tenant:
+
+```php
+<?php
+
+use App\Models\Tenant;
+use App\Multitenancy\Tasks\SwitchFilesystemTask;
+use Illuminate\Support\Facades\Config;
+use Illuminate\Support\Facades\Storage;
+use Spatie\Multitenancy\Tasks\SwitchTenantTask;
+
+test('make current sets tenant prefix', function () {
+    $tenant = Tenant::factory()->createQuietly(['id' => 7]);
+    $task = new SwitchFilesystemTask;
+    $task->makeCurrent($tenant);
+    expect(config('filesystems.disks.tenant.prefix'))->toBe('tenant_7');
+});
+
+test('forget current restores original prefix', function () {
+    Config::set('filesystems.disks.tenant.prefix', 'tenant');
+    $tenant = Tenant::factory()->createQuietly(['id' => 7]);
+    $task = new SwitchFilesystemTask;
+    $task->makeCurrent($tenant);
+    $task->forgetCurrent();
+    expect(config('filesystems.disks.tenant.prefix'))->toBe('tenant');
+});
+
+test('tenant prefixes are different per tenant', function () {
+    $tenant1 = Tenant::factory()->createQuietly(['id' => 1]);
+    $tenant2 = Tenant::factory()->createQuietly(['id' => 2]);
+    $task = new SwitchFilesystemTask;
+    $task->makeCurrent($tenant1);
+    $prefix1 = config('filesystems.disks.tenant.prefix');
+    $task->makeCurrent($tenant2);
+    $prefix2 = config('filesystems.disks.tenant.prefix');
+    expect($prefix1)->toBe('tenant_1');
+    expect($prefix2)->toBe('tenant_2');
+    expect($prefix1)->not->toBe($prefix2);
+});
+
+test('make current sets media library disk', function () {
+    Config::set('media-library.disk_name', 'public');
+    $tenant = Tenant::factory()->createQuietly();
+    $task = new SwitchFilesystemTask;
+    $task->makeCurrent($tenant);
+    expect(config('media-library.disk_name'))->toBe('tenant');
+});
+
+test('forget current restores media library disk', function () {
+    Config::set('media-library.disk_name', 'public');
+    $tenant = Tenant::factory()->createQuietly();
+    $task = new SwitchFilesystemTask;
+    $task->makeCurrent($tenant);
+    $task->forgetCurrent();
+    expect(config('media-library.disk_name'))->toBe('public');
+});
+
+test('filesystem manager cache flushed on make current', function () {
+    Config::set('filesystems.disks.tenant.prefix', 'tenant');
+    $tenant = Tenant::factory()->createQuietly();
+    $pathBefore = Storage::disk('tenant')->path('test.txt');
+    expect($pathBefore)->toContain('tenant'.DIRECTORY_SEPARATOR);
+    $task = new SwitchFilesystemTask;
+    $task->makeCurrent($tenant);
+    $pathAfter = Storage::disk('tenant')->path('test.txt');
+    expect($pathAfter)->toContain("tenant_{$tenant->getKey()}".DIRECTORY_SEPARATOR);
+    expect($pathAfter)->not->toBe($pathBefore);
+});
+
+test('filesystem manager cache flushed on forget current', function () {
+    Config::set('filesystems.disks.tenant.prefix', 'tenant');
+    $tenant = Tenant::factory()->createQuietly();
+    $task = new SwitchFilesystemTask;
+    $task->makeCurrent($tenant);
+    $pathDuring = Storage::disk('tenant')->path('test.txt');
+    expect($pathDuring)->toContain("tenant_{$tenant->getKey()}".DIRECTORY_SEPARATOR);
+    $task->forgetCurrent();
+    $pathAfter = Storage::disk('tenant')->path('test.txt');
+    expect($pathAfter)->toContain('tenant'.DIRECTORY_SEPARATOR);
+    expect($pathAfter)->not->toBe($pathDuring);
+});
+
+test('task implements switch tenant task interface', function () {
+    expect(new SwitchFilesystemTask)->toBeInstanceOf(SwitchTenantTask::class);
+});
+
+test('switch tenant tasks config includes filesystem task', function () {
+    $tasks = config('multitenancy.switch_tenant_tasks');
+    expect($tasks)->toContain(SwitchFilesystemTask::class);
+});
+
+test('tenant disk uses scoped driver', function () {
+    $disk = config('filesystems.disks.tenant');
+    expect($disk['driver'])->toBe('scoped');
+    expect($disk['disk'])->toBe('public');
+    expect($disk['prefix'])->toBe('tenant');
+});
+```
+
+> **Punto clave:** Los tests de cache flush (el 6° y 7°) verifican el fix del bug reportado en [spatie/laravel-multitenancy Discussion #480](https://github.com/spatie/laravel-multitenancy/discussions/480) — sin `app()->forgetInstance('filesystem')` + `Storage::clearResolvedInstance('filesystem')`, el `FilesystemManager` retiene el prefix anterior en su instancia cacheada.
+
+**`tests/Feature/Tenant/SwitchTenantLoggingTaskTest.php`** — 5 tests sobre contexto compartido del logger:
+
+```php
+<?php
+
+use App\Models\Tenant;
+use App\Multitenancy\Tasks\SwitchTenantLoggingTask;
+use Illuminate\Support\Facades\Log;
+use Spatie\Multitenancy\Tasks\SwitchTenantTask;
+
+test('make current sets tenant id in log context', function () {
+    $tenant = Tenant::factory()->createQuietly();
+    $task = new SwitchTenantLoggingTask;
+    $task->makeCurrent($tenant);
+    expect(Log::sharedContext())->toBe(['tenant_id' => $tenant->getKey()]);
+});
+
+test('make current updates context when switching between different tenants', function () {
+    $tenant1 = Tenant::factory()->createQuietly();
+    $tenant2 = Tenant::factory()->createQuietly();
+    $task = new SwitchTenantLoggingTask;
+    $task->makeCurrent($tenant1);
+    expect(Log::sharedContext())->toBe(['tenant_id' => $tenant1->getKey()]);
+    $task->makeCurrent($tenant2);
+    expect(Log::sharedContext())->toBe(['tenant_id' => $tenant2->getKey()]);
+});
+
+test('forget current clears tenant log context', function () {
+    $tenant = Tenant::factory()->createQuietly();
+    $task = new SwitchTenantLoggingTask;
+    $task->makeCurrent($tenant);
+    $task->forgetCurrent();
+    expect(Log::sharedContext())->toBe([]);
+});
+
+test('task implements switch tenant task interface', function () {
+    expect(new SwitchTenantLoggingTask)->toBeInstanceOf(SwitchTenantTask::class);
+});
+
+test('switch tenant tasks config includes the logging task', function () {
+    $tasks = config('multitenancy.switch_tenant_tasks');
+    expect($tasks)->toContain(SwitchTenantLoggingTask::class);
+});
+```
+
+> **Punto clave:** `Log::sharedContext()` retorna el contexto compartido actual. El test de cambio entre tenants verifica que el contexto se actualiza (no se acumula). `forgetCurrent()` debe limpiar completamente el contexto para que el próximo request (incluso fuera de tenancy) no arrastre un `tenant_id` huérfano.
+
+---
+
+#### Browser tests
+
+**`tests/Browser/Tenant/TenantCrudBrowserTest.php`** — 8 tests con Playwright real para CRUD de tenants:
+
+```php
+<?php
+
+use App\Models\Landlord;
+use App\Models\Tenant;
+use Illuminate\Support\Facades\DB;
+
+beforeEach(function () {
+    $this->admin = Landlord::factory()->createQuietly();
+});
+
+test('index page shows tenant list', function () {
+    $tenant = Tenant::factory()->createQuietly();
+    $this->actingAs($this->admin)->visit(route('landlord.tenants.index'))
+        ->assertSee('Tenants')->assertSee($tenant->name)
+        ->assertNoJavaScriptErrors();
+});
+
+test('create page loads with form fields', function () {
+    $this->actingAs($this->admin)->visit(route('landlord.tenants.create'))
+        ->assertSee('Create Tenant')->assertSee('Name')
+        ->assertSee('Domain')->assertSee('Database')
+        ->assertNoJavaScriptErrors();
+});
+
+test('tenant creation flow', function () {
+    $this->actingAs($this->admin)->visit(route('landlord.tenants.create'))
+        ->type('@input-name', 'Browser Test Tenant')
+        ->type('@input-domain', 'browser-test.example.com')
+        ->type('@input-database', 'browser_test_tenant')
+        ->click('@submit-tenant-btn')
+        ->waitForText('Browser Test Tenant')
+        ->assertNoJavaScriptErrors();
+});
+
+test('shows validation errors when required fields are empty', function () {
+    $this->actingAs($this->admin)->visit(route('landlord.tenants.create'))
+        ->click('@submit-tenant-btn')
+        ->waitForText('required')
+        ->assertNoJavaScriptErrors();
+});
+
+test('detail page shows tenant information', function () {
+    $tenant = Tenant::factory()->createQuietly();
+    $this->actingAs($this->admin)->visit(route('landlord.tenants.show', $tenant))
+        ->assertSee($tenant->name)->assertSee($tenant->domain)
+        ->assertSee($tenant->database)->assertNoJavaScriptErrors();
+});
+
+test('edit page loads with tenant data', function () {
+    $tenant = Tenant::factory()->createQuietly();
+    $this->actingAs($this->admin)->visit(route('landlord.tenants.edit', $tenant))
+        ->assertSee('Edit')->assertValue('@edit-input-name', $tenant->name)
+        ->assertNoJavaScriptErrors();
+});
+
+test('edit flow updates tenant name', function () {
+    $tenant = Tenant::factory()->createQuietly();
+    $this->actingAs($this->admin)->visit(route('landlord.tenants.edit', $tenant))
+        ->type('@edit-input-name', 'Updated Browser Name')
+        ->click('@edit-tenant-submit-btn')
+        ->waitForText('Updated Browser Name')
+        ->assertNoJavaScriptErrors();
+});
+
+test('delete flow removes tenant from list', function () {
+    $admin = Landlord::factory()->createQuietly();
+    $tenant = Tenant::factory()->createQuietly();
+    DB::partialMock()->shouldReceive('unprepared')->andReturn(true);
+    $this->actingAs($admin)->visit(route('landlord.tenants.show', $tenant))
+        ->click('@delete-tenant-trigger')->click('@confirm-delete-btn')
+        ->assertDontSee($tenant->name)->assertNoJavaScriptErrors();
+});
+
+test('unauthenticated access redirects to login', function () {
+    $this->visit(route('landlord.tenants.index'))
+        ->assertPathIs('/login')->assertSee('Log in');
+});
+```
+
+> **Punto clave:** Los browser tests usan selectores `@data-testid` (ej: `@input-name`, `@submit-tenant-btn`) que coinciden con los `data-testid` definidos en las páginas React (ver §19.9). Usan `assertNoJavaScriptErrors()` para detectar errores JS en la consola del browser. `DB::partialMock()` se usa en el test de delete porque `DROP DATABASE` no puede ejecutarse dentro de una transacción.
+
+---
+
+#### Unit tests
+
+**`tests/Unit/ExampleTest.php`** — test de humo. Solo verifica que Pest funciona:
+
+```php
+<?php
+
+test('true is true', function () {
+    expect(true)->toBeTrue();
+});
+```
+
+> **Cambio:** Se agregó un newline al final del archivo (EOF fix). El test en sí no cambió — sigue siendo el `expect(true)->toBeTrue()` del starter kit.

@@ -1,0 +1,45 @@
+schema: spec-driven
+
+context: |
+  Project: spatie-laravel-multitenancy
+  Stack: PHP 8.5 / Laravel 13.12 / PostgreSQL / Inertia.js v3 + React 19 + TailwindCSS v4 + TypeScript
+  Multitenancy: Spatie Multitenancy v4.1 — landlord/tenant dual-DB with domain-based tenant resolution
+  Auth: Laravel Fortify 1.37
+  Testing: Pest 4.7 (PHPUnit 12.5) — Unit, Feature, Browser, Playwright E2E
+  Quality: Pint (PHP) / ESLint 9 + Prettier 3 + TypeScript 5.7 (JS/TS)
+
+rules:
+  proposal:
+    - Include rollback plan for risky changes
+    - Scope must be measurable within one session
+  specs:
+    - Use Given/When/Then for scenarios
+    - Use RFC 2119 keywords (MUST, SHALL, SHOULD, MAY)
+  design:
+    - Include sequence diagrams for complex flows
+    - Document architecture decisions with rationale
+  tasks:
+    - Group by phase, use hierarchical numbering
+    - Keep tasks completable in one session
+  apply:
+    rules:
+      - Follow existing Laravel patterns (Pest tests, typed PHP, constructor promotion)
+    tdd: true
+    test_command: php artisan test --compact
+  verify:
+    test_command: php artisan test --compact
+    build_command: npm run build
+    coverage_threshold: 0
+  archive:
+    - Warn before merging destructive deltas
+
+testing:
+  strict_tdd: true
+  runner: pest
+  command: php artisan test --compact
+  layers:
+    unit: true
+    feature: true
+    browser: true
+    e2e: true
+  coverage_available: false

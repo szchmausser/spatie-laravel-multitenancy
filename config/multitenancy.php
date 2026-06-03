@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\Tenant;
+use App\Multitenancy\Tasks\SwitchFilesystemTask;
 use App\Multitenancy\Tasks\SwitchTenantLoggingTask;
 use Illuminate\Broadcasting\BroadcastEvent;
 use Illuminate\Events\CallQueuedListener;
@@ -42,6 +43,7 @@ return [
     'switch_tenant_tasks' => [
         PrefixCacheTask::class,
         SwitchTenantDatabaseTask::class,
+        SwitchFilesystemTask::class,
         SwitchTenantLoggingTask::class,
         // \Spatie\Multitenancy\Tasks\SwitchRouteCacheTask::class,
     ],
