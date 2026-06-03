@@ -45,7 +45,7 @@ export default function TenantCreate() {
                                 Cancel
                             </a>
                         </Button>
-                        <Button type="submit" disabled={processing}>
+                        <Button type="submit" disabled={processing} data-testid="submit-tenant-btn">
                             <Plus className="h-4 w-4" />
                             {processing ? 'Creating...' : 'Create Tenant'}
                         </Button>
@@ -67,6 +67,7 @@ export default function TenantCreate() {
                             </Label>
                             <Input
                                 id="name"
+                                data-testid="input-name"
                                 value={data.name}
                                 onChange={(e) => setData('name', e.target.value)}
                                 placeholder="Acme Corp"
@@ -80,6 +81,7 @@ export default function TenantCreate() {
                             </Label>
                             <Input
                                 id="domain"
+                                data-testid="input-domain"
                                 value={data.domain}
                                 onChange={(e) => setData('domain', e.target.value)}
                                 placeholder="tenant1.example.com"
@@ -93,6 +95,7 @@ export default function TenantCreate() {
                             </Label>
                             <Input
                                 id="database"
+                                data-testid="input-database"
                                 value={data.database}
                                 onChange={(e) => setData('database', e.target.value)}
                                 placeholder="tenant1_database"

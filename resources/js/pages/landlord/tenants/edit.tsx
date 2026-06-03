@@ -45,7 +45,7 @@ export default function TenantEdit({ tenant }: { tenant: { id: number; name: str
                                 Cancel
                             </a>
                         </Button>
-                        <Button type="submit" disabled={processing}>
+                        <Button type="submit" disabled={processing} data-testid="edit-tenant-submit-btn">
                             <Save className="h-4 w-4" />
                             {processing ? 'Saving...' : 'Save'}
                         </Button>
@@ -67,6 +67,7 @@ export default function TenantEdit({ tenant }: { tenant: { id: number; name: str
                             </Label>
                             <Input
                                 id="name"
+                                data-testid="edit-input-name"
                                 value={data.name}
                                 onChange={(e) => setData('name', e.target.value)}
                             />

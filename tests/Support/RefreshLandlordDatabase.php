@@ -1,17 +1,24 @@
 <?php
 
-namespace Tests;
+namespace Tests\Support;
 
 use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Foundation\Testing\Attributes\Seed;
 use Illuminate\Foundation\Testing\Attributes\Seeder;
 use Illuminate\Foundation\Testing\DatabaseTransactionsManager;
 use Illuminate\Foundation\Testing\RefreshDatabaseState;
-use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
-use Laravel\Fortify\Features;
+use Illuminate\Foundation\Testing\TestCase;
 use ReflectionClass;
 
-abstract class TestCase extends BaseTestCase
+/**
+ * Extends Laravel's RefreshDatabase to also handle the landlord connection.
+ *
+ * Both the default (pgsql) and landlord connections share the same database.
+ * When migrate:fresh drops all tables, it wipes the landlord tables too.
+ * This trait re-runs landlord migrations after the default refresh cycle
+ * and wraps both connections in a database transaction.
+ */
+trait RefreshLandlordDatabase
 {
     /**
      * The connections that should be wrapped in a database transaction.
@@ -21,36 +28,25 @@ abstract class TestCase extends BaseTestCase
     protected array $connectionsToTransact = [null, 'landlord'];
 
     /**
-     * Setup the test environment.
-     *
-     * Calls refreshDatabase() to handle both default and landlord connections
-     * since they share the same physical database but have separate migration paths.
+     * The database connections that should have transactions.
      */
-    protected function setUp(): void
+    protected function connectionsToTransact(): array
     {
-        parent::setUp();
-
-        $this->refreshDatabase();
-    }
-
-    protected function skipUnlessFortifyHas(string $feature, ?string $message = null): void
-    {
-        if (! Features::enabled($feature)) {
-            $this->markTestSkipped($message ?? "Fortify feature [{$feature}] is not enabled.");
-        }
+        return $this->connectionsToTransact;
     }
 
     /**
-     * Refresh the database for testing, handling both default and landlord connections
-     * since they share the same physical database but use different migration paths.
+     * Refresh the database by running migrate:fresh on the default connection,
+     * then re-running landlord migrations (since they share the same DB).
      */
     protected function refreshDatabase(): void
     {
-        if (! RefreshDatabaseState::$migrated) {
-            $this->artisan('migrate:fresh', $this->migrateFreshUsing());
+        $this->beforeRefreshingDatabase();
 
-            // Landlord migrations are in a separate path on the same database.
-            // Re-run them after migrate:fresh wipes everything.
+        if (! RefreshDatabaseState::$migrated) {
+            $this->migrateDatabases();
+
+            // Re-run landlord migrations after migrate:fresh wiped them
             $this->artisan('migrate', [
                 '--path' => 'database/migrations/landlord',
                 '--database' => 'landlord',
@@ -63,6 +59,17 @@ abstract class TestCase extends BaseTestCase
         }
 
         $this->beginDatabaseTransaction();
+
+        $this->afterRefreshingDatabase();
+    }
+
+    /**
+     * Run migrate:fresh on the default connection.
+     */
+    protected function migrateDatabases(): void
+    {
+        /** @var TestCase $this */
+        $this->artisan('migrate:fresh', $this->migrateFreshUsing());
     }
 
     /**
@@ -72,7 +79,7 @@ abstract class TestCase extends BaseTestCase
     {
         $database = $this->app->make('db');
 
-        $connections = $this->connectionsToTransact;
+        $connections = $this->connectionsToTransact();
 
         $this->app->instance('db.transactions', $transactionsManager = new DatabaseTransactionsManager($connections));
 
@@ -89,7 +96,7 @@ abstract class TestCase extends BaseTestCase
         }
 
         $this->beforeApplicationDestroyed(function () use ($database) {
-            foreach ($this->connectionsToTransact as $name) {
+            foreach ($this->connectionsToTransact() as $name) {
                 $connection = $database->connection($name);
                 $dispatcher = $connection->getEventDispatcher();
 
@@ -107,22 +114,48 @@ abstract class TestCase extends BaseTestCase
     }
 
     /**
+     * Perform any work that should take place before the database has started refreshing.
+     */
+    protected function beforeRefreshingDatabase(): void
+    {
+        // Hook for subclasses
+    }
+
+    /**
+     * Perform any work that should take place once the database has finished refreshing.
+     */
+    protected function afterRefreshingDatabase(): void
+    {
+        // Hook for subclasses
+    }
+
+    /**
      * The parameters that should be used when running "migrate:fresh".
      */
     protected function migrateFreshUsing(): array
     {
-        $seeder = $this->resolveSeeder();
+        $seeder = $this->seederValue();
 
         return array_merge(
             [
-                '--drop-views' => property_exists($this, 'dropViews') ? $this->dropViews : false,
-                '--drop-types' => property_exists($this, 'dropTypes') ? $this->dropTypes : false,
+                '--drop-views' => $this->shouldDropViews(),
+                '--drop-types' => $this->shouldDropTypes(),
             ],
-            $seeder !== null ? ['--seeder' => $seeder] : ['--seed' => $this->resolveShouldSeed()]
+            $seeder !== null ? ['--seeder' => $seeder] : ['--seed' => $this->shouldSeed()]
         );
     }
 
-    protected function resolveShouldSeed(): bool
+    protected function shouldDropViews(): bool
+    {
+        return property_exists($this, 'dropViews') ? $this->dropViews : false;
+    }
+
+    protected function shouldDropTypes(): bool
+    {
+        return property_exists($this, 'dropTypes') ? $this->dropTypes : false;
+    }
+
+    protected function shouldSeed(): bool
     {
         $class = new ReflectionClass($this);
 
@@ -135,7 +168,7 @@ abstract class TestCase extends BaseTestCase
         return property_exists($this, 'seed') ? $this->seed : false;
     }
 
-    protected function resolveSeeder(): mixed
+    protected function seederValue(): mixed
     {
         $class = new ReflectionClass($this);
 
@@ -148,5 +181,31 @@ abstract class TestCase extends BaseTestCase
         } while ($class = $class->getParentClass());
 
         return property_exists($this, 'seeder') ? $this->seeder : null;
+    }
+
+    /**
+     * Determine if any of the connections transacting is using in-memory databases.
+     */
+    protected function usingInMemoryDatabases(): bool
+    {
+        foreach ($this->connectionsToTransact() as $name) {
+            if ($this->usingInMemoryDatabase($name)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Determine if a given database connection is an in-memory database.
+     */
+    protected function usingInMemoryDatabase(?string $name = null): bool
+    {
+        if (is_null($name)) {
+            $name = config('database.default');
+        }
+
+        return config("database.connections.{$name}.database") === ':memory:';
     }
 }

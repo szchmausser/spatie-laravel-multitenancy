@@ -1673,3 +1673,28 @@ Resultado: el job sabe en qué BD tenant correr, sin config extra.
 | Login | Usa `Landlord` + BD landlord | Usa `User` + BD tenant |
 | Reset de contraseña | Acepta `Landlord` | Acepta `User` |
 | Actualización de perfil | Valida contra BD landlord | Valida contra BD tenant |
+
+---
+
+## 22. Tests — Ejecución y categorías
+
+### Cómo correr los tests
+
+| Objetivo | Comando |
+|---|---|
+| Feature + Unit (default) | `php artisan test` |
+| Solo Feature (HTTP simulado) | `php artisan test tests\Feature` |
+| Solo Browser (Playwright real) | `php artisan test tests\Browser` |
+| Un archivo específico | `php artisan test tests\Browser\Tenant\TenantCrudBrowserTest.php` |
+| Todo completo | `php artisan test tests\Feature tests\Browser` |
+
+### Categorías y resumen
+
+| Capa | Tests | Stack | Estado |
+|---|---|---|---|
+| **Feature** | 46 | Pest, HTTP simulado, PostgreSQL | ✅ 43 pass, 3 skip* |
+| **Browser** | 9 | Pest + Playwright, Chromium real | ✅ 9 pass |
+| **Unit** | 1 | Pest | ✅ 1 pass |
+| **Total** | **56** | | ✅ **53 pass, 3 skip** |
+
+\* Los 3 skipped corresponden a `SecurityTest` — dependen de `Features::twoFactorAuthentication()` que no está habilitado en `config/fortify.php`.

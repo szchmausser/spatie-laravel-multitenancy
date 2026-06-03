@@ -1,6 +1,6 @@
 <?php
 
-use App\Models\User;
+use App\Models\Landlord;
 use Illuminate\Support\Facades\Hash;
 use Inertia\Testing\AssertableInertia as Assert;
 use Laravel\Fortify\Features;
@@ -13,7 +13,7 @@ test('security page is displayed', function () {
         'confirmPassword' => true,
     ]);
 
-    $user = User::factory()->create();
+    $user = Landlord::factory()->createQuietly();
 
     $this->actingAs($user)
         ->get(route('security.edit'))
@@ -29,7 +29,7 @@ test('security page renders without two factor when feature is disabled', functi
 
     config(['fortify.features' => []]);
 
-    $user = User::factory()->create();
+    $user = Landlord::factory()->createQuietly();
 
     $this->actingAs($user)
         ->get(route('security.edit'))
@@ -43,7 +43,7 @@ test('security page renders without two factor when feature is disabled', functi
 });
 
 test('password can be updated', function () {
-    $user = User::factory()->create();
+    $user = Landlord::factory()->createQuietly();
 
     $response = $this
         ->actingAs($user)
@@ -62,7 +62,7 @@ test('password can be updated', function () {
 });
 
 test('correct password must be provided to update password', function () {
-    $user = User::factory()->create();
+    $user = Landlord::factory()->createQuietly();
 
     $response = $this
         ->actingAs($user)

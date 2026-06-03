@@ -7,29 +7,29 @@
 
 ## Prerequisites (before T1)
 
-### P1: Install pestphp/pest-browser
+### P1: Install pestphp/pest-browser [x] **DONE**
 - **Command**: `composer require pestphp/pest-browser --dev`
 - **What**: Enables browser testing with Playwright
 - **Also**: `npx playwright install` to install browser binaries
 
-### P2: Create PostgreSQL test database
+### P2: Create PostgreSQL test database [x] **DONE** (handled by user)
 - **Command**: `CREATE DATABASE "spatie-laravel-multitenancy-testing";`
 - **What**: The test DB must exist before running tests
 - **Document**: In `.env.testing` comments and tasks.md
 
-### P3: Update phpunit.xml
+### P3: Update phpunit.xml [x] **DONE** (handled by user)
 - **File**: `phpunit.xml`
 - **What**: Change `DB_CONNECTION` from `sqlite` to `pgsql`, `DB_DATABASE` from `:memory:` to `spatie-laravel-multitenancy-testing`
 - **Lines**: +4 (modify existing)
 
-### P4: Create .env.testing
+### P4: Create .env.testing [x] **DONE** (handled by user)
 - **File**: `.env.testing`
 - **What**: PostgreSQL connection config for test environment
 - **Lines**: ~12
 
 ---
 
-## Task 1: Tests Foundation (PostgreSQL + Feature + Browser)
+## Task 1: Tests Foundation (PostgreSQL + Feature + Browser) [x] **DONE**
 
 **Goal**: Establish comprehensive test coverage for existing code before adding features. All tests run against PostgreSQL.
 
@@ -37,14 +37,14 @@
 
 ### Subtasks
 
-#### T1.1: Create TenantFactory
+#### T1.1: Create TenantFactory [x] **DONE**
 - **File**: `database/factories/TenantFactory.php`
 - **What**: Factory that creates Tenant model WITHOUT triggering the `creating` callback (which needs PostgreSQL provisioning). Uses `createQuietly()` to suppress all model events.
 - **States**: `forDatabase(string $dbName)` — override database field
 - **Lines**: ~30
 - **Skill**: pest-testing — factory is not a test, but follows Laravel conventions
 
-#### T1.2: TenantTest (Feature)
+#### T1.2: TenantTest (Feature) [x] **DONE**
 - **File**: `tests/Feature/Tenant/TenantTest.php`
 - **Tests**:
   - `test_factory_creates_valid_tenant` — factory produces model with name, domain, database (uses `assertDatabaseHas`)
@@ -53,7 +53,7 @@
 - **Lines**: ~45
 - **Skill**: pest-testing — `test()` syntax, `assertSuccessful()`, `assertDatabaseHas` (feature test)
 
-#### T1.3: TenantControllerTest (Feature)
+#### T1.3: TenantControllerTest (Feature) [x] **DONE**
 - **File**: `tests/Feature/Tenant/TenantControllerTest.php`
 - **Setup**: Create Landlord user via `Landlord::factory()->createQuietly()`, `actingAs()`
 - **Tests**:
@@ -70,7 +70,7 @@
 - **Skill**: pest-testing — `test()` syntax, `assertSuccessful()`, `assertForbidden()`, `assertDatabaseHas`/`Missing`
 - **Note**: Store test uses `Tenant::withoutEvents()` to bypass provisioning (no real DB creation in tests)
 
-#### T1.4: MultitenancyConfigTest (Feature)
+#### T1.4: MultitenancyConfigTest (Feature) [x] **DONE**
 - **File**: `tests/Feature/Tenant/MultitenancyConfigTest.php`
 - **Tests**:
   - `test_multitenancy_config_loads` — config key exists and is array
@@ -83,7 +83,7 @@
 - **Skill**: pest-testing — `expect()` assertions, `toBe()`, `toContain()`
 
 #### T1.5: TenantCrudBrowserTest (Browser)
-- **File**: `tests/Browser/Tenant/TenantCrudBrowserTest.php`
+- **File**: `tests/Browser/Tenant/TenantCrudBrowserTest.php` - [x] DONE
 - **Prerequisite**: `pestphp/pest-browser` installed (P1)
 - **Tests**:
   - `test_tenant_list_page_loads` — admin sees tenant list with names

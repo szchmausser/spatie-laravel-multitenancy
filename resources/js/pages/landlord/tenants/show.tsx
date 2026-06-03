@@ -47,7 +47,7 @@ export default function TenantShow({ tenant }: { tenant: { id: number; name: str
                     </Button>
                     <Dialog>
                         <DialogTrigger asChild>
-                            <Button variant="destructive">
+                            <Button variant="destructive" data-testid="delete-tenant-trigger">
                                 <Trash2 className="h-4 w-4" />
                                 Delete
                             </Button>
@@ -64,6 +64,7 @@ export default function TenantShow({ tenant }: { tenant: { id: number; name: str
                                 </DialogClose>
                                 <Button
                                     variant="destructive"
+                                    data-testid="confirm-delete-btn"
                                     onClick={() => router.delete(destroy(tenant.id).url)}
                                 >
                                     <Trash2 className="h-4 w-4" />
