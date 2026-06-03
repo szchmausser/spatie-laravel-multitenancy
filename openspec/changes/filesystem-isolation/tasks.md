@@ -99,7 +99,7 @@
 
 ---
 
-## Task 2: Logging Context (SwitchTenantLoggingTask)
+## Task 2: Logging Context (SwitchTenantLoggingTask) [x] **DONE**
 
 **Goal**: Inject tenant ID into logger context on tenant switch.
 
@@ -107,22 +107,25 @@
 
 ### Subtasks
 
-#### T2.1: Create SwitchTenantLoggingTask
+#### T2.1: Create SwitchTenantLoggingTask [x] **DONE**
 - **File**: `app/Multitenancy/Tasks/SwitchTenantLoggingTask.php`
-- **What**: Implements `SwitchTenantTask`. `makeCurrent()` calls `Log::shareContext(['tenant_id' => $tenant->getKey()])`. `forgetCurrent()` calls `Log::shareContext([])`.
+- **What**: Implements `SwitchTenantTask`. `makeCurrent()` calls `Log::shareContext(['tenant_id' => $tenant->getKey()])`. `forgetCurrent()` calls `Log::withoutContext()` + `Log::flushSharedContext()` (deviation from design — see apply-progress).
 - **Lines**: ~25
 
-#### T2.2: Register in config
+#### T2.2: Register in config [x] **DONE**
 - **File**: `config/multitenancy.php`
-- **What**: Add `SwitchTenantLoggingTask::class` to `switch_tenant_tasks` array
+- **What**: Add `SwitchTenantLoggingTask::class` to `switch_tenant_tasks` array, after `SwitchTenantDatabaseTask`
 - **Lines**: +2
 
-#### T2.3: SwitchTenantLoggingTaskTest (Feature)
+#### T2.3: SwitchTenantLoggingTaskTest (Feature) [x] **DONE**
 - **File**: `tests/Feature/Tenant/SwitchTenantLoggingTaskTest.php`
 - **Tests**:
   - `test_make_current_sets_tenant_id_in_context` — creates tenant (quietly), calls makeCurrent, checks Log context
+  - `test_make_current_updates_context_when_switching_between_different_tenants` — triangulation: two tenants verify context swap
   - `test_forget_current_clears_tenant_context` — calls forgetCurrent, checks empty context
-- **Lines**: ~30
+  - `test_task_implements_switch_tenant_task_interface` — verifies `toBeInstanceOf(SwitchTenantTask::class)`
+  - `test_switch_tenant_tasks_config_includes_the_logging_task` — verifies config registration
+- **Lines**: ~50
 - **Skill**: pest-testing — `test()` syntax, specific assertions
 
 ---
