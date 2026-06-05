@@ -2,29 +2,27 @@
 
 namespace Database\Seeders;
 
-use App\Models\User;
-use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
 
+/**
+ * Seeds the landlord database.
+ *
+ * NOTE: We intentionally do NOT use the WithoutModelEvents trait here.
+ * The Tenant model's `creating` and `created` lifecycle callbacks are
+ * what provision the per-tenant databases and assign the default
+ * subscription plan. Disabling model events would skip both side
+ * effects and leave the system in an inconsistent state (tenants in
+ * the landlord table but no physical database, and no subscription).
+ */
 class DatabaseSeeder extends Seeder
 {
-    use WithoutModelEvents;
-
-    /**
-     * Seed the application's database.
-     */
     public function run(): void
     {
-        // User::factory(10)->create();
-
-        // User::factory()->create([
-        //     'name' => 'Test User',
-        //     'email' => 'test@example.com',
-        // ]);
-
         $this->call([
             LandlordUserSeeder::class,
+            PlansSeeder::class,
             TenantsSeeder::class,
+            TenantUsersSeeder::class,
         ]);
     }
 }

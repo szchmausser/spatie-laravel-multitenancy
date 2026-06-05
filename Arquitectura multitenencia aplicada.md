@@ -578,7 +578,9 @@ Crear su factory y seeder:
 ```bash
 php artisan make:factory LandlordFactory
 php artisan make:seeder LandlordUserSeeder
+php artisan make:seeder PlansSeeder
 php artisan make:seeder TenantsSeeder
+php artisan make:seeder TenantUsersSeeder
 ```
 
 `database/factories/LandlordFactory.php`:
@@ -638,7 +640,82 @@ class LandlordUserSeeder extends Seeder
 }
 ```
 
-`database/seeders/TenantsSeeder.php`:
+`database/seeders/PlansSeeder.php` — corre antes que `TenantsSeeder`; el listener `Tenant::created` busca el plan por slug `free`, así que este debe existir antes del primer tenant:
+
+```php
+<?php
+
+namespace Database\Seeders;
+
+use App\Models\Plan;
+use Illuminate\Database\Seeder;
+
+/**
+ * Seeds the landlord database with the three pricing tiers.
+ *
+ * Slugs are part of the public contract: assigning a plan in
+ * TenantsSeeder, in the admin UI, or in tests is done by slug, not
+ * by id.
+ */
+class PlansSeeder extends Seeder
+{
+    public function run(): void
+    {
+        Plan::query()->updateOrCreate(
+            ['slug' => 'free'],
+            [
+                'name' => 'Free',
+                'description' => 'Plan gratuito con acceso básico al producto.',
+                'features' => [
+                    'premium-zone' => false,
+                    'advanced-reports' => false,
+                    'api-access' => false,
+                    'priority-support' => false,
+                    'custom-branding' => false,
+                ],
+                'price_cents' => 0,
+                'is_active' => true,
+            ],
+        );
+
+        Plan::query()->updateOrCreate(
+            ['slug' => 'basic'],
+            [
+                'name' => 'Basic',
+                'description' => 'Reportes avanzados y soporte por email.',
+                'features' => [
+                    'premium-zone' => false,
+                    'advanced-reports' => true,
+                    'api-access' => false,
+                    'priority-support' => false,
+                    'custom-branding' => false,
+                ],
+                'price_cents' => 4900,
+                'is_active' => true,
+            ],
+        );
+
+        Plan::query()->updateOrCreate(
+            ['slug' => 'premium'],
+            [
+                'name' => 'Premium',
+                'description' => 'Todas las features: zona premium, API, soporte prioritario y branding.',
+                'features' => [
+                    'premium-zone' => true,
+                    'advanced-reports' => true,
+                    'api-access' => true,
+                    'priority-support' => true,
+                    'custom-branding' => true,
+                ],
+                'price_cents' => 14900,
+                'is_active' => true,
+            ],
+        );
+    }
+}
+```
+
+`database/seeders/TenantsSeeder.php` — siembra 10 tenants bajo `*.spatie-laravel-multitenancy.test`. Distribución: 4 `basic` + 4 `premium` con plan explícito, 2 con plan `free` auto-asignado por el listener del modelo:
 
 ```php
 <?php
@@ -649,66 +726,148 @@ use App\Models\Tenant;
 use Illuminate\Database\Seeder;
 
 /**
- * Seeds the landlord database with initial tenants.
+ * Seeds the landlord database with ten test tenants under the
+ * `*.spatie-laravel-multitenancy.test` domain pattern.
  *
- * Each Tenant::create() call automatically triggers the provisioning
- * lifecycle callback (createDatabase, configureTenantConnection,
- * runMigrations) defined in the Tenant model.
+ * Distribution:
+ *   - 4 tenants assigned to plan `basic`  (tenant1..tenant4)
+ *   - 4 tenants assigned to plan `premium` (tenant5..tenant8)
+ *   - 2 tenants with no explicit plan — Tenant::created() auto-assigns
+ *     the `free` plan as the system-wide default
  *
- * This seeder creates two test tenants with dedicated databases.
+ * Every Tenant::create() call triggers the provisioning lifecycle
+ * (createDatabase, configureTenantConnection, runMigrations) defined
+ * in the Tenant model, so each iteration also creates and migrates a
+ * dedicated physical database.
  */
 class TenantsSeeder extends Seeder
 {
-    /**
-     * Run the database seeds.
-     */
     public function run(): void
     {
-        Tenant::create([
-            'name' => 'Tenant One',
-            'domain' => 'tenant1.spatie-laravel-multitenancy.test',
-            'database' => 'tenant1-spatie-laravel-multitenancy',
-        ]);
+        $explicit = [
+            'tenant1' => 'basic',
+            'tenant2' => 'basic',
+            'tenant3' => 'basic',
+            'tenant4' => 'basic',
+            'tenant5' => 'premium',
+            'tenant6' => 'premium',
+            'tenant7' => 'premium',
+            'tenant8' => 'premium',
+        ];
 
-        Tenant::create([
-            'name' => 'Tenant Two',
-            'domain' => 'tenant2.spatie-laravel-multitenancy.test',
-            'database' => 'tenant2-spatie-laravel-multitenancy',
-        ]);
+        foreach ($explicit as $slug => $planSlug) {
+            $tenant = new Tenant([
+                'name' => ucfirst($slug),
+                'domain' => "{$slug}.spatie-laravel-multitenancy.test",
+                'database' => "{$slug}-spatie-laravel-multitenancy",
+            ]);
+            $tenant->assignPlanSlug = $planSlug;
+            $tenant->save();
+        }
+
+        // 2 tenants without an explicit plan: the Tenant::created listener
+        // will look up the 'free' plan and create the subscription.
+        foreach (['tenant9', 'tenant10'] as $slug) {
+            Tenant::create([
+                'name' => ucfirst($slug),
+                'domain' => "{$slug}.spatie-laravel-multitenancy.test",
+                'database' => "{$slug}-spatie-laravel-multitenancy",
+            ]);
+        }
     }
 }
 ```
 
-`database/seeders/DatabaseSeeder.php`:
+`database/seeders/TenantUsersSeeder.php` — corre **después** de `TenantsSeeder`, porque necesita que las BDs físicas de los tenants ya existan. Crea un usuario `User` por tenant en la BD de cada uno, con credenciales fijas para testing rápido:
 
 ```php
 <?php
 
 namespace Database\Seeders;
 
+use App\Models\Tenant;
 use App\Models\User;
-use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
 
-class DatabaseSeeder extends Seeder
+/**
+ * Seeds one user per tenant in each tenant's own database.
+ *
+ * Credentials follow a fixed pattern so the landlord can log into
+ * any tenant subdomain and verify the setup end-to-end:
+ *
+ *   - email:    tenant{N}@tenant{N}.spatie-laravel-multitenancy.test
+ *   - name:     Tenant{N}
+ *   - password: password   (intentionally weak — dev fixture only)
+ */
+class TenantUsersSeeder extends Seeder
 {
-    use WithoutModelEvents;
-
-    /**
-     * Seed the application's database.
-     */
     public function run(): void
     {
-        // User::factory(10)->create();
+        foreach (Tenant::query()->orderBy('id')->get() as $tenant) {
+            $subdomain = "tenant{$tenant->id}";
 
-        // User::factory()->create([
-        //     'name' => 'Test User',
-        //     'email' => 'test@example.com',
-        // ]);
+            $this->pointTenantConnectionAt($tenant->database);
 
+            User::on('tenant')->updateOrCreate(
+                ['email' => "{$subdomain}@{$tenant->domain}"],
+                [
+                    'name' => ucfirst($subdomain),
+                    'password' => Hash::make('password'),
+                    'email_verified_at' => now(),
+                ],
+            );
+        }
+
+        $this->forgetTenantConnection();
+    }
+
+    protected function pointTenantConnectionAt(string $database): void
+    {
+        config(['database.connections.tenant.database' => $database]);
+        DB::purge('tenant');
+    }
+
+    protected function forgetTenantConnection(): void
+    {
+        DB::purge('tenant');
+    }
+}
+```
+
+> **¿Por qué apuntar la conexión `tenant` a mano en vez de usar `Tenant::makeCurrent()`?** Porque en un seeder no necesitamos toda la maquinaria de Spatie (cache prefix, switch de filesystem, logging, etc.) — solo necesitamos que la próxima query a la conexión `tenant` impacte la BD correcta. `config([...])` + `DB::purge('tenant')` es el mismo patrón que usa `configureTenantConnection()` en el callback `creating` de `Tenant`, sin los side effects adicionales.
+
+> **Idempotencia:** el `updateOrCreate` por email hace que re-correr el seeder sólo refresque el password. Re-correr `php artisan db:seed` después de un reset NO rompe si las BDs y los tenants ya existen.
+
+`database/seeders/DatabaseSeeder.php` — **no** usa `WithoutModelEvents`. El trait deshabilita los eventos de Eloquent, lo que rompería el provisioning (`Tenant::creating`) y la asignación automática de plan (`Tenant::created`):
+
+```php
+<?php
+
+namespace Database\Seeders;
+
+use Illuminate\Database\Seeder;
+
+/**
+ * Seeds the landlord database.
+ *
+ * NOTE: We intentionally do NOT use the WithoutModelEvents trait here.
+ * The Tenant model's `creating` and `created` lifecycle callbacks are
+ * what provision the per-tenant databases and assign the default
+ * subscription plan. Disabling model events would skip both side
+ * effects and leave the system in an inconsistent state (tenants in
+ * the landlord table but no physical database, and no subscription).
+ */
+class DatabaseSeeder extends Seeder
+{
+    public function run(): void
+    {
         $this->call([
             LandlordUserSeeder::class,
+            PlansSeeder::class,
             TenantsSeeder::class,
+            TenantUsersSeeder::class,
         ]);
     }
 }
@@ -719,6 +878,28 @@ Ejecutar seeders:
 ```bash
 php artisan db:seed
 ```
+
+> **Regla de oro — "ningún tenant sin plan":** El modelo `Tenant` tiene un listener `created` que invoca `ensureDefaultSubscription()`. Si el seeder (o cualquier llamador) setea `$tenant->assignPlanSlug` a un slug conocido, ese plan se usa. Si no, se busca el plan con slug `free`. Resultado: **toda fila de `tenants` tiene exactamente una fila de `subscriptions`**. La combinación del early-return (no duplicar) y la UNIQUE constraint en `subscriptions.tenant_id` lo garantizan.
+
+### 10.1 Credenciales de testing resultantes
+
+Después de un `php artisan db:seed` completo, las credenciales disponibles para probar manualmente el sistema son:
+
+| Dominio                                       | Usuario                                          | Password   |
+|-----------------------------------------------|--------------------------------------------------|------------|
+| `spatie-laravel-multitenancy.test` (landlord) | `admin@example.test`                             | `password` |
+| `tenant1.spatie-laravel-multitenancy.test`    | `tenant1@tenant1.spatie-laravel-multitenancy.test` | `password` |
+| `tenant2.spatie-laravel-multitenancy.test`    | `tenant2@tenant2.spatie-laravel-multitenancy.test` | `password` |
+| `tenant3.spatie-laravel-multitenancy.test`    | `tenant3@tenant3.spatie-laravel-multitenancy.test` | `password` |
+| `tenant4.spatie-laravel-multitenancy.test`    | `tenant4@tenant4.spatie-laravel-multitenancy.test` | `password` |
+| `tenant5.spatie-laravel-multitenancy.test`    | `tenant5@tenant5.spatie-laravel-multitenancy.test` | `password` |
+| `tenant6.spatie-laravel-multitenancy.test`    | `tenant6@tenant6.spatie-laravel-multitenancy.test` | `password` |
+| `tenant7.spatie-laravel-multitenancy.test`    | `tenant7@tenant7.spatie-laravel-multitenancy.test` | `password` |
+| `tenant8.spatie-laravel-multitenancy.test`    | `tenant8@tenant8.spatie-laravel-multitenancy.test` | `password` |
+| `tenant9.spatie-laravel-multitenancy.test`    | `tenant9@tenant9.spatie-laravel-multitenancy.test` | `password` |
+| `tenant10.spatie-laravel-multitenancy.test`   | `tenant10@tenant10.spatie-laravel-multitenancy.test` | `password` |
+
+> **Recordá que cada tenant requiere su entrada en el archivo `hosts`** (ver §17.1) antes de poder acceder a su subdominio en el navegador. La entrada del landlord (`spatie-laravel-multitenancy.test`) la maneja Laragon automáticamente.
 
 ---
 
@@ -733,14 +914,16 @@ CREATE DATABASE "tenant2-spatie-laravel-multitenancy";
 
 > **Nota — automatización actual:** En el flujo normal de seeders y del panel de admin, este paso es automático. El callback `creating` de `app/Models/Tenant.php` (ver recuadro abajo) se encarga de todo: verifica precondiciones, crea la BD física, configura la conexión y corre migraciones. Todo eso ocurre cada vez que se invoca `Tenant::create()`. Además, `createDatabase()` es **idempotente**: chequea `pg_database` antes de crear.
 
-El modelo `Tenant` completo, con su callback de provisioning automático y el guard de precondiciones:
+El modelo `Tenant` completo, con su callback de provisioning automático, el guard de precondiciones, y el listener `created` que garantiza que **todo tenant tenga exactamente una suscripción**:
 
 ```php
 <?php
 
 namespace App\Models;
 
+use App\Enums\SubscriptionStatus;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -755,6 +938,12 @@ class Tenant extends SpatieTenant implements IsTenant
 
     protected $fillable = ['name', 'domain', 'database'];
 
+    /**
+     * Plan slug a asignar en el create. Si es null, el listener `created`
+     * cae al plan `free` (default del sistema).
+     */
+    public ?string $assignPlanSlug = null;
+
     protected static function booted(): void
     {
         static::creating(function (Tenant $tenant) {
@@ -763,6 +952,40 @@ class Tenant extends SpatieTenant implements IsTenant
             $tenant->configureTenantConnection(); // apunta 'tenant' connection a esta BD
             $tenant->runMigrations();             // migrate --database=tenant --force
         });
+
+        static::created(function (Tenant $tenant): void {
+            $tenant->ensureDefaultSubscription();
+        });
+    }
+
+    /**
+     * Garantiza que el tenant tenga exactamente una suscripción.
+     * Si ya existe (caso del seeder que seteó un plan explícito), no hace nada.
+     * Si no, busca el plan por assignPlanSlug o cae al 'free'.
+     */
+    public function ensureDefaultSubscription(): void
+    {
+        if ($this->subscription()->exists()) {
+            return;
+        }
+
+        $slug = $this->assignPlanSlug ?? 'free';
+        $plan = Plan::query()->where('slug', $slug)->first();
+
+        if (! $plan) {
+            return;
+        }
+
+        Subscription::on('landlord')->create([
+            'tenant_id' => $this->id,
+            'plan_id' => $plan->id,
+            'status' => SubscriptionStatus::Active,
+        ]);
+    }
+
+    public function subscription(): HasOne
+    {
+        return $this->hasOne(Subscription::class);
     }
 
     protected function assertTenantsTableExists(): void
@@ -802,6 +1025,8 @@ class Tenant extends SpatieTenant implements IsTenant
 ```
 
 > **Por qué el guard `assertTenantsTableExists()`:** Sin esta precondición, si la tabla `tenants` no existe en la BD landlord, el `INSERT` de Eloquent falla después de que el callback `creating` ya creó la BD física y corrió migraciones — dejando una BD huérfana. El guard falla PRIMERO con un mensaje claro. Ver [`analisis-pendientes-fase-temprana.md`](./analisis-pendientes-fase-temprana.md) para contexto.
+
+> **Por qué el listener `created` llama a `ensureDefaultSubscription()`:** La regla de negocio "ningún tenant sin plan asignado" se enforce a nivel de modelo, no de seeder. Cualquier `Tenant::create()` (panel admin, seeder, factory con eventos habilitados) que no haya seteado explícitamente `$tenant->assignPlanSlug` recibe el plan `free` por defecto. La UNIQUE constraint en `subscriptions.tenant_id` previene duplicados. Ver `tests/Feature/Models/TenantDefaultSubscriptionTest.php` para los 4 tests que cubren este comportamiento.
 
 **`database/factories/TenantFactory.php`** — factory para crear tenants en seeders y tests:
 
@@ -1794,17 +2019,26 @@ Esta sección documenta **el reset total**: limpia todas las BDs (landlord, tena
 #    (php artisan serve, queue:work, vite dev, etc.)
 ```
 
-**2. Eliminá las BDs del proyecto:** la BD del landlord (la que figura como `DB_DATABASE` en tu `.env`) y la BD de cada tenant registrado en la tabla `tenants` del landlord. Cómo hacerlo queda a tu criterio — `psql`, `pgAdmin`, `DBeaver`, un script propio, lo que prefieras. La eliminación de las BDs forma parte del reset total, independientemente de la herramienta o método que elijas.
+**2. Eliminá las BDs del proyecto:** la BD del landlord (la que figura como `DB_DATABASE` en tu `.env`), la BD de testing de Pest (la que figura como `DB_DATABASE` en tu `.env.testing` — típicamente `spatie-laravel-multitenancy-testing`), y la BD de cada tenant registrado en la tabla `tenants` del landlord. Cómo hacerlo queda a tu criterio — `psql`, `pgAdmin`, `DBeaver`, un script propio, lo que prefieras. La eliminación de las BDs forma parte del reset total, independientemente de la herramienta o método que elijas.
+
+> **Gotcha de testing descubierto en dog food:** La BD de testing de Pest (`spatie-laravel-multitenancy-testing`) NO se regenera sola. El trait `RefreshLandlordDatabase` la usa pero la da por existente. Si la dropeás en el reset (lo cual es correcto: es una BD del proyecto), hay que recrearla en el paso 4b antes de correr tests. Sin esto, el primer test que corre falla con `SQLSTATE[08006] FATAL: no existe la base de datos spatie-laravel-multitenancy-testing`, y eso se propaga a los 180+ restantes porque comparten la misma conexión. Si querés confirmar visualmente que la BD no existe después de dropearla (antes de recrearla), podés correr `psql -U postgres -c '\l spatie-laravel-multitenancy-testing'` y la respuesta será 0 filas — eso es el estado esperado entre el paso 2 y el 4b.
+
+> **Bug histórico del seeder (corregido):** El `PlansSeeder` original solo seteaba `premium-content: true` en el plan `basic`, no en el `premium`. Esto significaba que un tenant con plan `premium` (el más caro) NO veía el contenido premium — exactamente al revés de la intención. Fue descubierto durante el dog food de este reset. Si en algún momento se vuelve a introducir el bug, los tests de §22.1 (per-resource gating) lo detectarían en el primero: el caso "tenant premium puede ver un recurso premium" fallaría con 404. La cobertura actual lo blinda.
 
 ```bash
-# 3. Limpiar TODAS las entradas de hosts de subdominios de tenant
+# 3. (Opcional) Limpiar TODAS las entradas de hosts de subdominios de tenant
+#    Si vas a re-sincronizar al final con el paso 7, podés saltarte este paso.
+#    Dejar hosts entries huérfanas apuntando a BDs que ya no existen NO rompe
+#    nada (el browser simplemente no resuelve a un servidor vivo y tira un
+#    error de DNS) — solo ensucia el archivo. Si querés un reset quirúrgico,
+#    corré esto. Si no, salto al paso 4.
 #    (No podemos consultar la BD porque la dropeamos en el paso 2, así que
 #    listá los tenants según tu última corrida de TenantsSeeder. Si querés
 #    descubrir los hosts entries existentes: `cat /c/Windows/System32/drivers/etc/hosts`
 #    en Windows, `sudo cat /etc/hosts` en Linux/macOS.)
-php scripts/remove-host.php tenant1.spatie-laravel-multitenancy.test
-php scripts/remove-host.php tenant2.spatie-laravel-multitenancy.test
-# ... repetí para cada tenant que hayas creado
+#    Con el set de seed actual son 10 tenants (tenant1..tenant10):
+#    (PowerShell — ajustar a bash/seq si corrés en Linux/macOS)
+1..10 | ForEach-Object { php scripts/remove-host.php "tenant$_.spatie-laravel-multitenancy.test" }
 
 # 4. Recreate la BD landlord
 #    (Las BDs de tenants se crean después automáticamente via el callback
@@ -1815,6 +2049,13 @@ php scripts/remove-host.php tenant2.spatie-laravel-multitenancy.test
 #    obligatorias porque los guiones son caracteres especiales en psql.
 psql -U postgres -c 'CREATE DATABASE "spatie-laravel-multitenancy";'
 
+# 4b. Recreate la BD de testing de Pest
+#     Ver el gotcha del paso 2. La BD debe existir antes de correr
+#     `php artisan test` por primera vez post-reset. El nombre debe
+#     coincidir con `DB_DATABASE` del .env.testing (típicamente
+#     "spatie-laravel-multitenancy-testing" con guiones).
+psql -U postgres -c 'CREATE DATABASE "spatie-laravel-multitenancy-testing";'
+
 # 5. Fresh migrate del landlord
 #    Corre todas las migraciones estándar de Laravel (users, sessions, cache,
 #    jobs, etc.) + la migración manual de la tabla `tenants` que vive en
@@ -1824,13 +2065,32 @@ php artisan migrate:fresh
 php artisan migrate --path=database/migrations/landlord --database=landlord
 
 # 6. Seed del landlord
-#    Crea el Landlord admin (LandlordUserSeeder) y los tenants definidos en
-#    TenantsSeeder. Cada Tenant::create() dispara el callback `creating` que
-#    ejecuta:
-#      - createDatabase()            — chequea pg_database; crea la BD solo
-#                                      si no existe (idempotente)
-#      - configureTenantConnection() — apunta la conexión `tenant` a esa BD
-#      - runMigrations()             — corre las migraciones pendientes
+#    Crea en orden:
+#      - LandlordUserSeeder   → admin del landlord (admin@example.test)
+#      - PlansSeeder          → 3 planes (free/basic/premium) en la tabla plans.
+#                                El plan `premium` incluye `premium-content: true`
+#                                en su JSONB de features (necesario para que el
+#                                gating de recursos premium funcione, ver §22.1).
+#                                El plan `basic` también lo incluye (mismo nivel
+#                                de acceso al contenido premium que premium; la
+#                                diferencia entre basic y premium está en otras
+#                                features, no en el gating de contenido).
+#      - TenantsSeeder        → 10 tenants en la tabla tenants. Cada
+#                                Tenant::create() dispara el callback `creating`
+#                                que ejecuta:
+#                                  - createDatabase()            — chequea pg_database; crea la BD solo
+#                                                                si no existe (idempotente)
+#                                  - configureTenantConnection() — apunta la conexión `tenant` a esa BD
+#                                  - runMigrations()             — corre las migraciones pendientes
+#                                Y el callback `created` posterior invoca
+#                                `ensureDefaultSubscription()` que asigna el plan
+#                                (`assignPlanSlug` si está seteado, sino `free`).
+#      - TenantUsersSeeder    → 1 User por tenant en la BD de cada uno
+#                                (apunta la conexión `tenant` a cada BD y hace
+#                                updateOrCreate por email). Credenciales en §10.1.
+#    IMPORTANTE: NO agregar `WithoutModelEvents` a DatabaseSeeder — eso
+#    deshabilitaría AMBOS callbacks de Tenant y dejaría las BDs huérfanas
+#    + tenants sin suscripción.
 #
 #    Si las BDs de los tenants no se terminaron de crear (por permisos,
 #    error transitorio, o lo que sea), ver bloque 6b abajo.
@@ -1838,16 +2098,14 @@ php artisan db:seed
 
 # 6b. (Solo si hace falta) Workaround para BDs de tenants que no se crearon
 #      Verificá primero con `psql -U postgres -l` que sólo aparece la BD
-#      del landlord. Si faltan las BDs tenant, corré esto:
-psql -U postgres -c 'CREATE DATABASE "tenant1-spatie-laravel-multitenancy";'
-psql -U postgres -c 'CREATE DATABASE "tenant2-spatie-laravel-multitenancy";'
+#      del landlord. Si faltan las BDs tenant, corré esto (PowerShell):
+1..10 | ForEach-Object { psql -U postgres -c "CREATE DATABASE \"tenant$_-spatie-laravel-multitenancy\"" }
 php artisan tenants:artisan "migrate --database=tenant"
 
 # 7. Re-sincronizar el archivo hosts con los subdominios de tenant
 #    (Requiere permisos de Administrador en Windows o sudo en Linux/macOS.
 #    El dominio principal lo maneja Laragon solo; estos son los subdominios.)
-php scripts/add-host.php tenant1.spatie-laravel-multitenancy.test
-php scripts/add-host.php tenant2.spatie-laravel-multitenancy.test
+1..10 | ForEach-Object { php scripts/add-host.php "tenant$_.spatie-laravel-multitenancy.test" }
 ```
 
 > **¿Por qué no automatizamos este flujo en un comando Artisan?** Porque mezcla acciones que requieren privilegios elevados (escribir `hosts`), con acciones destructivas irreversibles (drop databases), y con migraciones sensibles (`migrate:fresh`). Si lo necesitás seguido, escribilo como script bash con `set -e` y revisalo cada vez — pero no lo metas en un comando mágico de Laravel.
@@ -1864,6 +2122,9 @@ npm run build
 # (Opcional) Verificar que las rutas estén registradas
 php artisan route:list --path=admin
 php artisan route:list --path=admin/tenants
+php artisan route:list --path=admin/plans
+php artisan route:list --path=admin/subscriptions
+php artisan route:list --path=premium
 ```
 
 ### 18.3 Comprobación rápida post-reset
@@ -1873,13 +2134,32 @@ php artisan route:list --path=admin/tenants
 psql -U postgres -d spatie_laravel_multitenancy -c 'SELECT email FROM users;'
 # Esperado: 1 fila con admin@example.test
 
+# ¿Están los planes cargados?
+psql -U postgres -d spatie_laravel_multitenancy -c 'SELECT slug, name, price_cents FROM plans ORDER BY id;'
+# Esperado: 3 filas (free | Free | 0, basic | Basic | 4900, premium | Premium | 14900)
+
 # ¿Están los tenants registrados?
-psql -U postgres -d spatie_laravel_multitenancy -c 'SELECT name, domain FROM tenants;'
-# Esperado: 2 filas (Acme, Globex — o lo que tengas en TenantsSeeder)
+psql -U postgres -d spatie_laravel_multitenancy -c 'SELECT name, domain FROM tenants ORDER BY id;'
+# Esperado: 10 filas (Tenant1..Tenant10)
+
+# ¿Cada tenant tiene exactamente una suscripción?
+psql -U postgres -d spatie_laravel_multitenancy -c 'SELECT t.name, p.slug AS plan, s.status FROM tenants t LEFT JOIN subscriptions s ON s.tenant_id = t.id LEFT JOIN plans p ON p.id = s.plan_id ORDER BY t.id;'
+# Esperado: 10 filas, todas con plan asignado:
+#   - 4 basic (tenant1..tenant4)
+#   - 4 premium (tenant5..tenant8)
+#   - 2 free   (tenant9..tenant10)
+# Si alguna fila tiene plan=NULL, el listener `created` no corrió
+# (probable causa: WithoutModelEvents habilitado en DatabaseSeeder).
 
 # ¿Existen las BDs físicas de los tenants?
 psql -U postgres -c "SELECT datname FROM pg_database WHERE datname LIKE 'tenant%';"
-# Esperado: 2 BDs (tenant1-..., tenant2-...)
+# Esperado: 10 BDs (tenant1-... a tenant10-...)
+
+# ¿Hay un usuario creado en cada BD de tenant? (TenantUsersSeeder)
+# PowerShell:
+1..10 | ForEach-Object { Write-Host "tenant$_"; psql -U postgres -d "tenant$_-spatie-laravel-multitenancy" -c "SELECT id, name, email FROM users;" }
+# Esperado: cada BD muestra 1 fila con email `tenantN@tenantN.spatie-laravel-multitenancy.test`.
+# Si alguna BD no tiene fila, el TenantUsersSeeder no corrió (o falló a mitad).
 
 # ¿Resuelve el DNS?
 nslookup tenant1.spatie-laravel-multitenancy.test
@@ -3105,8 +3385,10 @@ export default function TenantEdit({ tenant }: { tenant: { id: number; name: str
 | `database/migrations/landlord/2026_05_29_183736_create_landlord_tenants_table.php` | 6 | Crea la tabla `tenants` en la BD landlord (columnas: name, domain unique, database unique). |
 | `database/migrations/2026_06_03_175326_create_media_table.php` | 19.5 | Migración de spatie/laravel-medialibrary; crea la tabla `media` con columnas para modelos, colecciones, disk, conversiones. Corre en landlord y se propaga a cada tenant vía el callback `creating` de Tenant. |
 | `database/seeders/LandlordUserSeeder.php` | 10 | Crea el Landlord `admin@example.test` vía factory. |
-| `database/seeders/TenantsSeeder.php` | 11 | Crea dos tenants de prueba; cada `Tenant::create()` dispara el provisioning automático (BD + conexión + migraciones). |
-| `database/seeders/DatabaseSeeder.php` | 11 | Llama a `LandlordUserSeeder` y luego `TenantsSeeder` para `php artisan db:seed`. |
+| `database/seeders/PlansSeeder.php` | 10 | Crea los 3 planes (free/basic/premium) con `updateOrCreate` por slug. |
+| `database/seeders/TenantsSeeder.php` | 10 | Crea 10 tenants de prueba bajo `*.spatie-laravel-multitenancy.test`; cada `Tenant::create()` dispara el provisioning automático (BD + conexión + migraciones) y la asignación de plan (explícita para 8, auto-fallback a `free` para 2). |
+| `database/seeders/TenantUsersSeeder.php` | 10 | Crea 1 User por tenant en la BD física de cada uno, con credenciales fijas (ver §10.1) para testing rápido. Apunta la conexión `tenant` a cada BD manualmente. |
+| `database/seeders/DatabaseSeeder.php` | 10 | Llama en orden a `LandlordUserSeeder` → `PlansSeeder` → `TenantsSeeder` → `TenantUsersSeeder`. NO usa `WithoutModelEvents` (rompería los callbacks de Tenant). |
 
 #### Scripts
 
@@ -3147,10 +3429,13 @@ export default function TenantEdit({ tenant }: { tenant: { id: number; name: str
 | 10 | `app/Models/Landlord.php` | Modelo `Authenticatable` para landlord; usa `UsesLandlordConnection`; reusa la tabla `users` del landlord. |
 | 10 | `database/factories/LandlordFactory.php` | Factory para `Landlord` con estado `admin` por defecto. |
 | 10 | `database/seeders/LandlordUserSeeder.php` | Crea el Landlord `admin@example.test` vía factory. |
-| 11 | `app/Models/Tenant.php` | Modelo Spatie `Tenant`; el callback `creating` ejecuta `createDatabase()` (idempotente — chequea `pg_database`), configura la conexión `tenant` y corre migraciones. |
+| 10 | `database/seeders/PlansSeeder.php` | Crea los 3 planes (free/basic/premium) con `updateOrCreate` por slug. |
+| 10 | `database/seeders/TenantsSeeder.php` | Crea 10 tenants de prueba bajo `*.spatie-laravel-multitenancy.test`; cada `Tenant::create()` dispara el provisioning automático (BD + conexión + migraciones) y la asignación de plan (explícita para 8, auto-fallback a `free` para 2). |
+| 10 | `database/seeders/TenantUsersSeeder.php` | Crea 1 User por tenant en la BD física de cada uno, con credenciales fijas (ver §10.1) para testing rápido. |
+| 10 | `database/seeders/DatabaseSeeder.php` | Llama en orden a `LandlordUserSeeder` → `PlansSeeder` → `TenantsSeeder` → `TenantUsersSeeder`. NO usa `WithoutModelEvents`. |
+| 11 | `app/Models/Tenant.php` | Modelo Spatie `Tenant`; el callback `creating` ejecuta `createDatabase()` (idempotente — chequea `pg_database`), configura la conexión `tenant` y corre migraciones. El callback `created` invoca `ensureDefaultSubscription()` que asigna el plan (explícito o `free` por default). |
 | 11 | `database/factories/TenantFactory.php` | Factory para `Tenant` usada en seeders y tests. |
 | 11 | `app/Http/Controllers/Landlord/TenantController.php` | CRUD de tenants; `store()` llama a `Tenant::create()` y dropea la BD si el callback de provisioning lanza excepción. |
-| 11 | `database/seeders/TenantsSeeder.php` | Crea dos tenants de prueba; cada `Tenant::create()` dispara el provisioning automático (BD + conexión + migraciones). |
 | 11 | `database/seeders/DatabaseSeeder.php` | Llama a `LandlordUserSeeder` y luego `TenantsSeeder` para `php artisan db:seed`. |
 | 13 | `app/Concerns/ResolvesUserModel.php` | Trait con `resolveUserModel()` = `Tenant::current() ? User::class : Landlord::class`; fuente única de verdad para la resolución del modelo. |
 | 13 | `app/Providers/MultiTenantUserProvider.php` | `EloquentUserProvider`; `createModel()` resuelve `Landlord` o `User` vía el trait `ResolvesUserModel`. |
@@ -4192,3 +4477,221 @@ test('true is true', function () {
 ```
 
 > **Cambio:** Se agregó un newline al final del archivo (EOF fix). El test en sí no cambió — sigue siendo el `expect(true)->toBeTrue()` del starter kit.
+
+---
+
+## 21. Gotcha operativo — migraciones del landlord requieren paso explícito
+
+Laravel, por default, corre únicamente las migraciones que viven directamente en `database/migrations/`. Las migraciones de este proyecto que crean tablas en la BD landlord (no en la default) están en `database/migrations/landlord/`:
+
+```
+database/migrations/
+├── 0001_01_01_000000_create_users_table.php          (default)
+├── 0001_01_01_000001_create_cache_table.php          (default)
+├── 0001_01_01_000002_create_jobs_table.php           (default)
+├── 2026_06_03_175326_create_media_table.php          (default)
+└── landlord/                                          (conexión `landlord`)
+    ├── 2026_06_04_145215_create_plans_table.php
+    ├── 2026_06_04_150017_create_subscriptions_table.php
+    ├── 2026_06_04_160000_create_resources_table.php
+    └── 2026_06_04_160001_create_entitlements_table.php
+```
+
+**Síntoma de fallo:** `QueryException SQLSTATE[42P01]: Undefined table: 7 ERROR: no existe la relación «resources»` (o `plans`, `subscriptions`, `entitlements`) cuando se navega a una ruta que toca un modelo con `UsesLandlordConnection`.
+
+**Por qué pasa en prod/dev pero no en tests:** el trait `tests/Support/RefreshLandlordDatabase.php` invoca `php artisan migrate --path=database/migrations/landlord --database=landlord --force` explícitamente en `refreshDatabase()`. Fuera de los tests, ese paso se omite y las tablas del landlord nunca se crean.
+
+**Solución de un solo comando (operativa):**
+
+```bash
+php artisan migrate --path=database/migrations/landlord --database=landlord --force
+```
+
+**Solución automatizada (en el flujo de setup del proyecto):** el script `composer setup` (definido en `composer.json`) ya invoca las migraciones del landlord justo después de las default:
+
+```json
+"setup": [
+    "composer install",
+    "@php -r \"file_exists('.env') || copy('.env.example', '.env');\"",
+    "@php artisan key:generate",
+    "@php artisan migrate --force",
+    "@php artisan migrate --path=database/migrations/landlord --database=landlord --force",
+    "npm install",
+    "npm run build"
+]
+```
+
+**Solución de reset completo** (incluye tenant DBs, ver §18.1 para el detalle paso a paso):
+
+```bash
+php artisan migrate:fresh
+php artisan migrate --path=database/migrations/landlord --database=landlord --force
+php artisan db:seed
+```
+
+**Razón por la que no se usa `loadMigrationsFrom`:** registrar el subdirectorio como path adicional de migración en un ServiceProvider parece la solución obvia, pero introduce dos problemas: (a) `php artisan migrate --database=landlord` aplicaría las migraciones default de `database/migrations/` también, porque el ServiceProvider no distingue por conexión; (b) `migrate:fresh` queda ambiguo respecto a si debe correr todo o solo las del path del subdirectorio. El `--path` explícito mantiene la separación semántica: el operador que ve el comando entiende que las migraciones del landlord son una *etapa* separada del setup, no un "segundo lugar donde también hay migraciones".
+
+---
+
+## 22. Resources: gating per-resource y rename de namespace
+
+Esta sección cubre dos oleadas del catálogo de recursos: (22.1) la corrección del gating de "premium content" para que los free tenants pudieran acceder a recursos free, y (22.2) el rename de la sección "Premium Resources" a "Resources" en UI/rutas/controlador para reflejar que el modelo de dominio es `Resource` con un flag `is_premium`, no dos subentidades.
+
+### 22.1 Gating per-resource (no per-tenant) para el catálogo premium
+
+**Contexto (Phase 1.5D, ahora obsoleto).** En `55b11e9` se introdujo un middleware `not-free-tier` que bloqueaba el grupo `/premium/resources/*` entero para tenants en plan `free`. La intención era correcta (no mostrar premium a quien no pagó), pero la implementación confundió *nivel de catálogo* con *nivel de recurso*:
+
+- El catálogo tiene dos tipos de recursos: `is_premium = false` (free, accesibles a todos) y `is_premium = true` (premium, requieren plan o entitlement).
+- Un middleware de ruta no puede distinguir entre los dos. Bloquear a nivel de ruta bloquea también los recursos free para free tenants.
+- Resultado: los recursos free eran inaccesibles para free tenants (bug de UX), aunque la regla 1 de `userCanAccess` (en el controller) ya los autorizaba.
+
+**Decisión original (Phase 1.5D, superada en 1.5F).** Mover el gating al controller, per-resource, y eliminar el middleware. La implementación 1.5D usaba `canSeePremium()` para filtrar `index`/`show`/`download` y devolver 404 al free tenant que tipeaba un slug premium, y `request` abortaba 403.
+
+**Problema descubierto en 1.5F.** Ese gating hacía que la regla 3 de `userCanAccess` (entitlement explícito) fuera inalcanzable desde el frontend: el endpoint `request` requería que el plan YA tuviera `premium-content` (si lo tenía, la regla 2 ya daba acceso sin necesidad de pasar por `request`). El slot del path "compra individual" nunca se ejercitaba. La contradicción entre "404 porque no existe para vos" (catalog gating) y "el endpoint de compra existe y te lo vamos a negar" (403 en `request`) era insostenible.
+
+**Decisión Phase 1.5F.** El catálogo y el `show` ahora muestran **todos los recursos activos** a todos los tenants autenticados, sin filtrar por `is_premium`. Los flags `can_download` y `has_explicit_entitlement` en el payload de Inertia deciden el estado del botón por recurso (Download vs Buy). El helper `canSeePremium()` se eliminó del controller. El endpoint `request` queda abierto a cualquier tenant autenticado: el `BuyResourceDialog` del frontend postea ahí, el controller crea un `Entitlement` con `granted_via='purchase'`, y la próxima request del cliente ya ve `can_download: true` (regla 3 satisfecha). El endpoint `download` mantiene el `userCanAccess()` como gate único: 403 (no 404) si no hay plan con `premium-content` ni entitlement explícito.
+
+**Regla de gating actual** (en `app/Http\Controllers\Resource\ResourceController.php`):
+
+```
+index()       → SELECT * FROM resources WHERE is_active (sin filtro por is_premium)
+show(slug)    → SELECT * FROM resources WHERE is_active AND slug = ? (sin filtro)
+request(slug) → userCanAccess no se consulta; cualquier tenant autenticado puede "comprar"
+download(slug)→ userCanAccess decide 200/403; firstOrFail mantiene 404 para slugs desconocidos
+```
+
+- **Free tenant, recurso free** (regla 1 de `userCanAccess`): `can_download = true` → botón "Download". 200 al hacer GET del download.
+- **Free tenant, recurso premium, sin entitlement**: `can_download = false` → botón "Buy" → diálogo → `POST /resources/{slug}/request` → entitlement `purchase` creado → `can_download = true` → botón "Download". 403 si tipea el URL de download antes de comprar.
+- **Paid tenant (basic o premium), recurso premium**: `can_download = true` (regla 2 de `userCanAccess`) → botón "Download" directo. 200 al hacer download.
+- **Cualquier tenant con entitlement explícito (admin-grant o purchase)**: `can_download = true` (regla 3 de `userCanAccess`).
+
+**Por qué 403 y no 404 en download para free + premium sin entitlement.** Phase 1.5D justificaba el 404 con "no leak de existencia". 1.5F lo revierte porque la existencia del slug ya no es un secreto: el catálogo y el show page lo muestran al free tenant (es donde se entera de que puede comprarlo). El download es 403 cuando `userCanAccess` rechaza, y 404 solo cuando `firstOrFail` no encuentra el slug (en `is_active=true`). Es el mismo patrón de Phase 1: la página del recurso dice "podés comprarlo", el download dice "todavía no podés bajarlo".
+
+**Sidebar.** El prop compartido `tenant` expone `has_free_resources: boolean` (calculado en `HandleInertiaRequests::resolveTenantData()`):
+
+```ts
+const showResources = !isFreeTier || hasFreeResources;
+```
+
+- Free tenant con al menos un recurso free: ve el link "Resources" (porque tiene algo que mostrar).
+- Free tenant sin recursos free: NO ve el link (evita un destino vacío).
+- Paid tenant: ve el link siempre (catálogo completo).
+
+> **Nota Phase 1.5F.** Con el nuevo gating, el link "Resources" sigue siendo útil para free tenants que tengan recursos free, y para free tenants sin recursos free la página muestra el catálogo completo de premium (es el entry point al Buy flow). El helper `has_free_resources` no cambia de comportamiento en el sidebar — la decisión de mostrar/ocultar el link sigue dependiendo solo de "hay free?" o "no es free tier", igual que en 1.5D. Phase 2 podría reconsiderar esto (ej: un free tenant sin free resources pero con un plan superior inminentemente podría ver un link "Browse premium").
+
+**Archivos eliminados** (relacionados con el middleware viejo):
+
+- `app/Http/Middleware/EnsureTenantIsNotOnFreeTier.php`
+- `tests/Feature/Middleware/EnsureTenantIsNotOnFreeTierTest.php`
+- `tests/Feature/Premium/PremiumResourcesRouteGateTest.php` (reemplazado por los 7 tests nuevos del free tier en `ResourceControllerTest.php`)
+- Alias `not-free-tier` en `bootstrap/app.php` (línea 35)
+- Import `App\Http\Middleware\EnsureTenantIsNotOnFreeTier` en `bootstrap/app.php` (línea 4)
+
+**Archivos modificados (Phase 1.5F):**
+
+- `app/Http/Controllers/Resource/ResourceController.php` — removidos los filtros `where('is_premium', false)` de `index`/`show`/`download`, removido el gate `canSeePremium()` en `request`, eliminado el helper privado `canSeePremium()`. El docblock del controller y de cada método actualizado para reflejar la nueva decisión.
+- `resources/js/components/resources/buy-resource-dialog.tsx` — **nuevo**. Componente shadcn `Dialog` que envuelve el POST a `resources.request`. Props: `resource`, `trigger?`, `open?`, `onOpenChange?`, `onSuccess?`. Diseñado para que Phase 2 reemplace el handler `handleSubmit` (marcador `// Phase 2: replace this simulated purchase with PaymentGateway::charge(...)`).
+- `resources/js/pages/resources/index.tsx` — el `<Form>` "Request Access" reemplazado por un `<Button>` "Buy" que abre el dialog. State local `selectedResource` controla qué recurso se está comprando (un solo dialog a nivel de componente, no N dialogs por card).
+- `resources/js/pages/resources/show.tsx` — el `<Form>` "Request Access" reemplazado por un `<Button>` "Buy" que abre el dialog. State local `buyOpen`. El hint del final ahora dice "This is a simulated purchase. Phase 2 will add payment method selection and real charge flow here." en lugar del texto 1.5D.
+- `tests/Feature/Resource/ResourceControllerTest.php` — 6 tests del free-tier actualizados al nuevo comportamiento (free tenant ve todos, show de premium = 200 con `can_download=false`, request = 302 con entitlement, download de premium sin entitlement = 403), 1 test nuevo (free tenant puede descargar premium DESPUÉS de comprarlo), 1 test viejo del path "starter sin premium-content" actualizado de 404 a 403. Total: 21 tests en el archivo.
+
+**Impacto en el modelo de entitlements.** Bajo el gating actual, los `Entitlement` rows creados vía `POST /resources/{slug}/request` son el path principal para que un free tenant acceda a contenido premium sin upgradear el plan. Phase 2 reemplazará la creación inmediata del `Entitlement` por un flow de pago: el controller seguirá siendo el mismo, pero la lógica antes del `updateOrCreate` validará el pago y disparará el grant. El `granted_via = 'purchase'` queda como contrato estable (los entitlements comprados siguen siendo tales, los del plan se mantienen como tales — `EntitlementGrantVia::Plan`).
+
+#### 22.1.1 Buy flow (simulated purchase) — placeholder para Phase 2
+
+**Componente.** `resources/js/components/resources/buy-resource-dialog.tsx` es un `Dialog` de shadcn que:
+
+- Muestra el nombre y la descripción del recurso, badge premium/free, file size, mime type, y precio (solo si `price_cents > 0`).
+- Incluye una nota destacada (border-dashed + `Info` icon) que dice literalmente: "This is a simulated purchase. Phase 2 will add payment method selection and real charge flow here." — la honestidad sobre el stub es deliberada para que un usuario nuevo no crea que está pagando.
+- Tiene dos botones: "Cancel" (cierra el dialog sin acción) y "Confirm Purchase" (postea al endpoint `resources.request`).
+- En éxito: cierra el dialog, Inertia refresca los props del parent automáticamente, y el botón "Buy" del card/show pasa a "Download" porque `can_download` ahora es `true`.
+
+**Marcador de Phase 2.** El `onSubmit` del dialog lleva un comentario literal:
+
+```ts
+// Phase 2: replace this simulated purchase with PaymentGateway::charge(...)
+```
+
+Este marcador es el contrato entre 1.5F y 2: cuando se introduzca el gateway, el reemplazo es (a) agregar UI de método de pago antes del submit, (b) reemplazar el `post(requestRoute(slug).url, ...)` por una llamada a la API de checkout, (c) reescribir el controller `request` para validar el webhook y crear el entitlement post-confirmación. Los `data-testid` (`buy-dialog-{slug}`, `buy-confirm-btn-{slug}`, `buy-cancel-btn-{slug}`, `buy-dialog-price-{slug}`) están congelados para que los tests browser/feature no se rompan con el swap.
+
+**Idempotencia.** El `updateOrCreate` del controller con la UNIQUE constraint `(tenant_id, user_id, resource_id)` garantiza que doble-click no genera duplicados, y que el Buy es seguro de reintentar si la red corta justo después del POST (el redirect back a la misma página muestra el flash "Access granted to {name}." y la card ya está en estado Download).
+
+### 22.2 Rename "Premium Resources" → "Resources"
+
+**Contexto.** Después de 22.1, los free tenants pueden ver recursos free a través del catálogo `/premium/resources`. El nombre "Premium Resources" en la URL, en el sidebar y en el namespace del controller dejó de reflejar el modelo de dominio: hay una sola entidad `Resource` con un flag `is_premium`, no dos subentidades `PremiumResource` y `FreeResource`.
+
+**Por qué agrupar URLs por la entidad, no por el feature del plan.** El feature `premium-content` es un *atributo del plan del usuario*, no un *atributo del recurso*. Si la URL reflejara el feature del plan, también necesitaríamos `basic.resources.*` para tenants en plan basic — absurdo. La URL agrupa por la entidad (`resources`), el flag `is_premium` distingue el tipo de contenido, y el gating per-resource decide quién ve qué. Es el mismo patrón que usan Notion, Linear, GitHub: `/repos`, `/issues`, `/pages` agrupan por entidad, no por plan del usuario.
+
+**Cambio de nombres (cosmético, no toca lógica de negocio):**
+
+| Capa | Antes | Después |
+|---|---|---|
+| URL | `/premium/resources` | `/resources` |
+| Route name | `premium.resources.*` | `resources.*` |
+| Inertia component | `premium/resources/{index,show}` | `resources/{index,show}` |
+| Controller namespace | `App\Http\Controllers\Premium\ResourceController` | `App\Http\Controllers\Resource\ResourceController` |
+| Test file | `tests/Feature/Premium/ResourceControllerTest.php` | `tests/Feature/Resource/ResourceControllerTest.php` |
+| Wayfinder route folder | `resources/js/routes/premium/resources/` | `resources/js/routes/resources/` |
+| Vue page folder | `resources/js/pages/premium/resources/` | `resources/js/pages/resources/` |
+| Sidebar label | "Premium Resources" | "Resources" |
+| Sidebar href | `/premium/resources` | `/resources` |
+| Breadcrumbs | "Premium Resources" | "Resources" |
+| Landlord admin hints | "...paid tenant's Premium Resources page" | "...tenant's Resources page" |
+
+`AnalyticsController` (`/premium/analytics`, gated por el feature `premium-zone`) **se mantiene** en el namespace `Premium\` porque la URL sí refleja el feature de plan (es analytics premium, distinto a si en el futuro hubiera analytics básicos para todos).
+
+**Archivos modificados:**
+
+- `routes/web.php` — `prefix('premium/resources')` → `prefix('resources')`; `name('premium.resources.')` → `name('resources.')`. Comentario del grupo actualizado.
+- `app/Http/Controllers/Premium/ResourceController.php` — **movido** a `app/Http/Controllers/Resource/ResourceController.php` con namespace `App\Http\Controllers\Resource`. `Inertia::render('premium/resources/...')` → `Inertia::render('resources/...')`. La lógica de gating (`canSeePremium`, `userCanAccess`, `userHasExplicitEntitlement`) NO cambió.
+- `resources/js/pages/premium/resources/{index,show}.tsx` — **movidos** a `resources/js/pages/resources/{index,show}.tsx`. Componente renamed: `PremiumResourcesIndex` → `ResourcesIndex`, `PremiumResourceShow` → `ResourceShow`. `<h1>` y breadcrumbs dicen "Resources". Texto del empty state actualizado ("no resources have been published yet, or none are visible to your current plan").
+- `resources/js/components/app-sidebar.tsx` — variable `showPremiumResources` → `showResources`. Título y href del link actualizados. Comentario actualizado.
+- `resources/js/types/global.d.ts` — comentario del tipo `tenant` actualizado.
+- `resources/js/pages/landlord/resources/{create,edit,index}.tsx` — los placeholders y descripciones que referencian la URL pública del tenant actualizados: `/premium/resources/{slug}` → `/resources/{slug}`. Descripción de la tabla: "paid tenant's Premium Resources page" → "tenant's Resources page (filtered by each plan's permissions)".
+- `resources/js/routes/premium/resources/index.ts` — **regenerado** por `php artisan wayfinder:generate`. La carpeta `premium/resources` desaparece; el archivo de Analytics (`premium/analytics`) se queda.
+- `resources/js/actions/...` — regenerado por Wayfinder; cualquier `App\Http\Controllers\Resource\ResourceController` ahora vive en `actions/App/Http/Controllers/Resource/`.
+- `tests/Feature/Premium/ResourceControllerTest.php` — **movido** a `tests/Feature/Resource/ResourceControllerTest.php`. Header del docblock actualizado. `route('premium.resources.*')` → `route('resources.*')`. `component('premium/resources/...')` → `component('resources/...')`. Tests del free tier y los actualizados a 404 sin cambios.
+
+**Lo que NO cambió** (importante para la deuda técnica):
+
+- El modelo `Resource` y su flag `is_premium` — intactos.
+- La lógica de gating `canSeePremium()` / `userCanAccess()` — intacta.
+- El sidebar sigue ocultando el link para free tenants sin recursos free — intacto.
+- El middleware `EnsureTenantHasFeature` (que sí aplica a `premium.analytics`) — intacto.
+- Las migraciones y factories — intactas.
+
+**YAGNI nota.** La pregunta de fondo era: ¿separamos las rutas en `premium.resources.*` y `resources.*` (dos namespaces paralelos, una por feature)? La respuesta es no, porque hoy hay un solo feature que gatea acceso a recursos (`premium-content`) y un solo modelo de dominio (`Resource`). Si en el futuro aparece una segunda entidad con su propio feature de plan (ej: `Documentation` con feature `docs-access`), ese SÍ sería otro namespace natural — pero esa es una decisión del momento en que exista el caso de uso, no de hoy.
+
+### 22.3 Link "Analytics" en el sidebar
+
+`/premium/analytics` existe y está protegido por el middleware `feature:premium-zone` desde 1.5C, pero el sidebar no exponía el destino: si un tenant con la feature quería llegar, tenía que tipear la URL a mano. Esto se arregla en un commit chico que sólo toca el menu:
+
+**Comportamiento:**
+
+| Tenant | Plan | ¿Ve "Analytics" en el sidebar? |
+|---|---|---|
+| tenant1–4 | basic | No (no tienen `premium-zone`) |
+| tenant5–8 | premium | **Sí** |
+| tenant9–10 | free | No |
+
+**Implementación:**
+
+- `app/Http/Middleware/HandleInertiaRequests.php::resolveTenantData()` agrega `'has_premium_zone' => $current->hasFeature('premium-zone')` al shared prop `tenant`. Defensa en profundidad: aunque el item se filtrara mal del lado cliente, el middleware `feature:premium-zone` en la ruta devuelve 403 al request.
+- `resources/js/types/global.d.ts` extiende el tipo `tenant` con `has_premium_zone: boolean`.
+- `resources/js/components/app-sidebar.tsx` lee el flag y agrega el item `{ title: 'Analytics', href: '/premium/analytics', icon: BarChart3 }` solo cuando `hasPremiumZone === true`. Ícono: `BarChart3` de lucide-react (línea-chart es lo más representativo de analytics; `TrendingUp` y `LineChart` también son opciones razonables si en el futuro se quiere diferenciar visualmente).
+- 3 tests nuevos en `tests/Feature/SharedInertiaTenantPropTest.php` que pin el flag: `true` en plan premium, `false` en plan basic, `false` en plan free.
+
+**Features huérfanas (intencionales).** El seeder define 6 features en total. Solo 2 están consumidas por código:
+
+| Feature | Plan | ¿Route la consume? |
+|---|---|---|
+| `premium-zone` | premium | ✅ `/premium/analytics` |
+| `premium-content` | basic, premium | ✅ gateo per-resource en `ResourceController` |
+| `advanced-reports` | basic, premium | ❌ huérfana (reservada para Phase 2+) |
+| `api-access` | premium | ❌ huérfana |
+| `priority-support` | premium | ❌ huérfana |
+| `custom-branding` | premium | ❌ huérfana |
+
+Las 4 huérfanas se conservan **a propósito**: sirven como roadmap de qué tipo de features se pueden agregar al modelo `Plan` sin cambiar el schema (la columna `features` es JSONB, agregar una nueva feature es solo tocar el seeder + el código que la gatea). Si se borran del seeder, hay que recordar el shape completo cuando se implemente el endpoint correspondiente — tenerlas visibles en el código evita esa amnesia. El test suite verifica `hasFeature()` para cada una (vía factories con `features` arbitrarios), así que no se degradan en silencio.
+
+

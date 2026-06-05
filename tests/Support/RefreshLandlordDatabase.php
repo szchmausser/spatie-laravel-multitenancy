@@ -3,6 +3,7 @@
 namespace Tests\Support;
 
 use Illuminate\Contracts\Console\Kernel;
+use Illuminate\Database\Connection;
 use Illuminate\Foundation\Testing\Attributes\Seed;
 use Illuminate\Foundation\Testing\Attributes\Seeder;
 use Illuminate\Foundation\Testing\DatabaseTransactionsManager;
@@ -74,6 +75,11 @@ trait RefreshLandlordDatabase
 
     /**
      * Begin a database transaction on all configured connections.
+     *
+     * When landlord and default point to the same physical database,
+     * we share the PDO so both connections participate in the same
+     * transaction. This prevents the visibility problem where an INSERT
+     * on one connection is invisible to a SELECT on the other.
      */
     protected function beginDatabaseTransaction(): void
     {
@@ -83,15 +89,31 @@ trait RefreshLandlordDatabase
 
         $this->app->instance('db.transactions', $transactionsManager = new DatabaseTransactionsManager($connections));
 
+        $defaultConnection = $database->connection(null);
+
         foreach ($connections as $name) {
             $connection = $database->connection($name);
+
+            // If landlord shares the same physical DB as default,
+            // copy the PDO so both use the same transaction
+            $sharesPdo = false;
+            if ($name === 'landlord' && $this->sharesPhysicalDatabase($defaultConnection, $connection)) {
+                $this->copyPdo($connection, $defaultConnection);
+                $sharesPdo = true;
+            }
 
             $connection->setTransactionManager($transactionsManager);
 
             $dispatcher = $connection->getEventDispatcher();
 
             $connection->unsetEventDispatcher();
-            $connection->beginTransaction();
+
+            // Only begin a new transaction if the connection has its own PDO.
+            // If landlord shares default's PDO, it's already in a transaction.
+            if (! $sharesPdo || ! $connection->getPdo()->inTransaction()) {
+                $connection->beginTransaction();
+            }
+
             $connection->setEventDispatcher($dispatcher);
         }
 
@@ -111,6 +133,44 @@ trait RefreshLandlordDatabase
                 $connection->disconnect();
             }
         });
+    }
+
+    /**
+     * Determine if two connections point to the same physical database.
+     */
+    protected function sharesPhysicalDatabase(Connection $a, Connection $b): bool
+    {
+        $aName = $a->getName();
+        $bName = $b->getName();
+
+        $aConfig = config("database.connections.{$aName}");
+        $bConfig = config("database.connections.{$bName}");
+
+        if (! is_array($aConfig) || ! is_array($bConfig)) {
+            return false;
+        }
+
+        return ($aConfig['host'] ?? null) === ($bConfig['host'] ?? null)
+            && ($aConfig['port'] ?? null) === ($bConfig['port'] ?? null)
+            && ($aConfig['database'] ?? null) === ($bConfig['database'] ?? null);
+    }
+
+    /**
+     * Copy the PDO from the source connection to the target connection
+     * using reflection. This allows both connections to share the same
+     * underlying database session and participate in one transaction.
+     */
+    protected function copyPdo(Connection $target, Connection $source): void
+    {
+        $reflection = new ReflectionClass($target);
+
+        if (! $reflection->hasProperty('pdo')) {
+            return;
+        }
+
+        $pdoProperty = $reflection->getProperty('pdo');
+        $pdoProperty->setAccessible(true);
+        $pdoProperty->setValue($target, $source->getPdo());
     }
 
     /**

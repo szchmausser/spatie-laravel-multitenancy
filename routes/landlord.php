@@ -1,6 +1,9 @@
 <?php
 
 use App\Http\Controllers\Landlord\AdminPanelController;
+use App\Http\Controllers\Landlord\PlanController;
+use App\Http\Controllers\Landlord\ResourceController;
+use App\Http\Controllers\Landlord\SubscriptionController;
 use App\Http\Controllers\Landlord\TenantController;
 use App\Http\Middleware\EnsureUserIsAdmin;
 use Illuminate\Support\Facades\Route;
@@ -31,4 +34,15 @@ Route::middleware(['auth', 'verified', EnsureUserIsAdmin::class])->prefix('admin
     Route::get('/tenants/{tenant}/edit', [TenantController::class, 'edit'])->name('tenants.edit');
     Route::put('/tenants/{tenant}', [TenantController::class, 'update'])->name('tenants.update');
     Route::delete('/tenants/{tenant}', [TenantController::class, 'destroy'])->name('tenants.destroy');
+
+    // Plan management
+    Route::resource('plans', PlanController::class)->except('show');
+
+    // Resource management
+    Route::resource('resources', ResourceController::class)->except('show');
+
+    // Subscription management
+    Route::get('subscriptions', [SubscriptionController::class, 'index'])->name('subscriptions.index');
+    Route::get('subscriptions/{subscription}', [SubscriptionController::class, 'show'])->name('subscriptions.show');
+    Route::post('tenants/{tenant}/subscriptions', [SubscriptionController::class, 'assign'])->name('subscriptions.assign');
 });

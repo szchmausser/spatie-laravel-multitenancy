@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\EnsureTenantHasFeature;
 use App\Http\Middleware\HandleAppearance;
 use App\Http\Middleware\HandleInertiaRequests;
 use App\Http\Middleware\RedirectIfAuthenticated;
@@ -29,6 +30,7 @@ return Application::configure(basePath: dirname(__DIR__))
         // y override del único método que computa el destino.
         $middleware->alias([
             'guest' => RedirectIfAuthenticated::class,
+            'feature' => EnsureTenantHasFeature::class,
         ]);
 
         $middleware->web(append: [

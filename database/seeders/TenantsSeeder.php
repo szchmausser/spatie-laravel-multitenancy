@@ -6,31 +6,53 @@ use App\Models\Tenant;
 use Illuminate\Database\Seeder;
 
 /**
- * Seeds the landlord database with initial tenants.
+ * Seeds the landlord database with ten test tenants under the
+ * `*.spatie-laravel-multitenancy.test` domain pattern.
  *
- * Each Tenant::create() call automatically triggers the provisioning
- * lifecycle callback (createDatabase, configureTenantConnection,
- * runMigrations) defined in the Tenant model.
+ * Distribution:
+ *   - 4 tenants assigned to plan `basic`  (tenant1..tenant4)
+ *   - 4 tenants assigned to plan `premium` (tenant5..tenant8)
+ *   - 2 tenants with no explicit plan — Tenant::created() auto-assigns
+ *     the `free` plan as the system-wide default
  *
- * This seeder creates two test tenants with dedicated databases.
+ * Every Tenant::create() call triggers the provisioning lifecycle
+ * (createDatabase, configureTenantConnection, runMigrations) defined
+ * in the Tenant model, so each iteration also creates and migrates a
+ * dedicated physical database.
  */
 class TenantsSeeder extends Seeder
 {
-    /**
-     * Run the database seeds.
-     */
     public function run(): void
     {
-        Tenant::create([
-            'name' => 'Tenant One',
-            'domain' => 'tenant1.spatie-laravel-multitenancy.test',
-            'database' => 'tenant1-spatie-laravel-multitenancy',
-        ]);
+        $explicit = [
+            'tenant1' => 'basic',
+            'tenant2' => 'basic',
+            'tenant3' => 'basic',
+            'tenant4' => 'basic',
+            'tenant5' => 'premium',
+            'tenant6' => 'premium',
+            'tenant7' => 'premium',
+            'tenant8' => 'premium',
+        ];
 
-        Tenant::create([
-            'name' => 'Tenant Two',
-            'domain' => 'tenant2.spatie-laravel-multitenancy.test',
-            'database' => 'tenant2-spatie-laravel-multitenancy',
-        ]);
+        foreach ($explicit as $slug => $planSlug) {
+            $tenant = new Tenant([
+                'name' => ucfirst($slug),
+                'domain' => "{$slug}.spatie-laravel-multitenancy.test",
+                'database' => "{$slug}-spatie-laravel-multitenancy",
+            ]);
+            $tenant->assignPlanSlug = $planSlug;
+            $tenant->save();
+        }
+
+        // 2 tenants without an explicit plan: the Tenant::created listener
+        // will look up the 'free' plan and create the subscription.
+        foreach (['tenant9', 'tenant10'] as $slug) {
+            Tenant::create([
+                'name' => ucfirst($slug),
+                'domain' => "{$slug}.spatie-laravel-multitenancy.test",
+                'database' => "{$slug}-spatie-laravel-multitenancy",
+            ]);
+        }
     }
 }

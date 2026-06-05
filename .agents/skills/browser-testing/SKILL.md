@@ -488,7 +488,14 @@ superficie de fallo y mayor costo de mantenimiento. No todo debe tener un browse
 
 ### 2.3 Configuración del entorno
 
-Los browser tests necesitan un servidor HTTP corriendo y una base de datos separada.
+> **Regla de oro:** la configuración de testing debe respetar la arquitectura real del
+> proyecto, no al revés. Esta sección da una guía general; **adaptala al setup que ya
+> existe en el `TestCase` del proyecto**. Si el proyecto usa multitenancy, conexiones
+> múltiples, o un motor de BD distinto al de desarrollo, el browser test tiene que
+> usar esa misma configuración — sino, los tests pasan localmente pero fallan en CI o
+> divergen del comportamiento de producción.
+
+#### Setup por defecto (proyectos Laravel simples)
 
 **`.env.testing`** — nunca apuntes a la base de datos de desarrollo:
 
@@ -521,6 +528,44 @@ abstract class BrowserTestCase extends TestCase
     use RefreshDatabase;
 }
 ```
+
+#### Setup para proyectos con multitenancy o conexiones múltiples
+
+Si el proyecto tiene un `TestCase` con un trait custom (por ejemplo
+`RefreshLandlordDatabase`) que maneja múltiples conexiones, migraciones en paths
+separados, o BD física compartida entre conexiones lógicas, **los browser tests deben
+usar exactamente el mismo `TestCase` y la misma config BD que los feature tests**.
+
+Razones:
+
+- El mismo `TestCase` ya resolvió problemas no obvios de visibilidad entre
+  conexiones (por ejemplo, dos conexiones apuntando a la misma BD física que
+  necesitan compartir el PDO para verse entre sí dentro de una transacción).
+- Replicar la lógica de migraciones o de dual-connection en el browser test crea
+  divergencia: el browser test pasa con su config, pero la feature suite falla con
+  la otra.
+- El servidor que levantás para el browser test (con `php artisan serve` o el plugin
+  automático) usa el `.env` activo; si querés que use la config de testing, tenés
+  que pasárselo explícitamente.
+
+**Convención en este tipo de proyectos:**
+
+```php
+// tests/Browser/BrowserTestCase.php
+abstract class BrowserTestCase extends TestCase  // mismo TestCase que feature tests
+{
+    // Heredá todo: conexiones a transar, migraciones, refresh, PDO sharing, etc.
+    // NO dupliques la lógica de BD acá.
+}
+```
+
+```bash
+# Servidor con la config del proyecto (no asumás sqlite si el proyecto usa postgres)
+php artisan serve --env=testing
+```
+
+Si el proyecto usa el plugin automático de servidor, asegurate de que el plugin
+respete el `.env.testing` del proyecto (no el de la skill).
 
 ---
 

@@ -1,10 +1,8 @@
-import { type BreadcrumbItem } from '@/types';
-import { FormEventHandler } from 'react';
 import { useForm } from '@inertiajs/react';
-import { update, index } from '@/routes/landlord/tenants';
+import { Building, Globe, Database, X, Save } from 'lucide-react';
+import type { FormEventHandler } from 'react';
+import InputError from '@/components/input-error';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import {
     Card,
     CardContent,
@@ -12,8 +10,10 @@ import {
     CardHeader,
     CardTitle,
 } from '@/components/ui/card';
-import InputError from '@/components/input-error';
-import { Building, Globe, Database, X, Save } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { update, index } from '@/routes/landlord/tenants';
+import type {BreadcrumbItem} from '@/types';
 
 const breadcrumbs: BreadcrumbItem[] = [
     { title: 'Admin', href: '/admin' },

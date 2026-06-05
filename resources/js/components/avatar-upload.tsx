@@ -1,13 +1,14 @@
 import { Form } from '@inertiajs/react';
 import { Camera, Trash2, User } from 'lucide-react';
-import { useRef, type FormEvent } from 'react';
+import { useRef  } from 'react';
+import type {FormEvent} from 'react';
 import AvatarController from '@/actions/App/Http/Controllers/Settings/AvatarController';
-import { Button } from '@/components/ui/button';
 import {
     Avatar,
     AvatarFallback,
     AvatarImage,
 } from '@/components/ui/avatar';
+import { Button } from '@/components/ui/button';
 
 type AvatarUploadProps = {
     currentUrl: string | null;

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Landlord;
 
 use App\Http\Controllers\Controller;
+use App\Models\Plan;
 use App\Models\Tenant;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -26,7 +27,10 @@ class TenantController extends Controller
      */
     public function index()
     {
-        $tenants = Tenant::all();
+        $tenants = Tenant::query()
+            ->with('subscription.plan')
+            ->orderBy('id')
+            ->get();
 
         return Inertia::render('landlord/tenants/index', [
             'tenants' => $tenants,
@@ -74,8 +78,12 @@ class TenantController extends Controller
      */
     public function show(Tenant $tenant)
     {
+        $tenant->load('subscription.plan');
+
         return Inertia::render('landlord/tenants/show', [
             'tenant' => $tenant,
+            'subscription' => $tenant->subscription,
+            'availablePlans' => Plan::query()->where('is_active', true)->orderBy('price_cents')->get(),
         ]);
     }
 

@@ -1,5 +1,13 @@
 import { Link, usePage } from '@inertiajs/react';
-import { BookOpen, Building2, FolderGit2, LayoutGrid, Shield } from 'lucide-react';
+import {
+    BarChart3,
+    BookOpen,
+    Building2,
+    Download,
+    FolderGit2,
+    LayoutGrid,
+    Shield,
+} from 'lucide-react';
 import AppLogo from '@/components/app-logo';
 import { NavFooter } from '@/components/nav-footer';
 import { NavMain } from '@/components/nav-main';
@@ -22,6 +30,11 @@ const adminNavItems: NavItem[] = [
         href: '/admin/tenants',
         icon: Building2,
     },
+    {
+        title: 'Resources',
+        href: '/admin/resources',
+        icon: Download,
+    },
 ];
 
 const footerNavItems: NavItem[] = [
@@ -38,26 +51,66 @@ const footerNavItems: NavItem[] = [
 ];
 
 export function AppSidebar() {
-    const { auth } = usePage().props;
+    const { auth, tenant } = usePage().props;
     const isAdmin = (auth as any)?.is_admin ?? false;
+    const isFreeTier = (tenant as any)?.is_free_tier ?? true;
+    const hasFreeResources = (tenant as any)?.has_free_resources ?? false;
+    const hasPremiumZone = (tenant as any)?.has_premium_zone ?? false;
+
+    // The "Resources" link is shown when the tenant is on a paid
+    // plan (full catalog) OR when the tenant is free but the
+    // catalog has at least one free resource worth browsing. Without
+    // the `has_free_resources` check, free tenants with an empty free
+    // catalog would see a link that leads to an empty page. Admins
+    // don't see tenant-scoped links at all.
+    const showResources = !isFreeTier || hasFreeResources;
+
+    // The "Analytics" link is shown only when the tenant's plan
+    // includes the `premium-zone` feature. Currently only the
+    // `premium` plan grants it. The link points to
+    // `/premium/analytics`, which is gated by the
+    // `feature:premium-zone` route middleware — so even if a UI bug
+    // ever exposed the link to a non-eligible tenant, the server
+    // would still 403.
+    const showAnalytics = hasPremiumZone;
 
     const mainNavItems: NavItem[] = isAdmin
         ? [{ title: 'Panel', href: '/admin', icon: Shield }]
-        : [{ title: 'Dashboard', href: dashboard(), icon: LayoutGrid }];
+        : [
+              { title: 'Dashboard', href: dashboard(), icon: LayoutGrid },
+              ...(showResources
+                  ? [
+                        {
+                            title: 'Resources',
+                            href: '/resources',
+                            icon: Download,
+                        },
+                    ]
+                  : []),
+              ...(showAnalytics
+                  ? [
+                        {
+                            title: 'Analytics',
+                            href: '/premium/analytics',
+                            icon: BarChart3,
+                        },
+                    ]
+                  : []),
+          ];
 
     return (
         <Sidebar collapsible="icon" variant="inset">
             <SidebarHeader>
                 <SidebarMenu>
                     <SidebarMenuItem>
-                            <SidebarMenuButton size="lg" asChild>
-                                <Link
-                                    href={isAdmin ? '/admin' : dashboard()}
-                                    prefetch
-                                >
-                                    <AppLogo />
-                                </Link>
-                            </SidebarMenuButton>
+                        <SidebarMenuButton size="lg" asChild>
+                            <Link
+                                href={isAdmin ? '/admin' : dashboard()}
+                                prefetch
+                            >
+                                <AppLogo />
+                            </Link>
+                        </SidebarMenuButton>
                     </SidebarMenuItem>
                 </SidebarMenu>
             </SidebarHeader>
