@@ -27,7 +27,18 @@ use Illuminate\Support\Facades\Hash;
  * actually takes effect.
  *
  * Idempotent: updateOrCreate on email, so re-running the seeder
- * just refreshes the password.
+ * just refreshes the password and re-applies the role assignment.
+ *
+ * Authorization: the first (and currently only) user created for
+ * a tenant is granted the `tenant-admin` role via `syncRoles`.
+ * `syncRoles` replaces whatever roles the user has with the
+ * supplied list, which is the safe idempotent form: a re-run
+ * leaves the user with exactly one role, never duplicates.
+ *
+ * Ordering: this seeder MUST run AFTER `TenantPermissionsSeeder`
+ * (wired in `DatabaseSeeder`), otherwise `syncRoles` will throw
+ * "Role `tenant-admin` does not exist" because the role row has
+ * not been inserted into the tenant's `roles` table yet.
  */
 class TenantUsersSeeder extends Seeder
 {
@@ -38,23 +49,49 @@ class TenantUsersSeeder extends Seeder
 
             $this->pointTenantConnectionAt($tenant->database);
 
-            User::on('tenant')->updateOrCreate(
-                ['email' => "{$subdomain}@{$tenant->domain}"],
-                [
-                    'name' => ucfirst($subdomain),
-                    'password' => Hash::make('password'),
-                    'email_verified_at' => now(),
-                ],
-            );
-        }
+            try {
+                $user = User::on('tenant')->updateOrCreate(
+                    ['email' => "{$subdomain}@{$tenant->domain}"],
+                    [
+                        'name' => ucfirst($subdomain),
+                        'password' => Hash::make('password'),
+                        'email_verified_at' => now(),
+                    ],
+                );
 
-        $this->forgetTenantConnection();
+                $this->assignFirstUserRole($user);
+            } finally {
+                $this->forgetTenantConnection();
+            }
+        }
     }
 
     /**
-     * Point the `tenant` connection at the named physical database
-     * and purge the cached connection so the next query opens a
-     * fresh PDO against the new host.
+     * Grant the tenant-admin role to the user.
+     *
+     * `syncRoles` is the idempotent form: it replaces whatever
+     * roles the user has with the supplied list. The first user
+     * per tenant ends up with exactly one role (`tenant-admin`),
+     * and a re-run of the seeder never produces duplicates.
+     *
+     * The Spatie Role model used by the underlying `syncRoles`
+     * call is bound to the `tenant` connection (see
+     * {@see \App\Models\Auth\Role}), so flipping the global
+     * default is not required: the role-lookup query lands on
+     * the `tenant` connection automatically. Without that
+     * binding, `syncRoles` would query the landlord DB and fail
+     * with "no existe la relación «roles»" because the Spatie
+     * permission migration is gated to the `tenant` connection.
+     */
+    protected function assignFirstUserRole(User $user): void
+    {
+        $user->syncRoles(['tenant-admin']);
+    }
+
+    /**
+     * Rewrite the `tenant` connection's `database` value in the
+     * in-memory config and drop the cached PDO so the next query
+     * opens a fresh connection against the new DB.
      */
     protected function pointTenantConnectionAt(string $database): void
     {

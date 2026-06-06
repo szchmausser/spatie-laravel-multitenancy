@@ -215,6 +215,7 @@ export function AppHeader({ breadcrumbs = [] }: Props) {
                                 <Button
                                     variant="ghost"
                                     className="size-10 rounded-full p-1"
+                                    data-testid="user-menu-trigger"
                                 >
                                     <Avatar className="size-8 overflow-hidden rounded-full">
                                         <AvatarImage

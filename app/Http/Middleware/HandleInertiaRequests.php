@@ -5,7 +5,10 @@ namespace App\Http\Middleware;
 use App\Models\Landlord;
 use App\Models\Resource;
 use App\Models\Tenant;
+use App\Models\User;
+use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Schema;
 use Inertia\Middleware;
 
 class HandleInertiaRequests extends Middleware
@@ -38,12 +41,14 @@ class HandleInertiaRequests extends Middleware
      */
     public function share(Request $request): array
     {
+        $user = $request->user();
+
         return [
             ...parent::share($request),
             'name' => config('app.name'),
             'auth' => [
-                'user' => $request->user(),
-                'is_admin' => $request->user() instanceof Landlord,
+                'user' => $this->resolveUserProp($user),
+                'is_admin' => $user instanceof Landlord,
             ],
             // Tenant-scoped data is only meaningful when a request lands on
             // a tenant subdomain. On landlord routes (the SaaS admin panel)
@@ -106,5 +111,117 @@ class HandleInertiaRequests extends Middleware
                 ->exists(),
             'has_premium_zone' => $current->hasFeature('premium-zone'),
         ];
+    }
+
+    /**
+     * Build the `auth.user` shared prop from the current authenticatable.
+     *
+     * For `User` and `Landlord` instances, returns an explicit array
+     * shape that the frontend can rely on (`id`, `name`, `email`,
+     * `avatar`, `email_verified_at`, `roles`). This is required by
+     * the `tenant-authorization` capability (1.5G.0): the explicit
+     * shape is part of the testable contract with `assertInertia`,
+     * and the `roles` field is the new addition.
+     *
+     * For other authenticatable instances (e.g. anonymous classes
+     * used by `actingAs()` in some feature tests), fall back to
+     * passing the user object as-is. Inertia will serialize its
+     * public properties. We don't want to crash a request just
+     * because an anonymous test user doesn't expose a `name` field.
+     */
+    private function resolveUserProp(?Authenticatable $user): mixed
+    {
+        if ($user === null) {
+            return null;
+        }
+
+        if (! ($user instanceof User || $user instanceof Landlord)) {
+            return $user;
+        }
+
+        return [
+            'id' => $user->id,
+            'name' => $user->name,
+            'email' => $user->email,
+            'avatar' => $this->resolveAvatar($user),
+            'email_verified_at' => $user->email_verified_at?->toJson(),
+            'roles' => $this->resolveRoles($user),
+        ];
+    }
+
+    /**
+     * Resolve the avatar URL for the authenticated user.
+     *
+     * The User model's `avatar` accessor queries the `media` table on
+     * the tenant connection (via `UsesTenantConnection`). In test
+     * contexts where the Spatie MediaLibrary migration has not been
+     * published to the per-tenant path, the `media` table does not
+     * exist on the tenant DB and the query throws. The Landlord model
+     * uses the landlord connection, which always has the `media`
+     * table, so its avatar resolves cleanly.
+     *
+     * Defensive approach: probe the schema before triggering the
+     * accessor. If the `media` table is missing on the user's
+     * connection, return null and let the frontend render a default
+     * avatar. This avoids breaking the shared prop on every request
+     * that lands on a tenant whose DB has not been migrated with
+     * MediaLibrary.
+     */
+    private function resolveAvatar(Authenticatable $user): ?string
+    {
+        if (! method_exists($user, 'getFirstMedia')) {
+            return null;
+        }
+
+        $connection = method_exists($user, 'getConnectionName')
+            ? ($user->getConnectionName() ?? config('database.default'))
+            : config('database.default');
+
+        try {
+            if (! Schema::connection($connection)->hasTable('media')) {
+                return null;
+            }
+        } catch (\Throwable) {
+            return null;
+        }
+
+        try {
+            return $user->avatar;
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    /**
+     * Resolve the role names for the authenticated user.
+     *
+     * Only `User` instances have the `HasRoles` trait from Spatie
+     * Permissions. The `Landlord` model does not — landlord roles
+     * are a separate slice (`1.5G.1-landlord-roles`). For non-User
+     * authenticatable instances, the roles array is empty.
+     */
+    private function resolveRoles(Authenticatable $user): array
+    {
+        if (! $user instanceof User) {
+            return [];
+        }
+
+        $connection = method_exists($user, 'getConnectionName')
+            ? ($user->getConnectionName() ?? config('database.default'))
+            : config('database.default');
+
+        try {
+            if (! Schema::connection($connection)->hasTable('roles')) {
+                return [];
+            }
+        } catch (\Throwable) {
+            return [];
+        }
+
+        try {
+            return $user->roles?->pluck('name')->toArray() ?? [];
+        } catch (\Throwable) {
+            return [];
+        }
     }
 }

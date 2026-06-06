@@ -4,7 +4,11 @@ use App\Enums\SubscriptionStatus;
 use App\Models\Plan;
 use App\Models\Subscription;
 use App\Models\Tenant;
+use App\Models\User;
+use Database\Seeders\TenantPermissionsSeeder;
+use Illuminate\Support\Facades\DB;
 use Inertia\Testing\AssertableInertia as Assert;
+use Spatie\Permission\PermissionRegistrar;
 
 /**
  * Tests for the `tenant` shared Inertia prop emitted by
@@ -215,4 +219,103 @@ test('shared tenant prop reports has_premium_zone=false on free plan', function 
     $response->assertInertia(fn (Assert $page) => $page
         ->where('tenant.has_premium_zone', false)
     );
+});
+
+// =====================================================================
+// Requirement 5: `auth.user.roles` shared prop (1.5G.0-tenant-roles)
+// =====================================================================
+
+/**
+ * These two tests pin the contract for the `roles` array on the
+ * `auth.user` shared Inertia prop emitted by HandleInertiaRequests.
+ *
+ * The middleware exposes the current user's Spatie role names so the
+ * frontend can render role-aware UI (e.g. the "Admin" badge in the
+ * user menu — see Task 6 and `resources/js/components/user-menu-content.tsx`).
+ *
+ * Setup mirrors `tests/Feature/Auth/TenantPermissionsTest.php`:
+ *   - point the `tenant` connection at the test physical DB,
+ *   - run the Spatie permission migration,
+ *   - run the idempotent TenantPermissionsSeeder,
+ *   - wrap the body in try/finally so the default connection is
+ *     always restored and the tenant connection is purged, even if
+ *     an assertion fails.
+ */
+test('shared auth prop exposes tenant-admin user roles array', function () {
+    $tenant = Tenant::factory()->createQuietly();
+
+    pointTenantConnectionAtTestDatabase();
+    $previousDefault = setDefaultConnectionToTenant();
+
+    try {
+        runSpatiePermissionMigration();
+        runTenantPermissionsSeeder();
+
+        // The first user on a fresh tenant gets the tenant-admin role
+        // automatically via TenantUsersSeeder. We replicate the effect
+        // here (the seeder runs in production, not in feature tests).
+        $user = User::on('tenant')->create([
+            'name' => 'Admin User',
+            'email' => 'admin-shared-prop@tenant.test',
+            'password' => bcrypt('password'),
+            'email_verified_at' => now(),
+        ]);
+        $user->assignRole('tenant-admin');
+
+        // Flush Spatie's permission cache so the role lookup in
+        // HandleInertiaRequests::resolveRoles() reflects the assignment.
+        app(PermissionRegistrar::class)->forgetCachedPermissions();
+
+        // NOTE: we intentionally do NOT call $tenant->makeCurrent() here.
+        // makeCurrent() re-points the `tenant` connection at the tenant's
+        // own `database` (e.g. tenant_94710), which would override the
+        // test repointing we did in pointTenantConnectionAtTestDatabase().
+        // For the auth-prop contract, the current tenant identity is not
+        // needed — resolveRoles() only needs the Spatie tables and the
+        // user record on the connection the User model is bound to.
+
+        $response = $this->actingAs($user)->get(route('home'));
+
+        $response->assertOk();
+        $response->assertInertia(fn (Assert $page) => $page
+            ->where('auth.user.roles', ['tenant-admin'])
+        );
+    } finally {
+        restoreDefaultConnection($previousDefault);
+        DB::purge('tenant');
+    }
+});
+
+test('shared auth prop exposes empty roles for non-admin user', function () {
+    $tenant = Tenant::factory()->createQuietly();
+
+    pointTenantConnectionAtTestDatabase();
+    $previousDefault = setDefaultConnectionToTenant();
+
+    try {
+        runSpatiePermissionMigration();
+        runTenantPermissionsSeeder();
+
+        $user = User::on('tenant')->create([
+            'name' => 'Regular User',
+            'email' => 'regular-shared-prop@tenant.test',
+            'password' => bcrypt('password'),
+            'email_verified_at' => now(),
+        ]);
+
+        // No role assigned. The shared prop should expose an empty array,
+        // not null, so the frontend can safely call `.includes(...)`.
+        // We do NOT call $tenant->makeCurrent() — see the note in the
+        // admin test about why that would override the test repointing.
+
+        $response = $this->actingAs($user)->get(route('home'));
+
+        $response->assertOk();
+        $response->assertInertia(fn (Assert $page) => $page
+            ->where('auth.user.roles', [])
+        );
+    } finally {
+        restoreDefaultConnection($previousDefault);
+        DB::purge('tenant');
+    }
 });

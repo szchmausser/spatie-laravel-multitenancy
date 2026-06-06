@@ -2009,6 +2009,7 @@ Esta sección documenta **el reset total**: limpia todas las BDs (landlord, tena
 - **Las credenciales de BD del `.env` funcionan.** Verificá con `php artisan tinker --execute 'DB::connection("landlord")->getPdo();'`.
 - **Tenés una terminal con permisos de Administrador** (Windows) o `sudo` (Linux/macOS) lista para los scripts de `hosts`. Sin privilegios elevados, los scripts fallan silenciosamente con `is_writable() == false`.
 - **(Recomendado) Usá una ventana incógnita del navegador** para verificar. Las cookies de sesión viejas apuntan a IDs de sesión que ya no van a existir (la tabla `sessions` se dropea en el reset), y causan loops de redirect al `/login` o errores 419.
+- **(Si la autorización per-tenant 1.5G.0 está habilitada) Verificá que las subclases de Spatie existen.** El paquete y la guard de la migration son obligatorios, pero la subclase `App\Models\Auth\Role` también: si no está apuntada en `config/permission.php`, el `db:seed` pasa y los tests siguen verdes, pero el primer HTTP request real a un tenant falla con "no existe la relación «roles»" (la default de Spatie consulta la landlord DB). Ver §23.2.
 
 ### 18.1 Reset total
 
@@ -2061,8 +2062,21 @@ psql -U postgres -c 'CREATE DATABASE "spatie-laravel-multitenancy-testing";'
 #    jobs, etc.) + la migración manual de la tabla `tenants` que vive en
 #    database/migrations/landlord/ (sección 6 del doc). Sin esta migración
 #    manual, la tabla `tenants` no se recrea y el reset falla en el paso 6.
+#    El `--force` en el segundo migrate evita el prompt de confirmación
+#    ("Are you sure you want to run this command?") en entornos donde
+#    APP_ENV no es `local`.
 php artisan migrate:fresh
-php artisan migrate --path=database/migrations/landlord --database=landlord
+php artisan migrate --path=database/migrations/landlord --database=landlord --force
+
+# 5b. Limpiar cachés de Laravel (config, route, view, application cache)
+#     OBLIGATORIO si tocaste `config/permission.php`, agregaste clases de
+#     modelo, o cualquier otro config. Sin esto, el `db:seed` del paso 6
+#     usaría el config cacheado de la corrida anterior y los seeders
+#     apuntarían a las clases Spatie default (en lugar de las subclases
+#     `App\Models\Auth\Role` / `App\Models\Auth\Permission` de §23.2).
+#     El síntoma típico es que `db:seed` pasa "verde" pero `can('change-plan')`
+#     falla en HTTP real con "no existe la relación «roles»".
+php artisan optimize:clear
 
 # 6. Seed del landlord
 #    Crea en orden:
@@ -2094,6 +2108,14 @@ php artisan migrate --path=database/migrations/landlord --database=landlord
 #
 #    Si las BDs de los tenants no se terminaron de crear (por permisos,
 #    error transitorio, o lo que sea), ver bloque 6b abajo.
+#
+#    Si la autorización per-tenant (1.5G.0) está habilitada, los seeders
+#    `TenantPermissionsSeeder` y `TenantUsersSeeder` también iteran y
+#    siembran las 5 tablas de Spatie Permission + el primer usuario con
+#    el rol `tenant-admin` en CADA tenant DB. Verificar en §18.3 (los
+#    nuevos checks de Spatie) que las 5 tablas y el role+permission
+#    aparezcan en cada tenant. Si el primer user de un tenant no tiene
+#    el rol, ver §23.2 (la subclase `App\Models\Auth\Role` es obligatoria).
 php artisan db:seed
 
 # 6b. (Solo si hace falta) Workaround para BDs de tenants que no se crearon
@@ -2161,10 +2183,81 @@ psql -U postgres -c "SELECT datname FROM pg_database WHERE datname LIKE 'tenant%
 # Esperado: cada BD muestra 1 fila con email `tenantN@tenantN.spatie-laravel-multitenancy.test`.
 # Si alguna BD no tiene fila, el TenantUsersSeeder no corrió (o falló a mitad).
 
+# ¿Existen las 5 tablas de Spatie Permission en cada BD de tenant?
+# (permissions, roles, model_has_permissions, model_has_roles, role_has_permissions)
+# PowerShell:
+1..10 | ForEach-Object { Write-Host "tenant$_"; psql -U postgres -d "tenant$_-spatie-laravel-multitenancy" -c "\dt" | Select-String -Pattern "^\s+(permissions|roles|model_has_permissions|model_has_roles|role_has_permissions)\s+\|" }
+# Esperado: 5 líneas por tenant (10 tenants = 50 filas en total).
+# Si alguna BD no tiene las 5 tablas, la migration de Spatie
+# (`database/migrations/2026_06_06_132424_create_permission_tables.php`)
+# no se corrió contra ese tenant. Verificar la guard al inicio del `up()`:
+# el migration se skippea en conexiones distintas a `tenant`. Si la BD
+# se creó fuera del callback `Tenant::creating` (ej. manualmente con
+# `CREATE DATABASE` y `migrate --database=tenant`), hay que re-correr
+# `php artisan tenants:artisan "migrate --tenants=<id>"`.
+
+# ¿Tiene cada tenant DB el permiso `change-plan` y el rol `tenant-admin` sembrados?
+# (TenantPermissionsSeeder)
+# PowerShell:
+1..10 | ForEach-Object { Write-Host "tenant$_"; psql -U postgres -d "tenant$_-spatie-laravel-multitenancy" -c "SELECT name FROM permissions; SELECT name FROM roles;" }
+# Esperado: cada BD muestra 1 fila de `change-plan` y 1 fila de `tenant-admin`.
+# Si alguna BD no las tiene, `TenantPermissionsSeeder` no iteró sobre ese
+# tenant. Causa típica: en una versión anterior del seeder, el `run()`
+# no iteraba y dependía del estado residual de la conexión `tenant` —
+# sembraba solo el último tenant creado por `TenantsSeeder`. Asegurarse
+# de tener la versión iterativa del seeder (ver §23.3).
+
+# ¿Tiene cada primer usuario el rol `tenant-admin` asignado?
+# (TenantUsersSeeder::assignFirstUserRole)
+# PowerShell:
+1..10 | ForEach-Object { Write-Host "tenant$_"; psql -U postgres -d "tenant$_-spatie-laravel-multitenancy" -c "SELECT u.email, r.name AS role FROM users u JOIN model_has_roles mhr ON mhr.model_id = u.id AND mhr.model_type = 'App\\Models\\User' JOIN roles r ON r.id = mhr.role_id;" }
+# Esperado: cada BD muestra 1 fila con `tenant1@...` (o N correspondiente) y role=`tenant-admin`.
+# Si alguna BD no tiene la fila, `syncRoles` falló. Causa típica: la
+# subclase `App\Models\Auth\Role` no está apuntada en `config/permission.php`
+# — sin ella, `syncRoles` usa la default de Spatie, que conecta a la
+# landlord DB, que no tiene `roles`. Ver §23.2.
+
 # ¿Resuelve el DNS?
 nslookup tenant1.spatie-laravel-multitenancy.test
 # Esperado: 127.0.0.1 (o 127.0.2.2 si tenés WARP activo — ver gotcha abajo)
 ```
+
+### 18.4 Verificación end-to-end compacta (un solo script)
+
+La verificación manual de §18.3 (4 queries SQL por tenant × 10 tenants + DNS lookup) es segura pero lenta. Para dogfoods rápidos y para CI local, este one-liner de Tinker valida todo el ciclo de 1.5G.0 en una sola corrida, incluyendo el `User->can('change-plan')` y `User->hasRole('tenant-admin')` que es la **prueba de fuego** (los seeds pueden estar mal y los queries psql dar verde sin que la autorización funcione en HTTP real):
+
+```bash
+php artisan tinker --execute '
+$ok = 0; $fail = 0;
+foreach (range(1, 10) as $i) {
+    $tenant = \App\Models\Tenant::find($i);
+    $tenant->makeCurrent();
+    try {
+        $email = "tenant{$i}@tenant{$i}.spatie-laravel-multitenancy.test";
+        $user = \App\Models\User::where("email", $email)->first();
+        if (! $user) { echo "  tenant{$i}: USER NOT FOUND\n"; $fail++; continue; }
+        $can = $user->can("change-plan");
+        $has = $user->hasRole("tenant-admin");
+        $perms = $user->getAllPermissions()->count();
+        echo "  tenant{$i}: can={$can}, hasRole={$has}, perms={$perms}\n";
+        $can && $has ? $ok++ : $fail++;
+    } finally {
+        \Illuminate\Support\Facades\DB::purge("tenant");
+    }
+}
+echo "\nOK: {$ok}/10, FAIL: {$fail}/10\n";
+'
+```
+
+**Esperado:** `OK: 10/10, FAIL: 0/10`. Si alguna fila da `FAIL`:
+
+- `can(change-plan)=false` o `hasRole(tenant-admin)=false` → la subclase `App\Models\Auth\Role` no está apuntada en `config/permission.php` (causa #1; ver §23.2). O `TenantPermissionsSeeder` no corrió (causa #2; ver §18.1 paso 6).
+- `USER NOT FOUND` → `TenantUsersSeeder` no corrió o falló a mitad. Correr el seeder de nuevo: `php artisan tenants:artisan "db:seed --class=TenantUsersSeeder"`.
+- `Undefined table: roles` o similar → la migration de Spatie no se corrió contra la BD del tenant. Re-correr: `php artisan tenants:artisan "migrate --tenants={$id}"`.
+
+**Por qué este script es mejor que los queries psql de §18.3 para dogfood:** los queries psql verifican **estado** (las filas existen). Este script verifica **comportamiento** (`can()` y `hasRole()` invocan la chain completa de Spatie — model connection → pivot query → role lookup → permission check). Si el `User` model está en una conexión pero el `Role` model en otra (el bug que motivó las subclases de §23.2), los queries psql darían verde pero `can()` fallaría. Por eso este es el verdadero canary.
+
+**Complemento con queries psql (verificación de estado, no de comportamiento).** Si el script de arriba pasa, las queries de §18.3 son opcionales — pero son útiles para documentar evidencia en un PR.
 
 > **Gotcha de DNS — Cloudflare WARP:** Si tenés WARP activo, la resolución de DNS pasa por un resolver local en `127.0.2.2` con su propio caché independiente del sistema. `ipconfig /flushdns` no lo toca. Si un subdominio recién agregado no resuelve, esperá ~30 segundos (caché TTL de WARP) o deshabilitá WARP temporalmente.
 
@@ -4693,5 +4786,345 @@ Este marcador es el contrato entre 1.5F y 2: cuando se introduzca el gateway, el
 | `custom-branding` | premium | ❌ huérfana |
 
 Las 4 huérfanas se conservan **a propósito**: sirven como roadmap de qué tipo de features se pueden agregar al modelo `Plan` sin cambiar el schema (la columna `features` es JSONB, agregar una nueva feature es solo tocar el seeder + el código que la gatea). Si se borran del seeder, hay que recordar el shape completo cuando se implemente el endpoint correspondiente — tenerlas visibles en el código evita esa amnesia. El test suite verifica `hasFeature()` para cada una (vía factories con `features` arbitrarios), así que no se degradan en silencio.
+
+---
+
+## 23. Autorización per-tenant con Spatie Permission (1.5G.0-tenant-roles)
+
+**Slice shipped.** Esta sección documenta la primera oleada de autorización: el modelo de roles y permisos de los **usuarios de tenant** (no de los Landlord — eso es `1.5G.1-landlord-roles`, una slice posterior). El cambio habilita la regla "solo el admin del tenant puede cambiar de plan" que consume `1.5G-buy-plan`.
+
+### 23.1 Modelo de aislamiento
+
+**Cada tenant tiene su propia copia de las 5 tablas de Spatie Permission** en su base de datos física:
+
+| Tabla | Propósito |
+|---|---|
+| `permissions` | Catálogo de permisos disponibles en el tenant |
+| `roles` | Roles disponibles en el tenant |
+| `model_has_permissions` | Permisos directos sobre modelos (no usado en 1.5G.0) |
+| `model_has_roles` | Asignación de roles a usuarios del tenant |
+| `role_has_permissions` | Permisos que cada rol otorga |
+
+**Aislamiento físico, no lógico.** El paquete Spatie Multitenancy se encarga de apuntar la conexión `tenant` a la base de datos física del tenant activo (ver `SwitchTenantDatabaseTask` y §3). Cada tenant DB tiene sus propias 5 tablas. No hay row-level filtering ni flag de tenant en las tablas — el aislamiento viene de la conexión, igual que el resto de los datos del tenant.
+
+**No se usa `teams` mode de Spatie.** El modo `teams` de `spatie/laravel-permission` agrega una columna `team_id` a las 5 tablas para compartir un schema entre "equipos" dentro de un mismo dominio. En este proyecto NO se usa: la conexión física ya provee el aislamiento, y agregar `team_id` sería un overhead sin beneficio (sería siempre 1, el tenant actual). `config('permission.teams')` queda en `false`.
+
+**Landlord no tiene estas tablas.** La base de datos landlord solo contiene las tablas propias del SaaS admin (`tenants`, `plans`, `subscriptions`, `resources`, `entitlements`, más las default de Laravel). Las 5 tablas de Spatie viven exclusivamente en las BDs de los tenants. La autorización del landlord (Landlord model) es una slice aparte (`1.5G.1-landlord-roles`).
+
+### 23.2 Instalación y propagación
+
+**Publicación de assets** (Task 1):
+
+```bash
+composer require spatie/laravel-permission
+php artisan vendor:publish --provider="Spatie\\Permission\\PermissionServiceProvider"
+```
+
+Las migraciones se publican a `database/migrations/` (raíz, NO `database/migrations/landlord/`) para que el callback `Tenant::creating` las recoja automáticamente al provisionar cada nueva BD de tenant (ver `app/Models/Tenant.php` y §3). El config `config/permission.php` se publica tal cual, sin ediciones — los defaults de Spatie son los del proyecto, **salvo las clases de modelo (ver abajo)**.
+
+**Guard de la migration de Spatie.** El archivo `database/migrations/2026_06_06_132424_create_permission_tables.php` (publicado por el comando de arriba) tiene al inicio de su `up()`:
+
+```php
+if (DB::connection()->getName() !== 'tenant') {
+    return;
+}
+```
+
+Esto es intencional: las 5 tablas de Spatie viven SOLO en las BDs de los tenants, no en la BD del landlord. Cuando `migrate:fresh` corre en la conexión default (landlord), la migration se skippea y las tablas no se crean en el landlord. Cuando el callback `Tenant::creating → runMigrations()` corre `migrate --database=tenant` contra la BD de un tenant, la guard pasa y las 5 tablas se crean en ese tenant. **Resultado: la landlord DB no tiene `roles` ni `permissions`, y eso es correcto** — la autorización del landlord es una slice aparte (`1.5G.1-landlord-roles`).
+
+**Subclases de Role y Permission bound a la conexión `tenant`.** La consecuencia no obvia de la guard de arriba es que los modelos default de Spatie (`Spatie\Permission\Models\Role` y `Spatie\Permission\Models\Permission`) no funcionan out-of-the-box en este proyecto: usan la conexión default (landlord), y la landlord no tiene las tablas. Por eso el proyecto define dos subclases locales en `app/Models/Auth/`:
+
+- `app/Models/Auth/Role.php` — extiende `Spatie\Permission\Models\Role` con `protected $connection = 'tenant';`
+- `app/Models/Auth/Permission.php` — extiende `Spatie\Permission\Models\Permission` con `protected $connection = 'tenant';`
+
+Y `config/permission.php` apunta los modelos a esas subclases:
+
+```php
+'models' => [
+    'permission' => \App\Models\Auth\Permission::class,
+    'role' => \App\Models\Auth\Role::class,
+    // ...
+],
+```
+
+Con esto, `Role::findOrCreate(...)`, `Permission::findOrCreate(...)`, `$user->roles` y `$user->can(...)` aterrizan en la conexión `tenant` (que el middleware de Spatie Multitenancy apunta a la BD del tenant activo en cada request). Si esta subclase no existiera, los seeders podrían crear roles en la BD equivocada y `$user->can('change-plan')` fallaría en runtime con "no existe la relación «roles»" en el landlord. **Las subclases son obligatorias, no opcionales** — el primer síntoma de no tenerlas es un test verde con un HTTP 500 en producción.
+
+**Propagación a tenants existentes.** El comando de Spatie Multitenancy `tenants:artisan migrate` corre `php artisan migrate` para el tenant actual. Las migraciones del root path se aplican a la BD del tenant, creando las 5 tablas. Para tenants nuevos, el callback `creating → runMigrations()` hace esto automáticamente sin intervención manual. Tests en `tests/Feature/Auth/TenantPermissionsTest.php` (Requirement 7) pin este contrato.
+
+**Schema relevante del User model** (`app/Models/User.php`):
+
+```php
+use Spatie\Multitenancy\Models\Concerns\UsesTenantConnection;
+use Spatie\Permission\Traits\HasRoles;
+
+class User extends Authenticatable implements HasMedia
+{
+    use HasFactory, HasRoles, InteractsWithMedia, Notifiable, UsesTenantConnection;
+    // ...
+}
+```
+
+El trait `UsesTenantConnection` apunta la conexión del User a la BD del tenant activo. El trait `HasRoles` de Spatie provee los métodos `assignRole`, `removeRole`, `hasRole`, `can`, `roles`, etc., todos consultando a través de la conexión del modelo (que es `tenant`). Los modelos `Role` y `Permission` que se cargan a través de esas relaciones son las subclases `App\Models\Auth\Role` / `App\Models\Auth\Permission` configuradas arriba, así que también consultan en `tenant`.
+
+### 23.3 Seed: `tenant-admin` + `change-plan`
+
+**Patrón iterativo (importante).** Ambos seeders — `TenantPermissionsSeeder` y `TenantUsersSeeder` — iteran sobre la tabla `tenants` del landlord. **No** asumen un único contexto de tenant. La razón es que ambos se invocan desde `DatabaseSeeder`, que corre en contexto landlord; el callback `creating` de Tenant deja la conexión `tenant` apuntando al último tenant creado, así que el primer seeder "afortunado" podría sembrar el último tenant y perder los otros 9. La iteración explícita elimina esa dependencia del estado.
+
+**Seeder de permisos** (`database/seeders/TenantPermissionsSeeder.php`):
+
+```php
+public function run(): void
+{
+    foreach (Tenant::query()->orderBy('id')->get() as $tenant) {
+        $this->pointTenantConnectionAt($tenant->database);
+
+        try {
+            // Flush the Spatie permission cache so a previous run
+            // (or test) can't mask missing rows.
+            app(PermissionRegistrar::class)->forgetCachedPermissions();
+
+            $permissions = $this->ensurePermissionsExist();
+            $this->ensureRolesWithPermissionsExist($permissions);
+        } finally {
+            $this->forgetTenantConnection();
+        }
+    }
+}
+
+private function pointTenantConnectionAt(string $database): void
+{
+    config(['database.connections.tenant.database' => $database]);
+    DB::purge('tenant');
+}
+
+private function ensurePermissionsExist(): array
+{
+    $resolved = [];
+    foreach (self::PERMISSIONS as $name) {
+        $resolved[$name] = Permission::findOrCreate($name, 'web');
+    }
+    return $resolved;
+}
+
+private function ensureRolesWithPermissionsExist(array $permissions): void
+{
+    foreach (self::ROLES_WITH_PERMISSIONS as $roleName => $permissionNames) {
+        $role = Role::findOrCreate($roleName, 'web');
+        $role->syncPermissions(array_map(
+            fn (string $name): Permission => $permissions[$name],
+            $permissionNames,
+        ));
+    }
+}
+```
+
+**Valores seedados (en cada tenant DB):**
+
+| Nombre | Tipo | Guard | Notas |
+|---|---|---|---|
+| `change-plan` | Permission | `web` | Permite al usuario cambiar el plan de su tenant |
+| `tenant-admin` | Role | `web` | Rol con permiso `change-plan` |
+
+**Idempotencia.** `findOrCreate` (no `create`) garantiza que correr el seeder dos veces no produce duplicados. `forgetCachedPermissions()` se llama antes de sembrar cada tenant para que los chequeos post-seed reflejen el estado actual de la DB. El flush por iteración (no solo al inicio) blinda contra cache pollution entre tenants — si una corrida previa dejó `tenant-admin` en cache para la BD equivocada, el flush por-iteración lo purga.
+
+**Subclases de Role/Permission bound a `tenant`.** El seeder importa `App\Models\Auth\Permission` y `App\Models\Auth\Role` (no las default de Spatie). Por eso no hace falta un `DB::setDefaultConnection('tenant')` extra: los modelos resuelven su conexión vía `$connection = 'tenant'`, y como `pointTenantConnectionAt()` ya apuntó la conexión a la BD del tenant actual, el query aterriza en la tabla correcta. Sin las subclases, el query aterrizaría en la landlord DB (que no tiene la tabla, ver §23.2) y explotaría con "no existe la relación «roles»".
+
+**Wiring del DatabaseSeeder** (`database/seeders/DatabaseSeeder.php`):
+
+```php
+public function run(): void
+{
+    $this->call([
+        LandlordUserSeeder::class,
+        PlansSeeder::class,
+        TenantsSeeder::class,
+        TenantPermissionsSeeder::class,  // ANTES de TenantUsersSeeder
+        TenantUsersSeeder::class,
+    ]);
+}
+```
+
+El orden importa: `TenantPermissionsSeeder` debe correr **antes** de `TenantUsersSeeder` porque este último asigna el rol `tenant-admin` al primer usuario, y ese rol debe existir. Además, `TenantsSeeder` debe correr **antes** de los dos seeders per-tenant, porque ambos iteran sobre la tabla `tenants` del landlord — si `TenantsSeeder` no corrió, los `foreach` encuentran 0 tenants y no se siembra nada.
+
+**Convención "first user gets tenant-admin"** (`database/seeders/TenantUsersSeeder.php`):
+
+```php
+public function run(): void
+{
+    foreach (Tenant::query()->orderBy('id')->get() as $tenant) {
+        $subdomain = "tenant{$tenant->id}";
+
+        $this->pointTenantConnectionAt($tenant->database);
+
+        try {
+            $user = User::on('tenant')->updateOrCreate(
+                ['email' => "{$subdomain}@{$tenant->domain}"],
+                [
+                    'name' => ucfirst($subdomain),
+                    'password' => Hash::make('password'),
+                    'email_verified_at' => now(),
+                ],
+            );
+
+            $this->assignFirstUserRole($user);
+        } finally {
+            $this->forgetTenantConnection();
+        }
+    }
+}
+
+protected function assignFirstUserRole(User $user): void
+{
+    $user->syncRoles(['tenant-admin']);
+}
+
+protected function pointTenantConnectionAt(string $database): void
+{
+    config(['database.connections.tenant.database' => $database]);
+    DB::purge('tenant');
+}
+```
+
+**Cómo se cumple la garantía "first user gets the role, subsequent users do not"**: el `TenantUsersSeeder` actual crea **un solo usuario por tenant** (uno por iteración del `foreach`). No hay un guard explícito `if ($isFirstUser)` — la garantía es implícita en la estructura del seeder. `syncRoles` es idempotente: re-seedear reemplaza el set de roles con el mismo set, no produce duplicados. El rol `tenant-admin` ya existe en la BD del tenant (creado por `TenantPermissionsSeeder` en la iteración anterior), así que `syncRoles` solo actualiza la pivot `model_has_roles`.
+
+**Para usuarios subsecuentes** (futura slice de admin de tenant), la asignación de roles NO ocurrirá automáticamente — la hará explícitamente el tenant-admin desde la UI de gestión de usuarios (slice futura, fuera del scope de 1.5G.0).
+
+### 23.4 Regla de autorización: `$user->can('change-plan')`
+
+**Único patrón válido.** El código que gatea acciones administrativas en el tenant debe usar exclusivamente:
+
+```php
+@if ($user->can('change-plan'))
+    {{-- Mostrar el botón "Change plan" --}}
+@endif
+
+// O en controllers/policies:
+if ($user->can('change-plan')) {
+    // ejecutar acción
+}
+```
+
+**Anti-patrón prohibido:** comparar strings de role names:
+
+```php
+// ❌ MAL — rompe la autorización
+if ($user->hasRole('tenant-admin')) { ... }
+
+// ✅ BIEN — autoriza a través del permiso
+if ($user->can('change-plan')) { ... }
+```
+
+La razón: el role `tenant-admin` podría en el futuro tener otros permisos (`manage-users`, `view-billing`, etc.), o `change-plan` podría asignarse a otro rol. La autorización debe preguntar por el permiso que la acción requiere, no por la pertenencia a un rol específico. Un test en `tests/Feature/Auth/TenantPermissionsTest.php` (Requirement 4) pin este contrato: revocar `change-plan` del role `tenant-admin` hace que `$user->can('change-plan')` devuelva `false`, aunque el role siga asignado.
+
+### 23.5 Exposición al frontend
+
+**Shared prop** (`app/Http/Middleware/HandleInertiaRequests.php`):
+
+El middleware `HandleInertiaRequests` expone los roles del usuario en la shared prop `auth.user.roles` (array de strings). El helper `resolveRoles()` consulta a través de la conexión del User (tenant), con guards defensivos por si la conexión no tiene las tablas Spatie todavía (en tests que no las crean):
+
+```php
+private function resolveRoles(Authenticatable $user): array
+{
+    if (! $user instanceof User) {
+        return [];
+    }
+    // ... checks si la tabla roles existe en la conexión del user ...
+    return $user->roles?->pluck('name')->toArray() ?? [];
+}
+```
+
+**Tipo TypeScript** (`resources/js/types/auth.ts`):
+
+```ts
+export type User = {
+    id: number;
+    name: string;
+    email: string;
+    avatar?: string;
+    email_verified_at: string | null;
+    created_at: string;
+    updated_at: string;
+    roles: string[];  // ← 1.5G.0: agregado
+    [key: string]: unknown;
+};
+```
+
+**Consumo en el frontend** (`resources/js/components/user-menu-content.tsx`):
+
+El badge "Admin" en el menú de usuario se renderiza condicionalmente cuando `user.roles.includes('tenant-admin')` es `true`. Usa el selector estable `data-testid="user-role-badge"` para los browser tests:
+
+```tsx
+{user.roles?.includes('tenant-admin') && (
+    <span data-testid="user-role-badge" className="...">Admin</span>
+)}
+```
+
+### 23.6 Precondición para `1.5G-buy-plan`
+
+Esta slice es **precondición** del change `1.5G-buy-plan`. La regla de negocio "solo el admin del tenant puede cambiar de plan" se implementa con `$user->can('change-plan')`, que requiere:
+
+- El permiso `change-plan` sembrado en cada tenant DB (`TenantPermissionsSeeder`).
+- El rol `tenant-admin` con ese permiso (`TenantPermissionsSeeder`).
+- El primer usuario del tenant con ese rol (`TenantUsersSeeder`).
+- El trait `HasRoles` en el User model para que `can()` consulte Spatie.
+- La shared prop `auth.user.roles` para que el frontend pueda decidir qué UI mostrar.
+
+`1.5G-buy-plan` no necesita tocar la capa de autorización — solo consume la regla `$user->can('change-plan')` ya implementada. Si esta slice no existiera, `1.5G-buy-plan` tendría que implementar autorización desde cero (más superficie, más tests, más riesgo).
+
+### 23.7 Rollback plan
+
+Si la slice resulta no deseada o problemática, el rollback es:
+
+```bash
+# 1. Quitar el paquete
+composer remove spatie/laravel-permission
+
+# 2. Quitar el seeder del wiring
+# Editar database/seeders/DatabaseSeeder.php: remover TenantPermissionsSeeder::class
+rm database/seeders/TenantPermissionsSeeder.php
+
+# 3. Quitar el syncRoles de TenantUsersSeeder
+# Editar database/seeders/TenantUsersSeeder.php: remover $user->syncRoles(['tenant-admin'])
+
+# 4. Quitar el trait HasRoles del User
+# Editar app/Models/User.php: remover `use HasRoles;` y el trait
+
+# 5. (Opcional) Quitar el badge del user menu
+# Editar resources/js/components/user-menu-content.tsx: remover el <span data-testid="user-role-badge">
+```
+
+**Tablas en BDs tenant.** Las 5 tablas de Spatie quedarían en las BDs de los tenants existentes (composer remove no las dropea). Opciones:
+
+- **Aceptar el residuo.** Las tablas vacías no afectan nada si el código no las usa. Es la opción más segura.
+- **Migración manual.** Crear una migración `down_*_drop_permission_tables.php` que las dropee, y correrla con `tenants:artisan migrate` por cada tenant. Solo recomendado si el costo de mantener tablas vacías es inaceptable.
+
+**Tests.** Los tests en `tests/Feature/Auth/TenantPermissionsTest.php` (Requirements 1-4) y `tests/Feature/SharedInertiaTenantPropTest.php` (Requirement 5) y `tests/Browser/Tenant/UserMenuBadgeTest.php` (Requirement 6) deben borrarse junto con el código de producción. Los tests del middleware Inertia (no tocados en esta slice) y los tests de Resources (no tocados) no se ven afectados.
+
+### 23.8 OpenSpec change artifacts
+
+- **Proposal:** `openspec/changes/1.5G.0-tenant-roles/proposal.md`
+- **Spec:** `openspec/changes/1.5G.0-tenant-roles/spec.md`
+- **Design:** `openspec/changes/1.5G.0-tenant-roles/design.md`
+- **Tasks:** `openspec/changes/1.5G.0-tenant-roles/tasks.md`
+
+### 23.9 Archivos clave
+
+| Archivo | Rol en 1.5G.0 |
+|---|---|
+| `composer.json` | Agrega `spatie/laravel-permission` |
+| `config/permission.php` | Config de Spatie (sin ediciones) |
+| `database/migrations/*_create_permission_tables.php` | 5 migraciones publicadas al root path |
+| `database/seeders/TenantPermissionsSeeder.php` | NEW: idem-potente seed de `change-plan` + `tenant-admin` |
+| `database/seeders/DatabaseSeeder.php` | Modificado: llama `TenantPermissionsSeeder` antes de `TenantUsersSeeder` |
+| `database/seeders/TenantUsersSeeder.php` | Modificado: `syncRoles(['tenant-admin'])` al primer usuario del tenant |
+| `app/Models/User.php` | Modificado: agrega trait `HasRoles` |
+| `app/Http/Middleware/HandleInertiaRequests.php` | Modificado: expone `auth.user.roles` via `resolveRoles()` |
+| `resources/js/types/auth.ts` | Modificado: agrega `roles: string[]` al `User` type |
+| `resources/js/components/user-menu-content.tsx` | Modificado: badge "Admin" condicional |
+| `resources/js/components/app-header.tsx` | Modificado: `data-testid="user-menu-trigger"` |
+| `resources/js/components/nav-user.tsx` | Modificado: `data-testid="user-menu-trigger"` |
+| `tests/Feature/Auth/TenantPermissionsTest.php` | NEW: 16 tests (Requirements 1-4, 7) |
+| `tests/Feature/SharedInertiaTenantPropTest.php` | Modificado: 2 tests nuevos (Requirement 5) |
+| `tests/Browser/Tenant/UserMenuBadgeTest.php` | NEW: 2 browser tests (Requirement 6) |
 
 
