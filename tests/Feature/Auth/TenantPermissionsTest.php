@@ -1,8 +1,13 @@
 <?php
 
+use App\Enums\SubscriptionStatus;
+use App\Models\Plan;
+use App\Models\Subscription;
 use App\Models\Tenant;
 use App\Models\User;
+use App\Services\Billing\ChangePlanService;
 use Database\Seeders\TenantPermissionsSeeder;
+use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -463,6 +468,126 @@ test('revoked permission returns false even with role', function () {
         restoreDefaultConnection($previousDefault);
         DB::purge('tenant');
     }
+});
+
+// =====================================================================
+// Requirement 8: Downgrade blocks premium read paths via the existing
+// `feature:premium-zone` middleware (no entitlement mutation needed).
+//
+// Pinned contract (openSpec change 1.5G-buy-plan, Task 6.1):
+//   - `ChangePlanService::applyPlanChange()` does NOT touch any
+//     `Entitlement` row. The change is `subscription.plan_id` only.
+//   - When a tenant downgrades from `premium` (which carries the
+//     `premium-zone` feature) to a plan that does NOT carry it, the
+//     existing read-path gate (`feature:premium-zone` middleware on
+//     `premium.analytics`) must start returning 403.
+//   - This proves the existing read-path feature gate is the single
+//     source of truth for "is this feature on?" — no new code in
+//     `Entitlement`, `ResourceController`, or `EnsureTenantHasFeature`
+//     is required for the downgrade case to work.
+// =====================================================================
+
+test('after premium to free plan change, premium-content feature gate returns 403', function () {
+    $tenant = Tenant::factory()->createQuietly();
+
+    $premiumPlan = Plan::factory()->create([
+        'name' => 'Premium',
+        'slug' => 'premium',
+        'is_active' => true,
+        'features' => ['premium-zone' => true, 'premium-content' => true],
+    ]);
+    $freePlan = Plan::factory()->create([
+        'name' => 'Free',
+        'slug' => 'free',
+        'is_active' => true,
+        'features' => ['premium-zone' => false, 'premium-content' => false],
+    ]);
+
+    $subscription = Subscription::factory()->create([
+        'tenant_id' => $tenant->id,
+        'plan_id' => $premiumPlan->id,
+        'status' => SubscriptionStatus::Active,
+    ]);
+
+    $user = new class($tenant->id * 1000 + 7) implements Authenticatable
+    {
+        public function __construct(public int $id) {}
+
+        public function getAuthIdentifierName(): string
+        {
+            return 'id';
+        }
+
+        public function getAuthIdentifier(): mixed
+        {
+            return $this->id;
+        }
+
+        public function getAuthPasswordName(): string
+        {
+            return 'password';
+        }
+
+        public function getAuthPassword(): string
+        {
+            return 'secret';
+        }
+
+        public function getRememberToken(): string
+        {
+            return '';
+        }
+
+        public function setRememberToken($value): void
+        {
+            // no-op
+        }
+
+        public function getRememberTokenName(): string
+        {
+            return '';
+        }
+
+        public function getKey(): int
+        {
+            return $this->id;
+        }
+    };
+
+    $tenant->makeCurrent();
+
+    // Sanity: while on premium, the premium-zone middleware lets
+    // the request through (200).
+    $this->actingAs($user)
+        ->get(route('premium.analytics'))
+        ->assertOk();
+
+    // Downgrade via the shared service (the same code path the
+    // billing controller calls). No entitlement mutation.
+    app(ChangePlanService::class)
+        ->applyPlanChange($subscription, $freePlan);
+
+    // Forget the Spatie permission cache and the tenant's cached
+    // subscription/plan relations so the next request re-reads
+    // from the DB.
+    app(PermissionRegistrar::class)->forgetCachedPermissions();
+    $tenant->forgetCurrent();
+    $tenant->refresh();
+
+    $tenant->makeCurrent();
+
+    // After the downgrade, the same route must return 403.
+    // The `feature:premium-zone` middleware reads the new plan's
+    // features and aborts.
+    $this->actingAs($user)
+        ->get(route('premium.analytics'))
+        ->assertForbidden();
+
+    $subscription->refresh();
+    expect($subscription->plan_id)->toBe($freePlan->id);
+    expect($subscription->plan->hasFeature('premium-zone'))->toBeFalse();
+
+    DB::purge('tenant');
 });
 
 // =====================================================================

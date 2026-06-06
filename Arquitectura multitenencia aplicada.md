@@ -5127,4 +5127,194 @@ rm database/seeders/TenantPermissionsSeeder.php
 | `tests/Feature/SharedInertiaTenantPropTest.php` | Modificado: 2 tests nuevos (Requirement 5) |
 | `tests/Browser/Tenant/UserMenuBadgeTest.php` | NEW: 2 browser tests (Requirement 6) |
 
+---
+
+## 24. Self-service plan change (1.5G-buy-plan)
+
+**Slice shipped.** Esta sección documenta la primera capability de autoservicio del producto: el tenant-admin puede cambiar el plan de su tenant desde la UI sin intervención del landlord. La slice es el primer consumidor de la regla `change-plan` que introdujo `1.5G.0-tenant-roles` (ver §23): la autorización per-tenant ya estaba en su lugar, faltaba la UI y la mutación.
+
+### 24.1 Arquitectura de doble controlador + servicio compartido
+
+El cambio de plan tiene **dos superficies de escritura** que comparten **una sola mutación**:
+
+```
+                  ┌──────────────────────────┐
+   Tenant admin   │ Billing\ChangePlan       │   Gate::allows('change-plan')
+   ─────────────► │ Controller               │   (per-tenant Spatie permission)
+                  │ (tenant + auth + verified)│
+                  └────────────┬─────────────┘
+                               │
+                               ▼
+                  ┌──────────────────────────┐
+   Landlord       │ Landlord\ChangePlan      │   EnsureUserIsAdmin
+   ─────────────► │ Controller               │   (landlord middleware)
+                  └────────────┬─────────────┘
+                               │
+                               └──────────────┐
+                                              ▼
+                                ┌──────────────────────────┐
+                                │ ChangePlanService        │
+                                │ ::applyPlanChange(       │
+                                │   Subscription, Plan)    │
+                                │                          │
+                                │ - DB::transaction        │
+                                │ - lockForUpdate()        │
+                                │ - abort_if same plan     │
+                                │   (422)                  │
+                                │ - update plan_id +       │
+                                │   ends_at = now()+1month │
+                                └──────────────────────────┘
+```
+
+**Por qué un servicio compartido y no duplicar la mutación en cada controller:**
+
+1. **Una sola fuente de verdad para la invariante de concurrencia.** El `lockForUpdate()` + `abort_if same plan` evita el race condition donde dos POSTs concurrentes del mismo admin leen el mismo `plan_id`, ambos pasan la validación de "no es el plan actual", y ambos terminan escribiendo. Sin lock, el último escribe silenciosamente. Con el servicio compartido, el lock vive en un solo lugar y se testea aislado (`ChangePlanServiceTest`).
+2. **Una sola fuente de verdad para el side-effect de `ends_at`.** El reset a `now()->addMonth()` es invariante de producto (regla de negocio): cuando cambiás de plan, la fecha de renovación se corre. Si esto viviera en cada controller, un developer que agregue una tercera superficie (por ejemplo, un comando artisan) podría olvidarse del reset.
+3. **Controllers thin:** cada uno hace auth + resolución de la subscription + delegación. Esto los hace fáciles de leer, fáciles de testear, y simétricos: ambos tienen `show` o `update` que llaman al servicio con los mismos dos argumentos.
+
+**Resolución de la subscription, divergente por superficie:**
+
+- **Tenant:** usa `Tenant::current()->subscription` (conexión tenant, query del modelo que ya entiende el contexto del tenant actual).
+- **Landlord:** recibe el `{tenant}` por route binding, llama `$tenant->subscription` desde el contexto landlord (no hay `Tenant::current()` en landlord — el landlord nunca entra en contexto tenant).
+
+Esto es deliberado: el landlord puede cambiar el plan de cualquier tenant sin tener que "entrar" al tenant primero. La resolución correcta es por la row de `tenants` (landlord DB), no por la sesión actual.
+
+### 24.2 El guard de "same plan" — 422 en lugar de 200 idempotente
+
+**Decisión:** si el admin hace POST con el `plan_id` que ya está activo, el servicio responde **422 "You are already on this plan"** en lugar de un 200 idempotente.
+
+**Por qué no idempotente (lo que hizo Stripe, por ejemplo):**
+
+- El dialog es una confirmación humana. Si el admin llega al "Confirm" y la API responde 200 con "no-op", el admin no recibe señal de que no pasó nada. 422 con un mensaje claro le dice "ya estás en este plan, no hay nada que cambiar".
+- Previene clicks accidentales que en una Fase 2 (con payment gateway) podrían disparar un cobro doble silencioso.
+- Es una invariante de producto explícita: "cambiar de plan" implica "a un plan distinto". Si querés "mantenerte en el plan actual", la acción correcta es cerrar el dialog.
+
+El guard se ejecuta **dentro de la transacción, después del lock** — no antes. Esto evita el race condition donde dos POSTs concurrentes validan contra el valor pre-lock y ambos pasan. El segundo POST, al hacer `lockForUpdate()`, espera a que el primero commitee, re-lee `plan_id`, y ahí sí aborta con 422.
+
+### 24.3 Decisión: NO mutar `Entitlement` en downgrade
+
+**Esta es la decisión arquitectónica más importante de la slice.** El `ChangePlanService` actualiza `subscriptions.plan_id` y `ends_at` — **no toca ninguna fila de `entitlements`**.
+
+**Por qué:**
+
+Los `Entitlement` rows representan compras individuales del catálogo de recursos (Phase 1.5F, ver §22.1). Hay tres vías de grant:
+
+- `Purchase` (compra directa del recurso)
+- `Plan` (incluido en el plan, vía feature flag del plan)
+- `Admin` (asignación manual del landlord)
+
+Cuando un tenant hace downgrade de `premium` a `free`:
+
+- Los `Entitlement` con `granted_via = Purchase` **deben persistir**: el admin pagó por ese recurso, no se le puede revocar el acceso porque cambió de plan general.
+- Los `Entitlement` con `granted_via = Plan` se vuelven redundantes (el plan nuevo no incluye el feature), pero **borrarlos sería destructivo**: si el tenant vuelve a upgradear, perdería el histórico. Y la verdad sobre "tenés acceso" no la tiene la tabla `entitlements` por sí sola — la tiene el `Plan.features` actual + los `Entitlement` rows.
+- Los `Entitlement` con `granted_via = Admin` son asignaciones manuales del landlord y no deben mutar automáticamente.
+
+**La solución: el read-path es la fuente de verdad.** El middleware `feature:premium-zone` (en `premium.analytics`) y `ResourceController::userCanAccess()` (en cada recurso premium) ya hacen:
+
+```php
+$tenant->hasFeature('premium-zone')  // lee Plan.features actual
+    || $user->hasExplicitEntitlement($resource)  // o tiene entitlement
+```
+
+Cuando el plan cambia, `Plan.features` cambia. El read-path re-evalúa con el plan nuevo **automáticamente** — sin que la tabla `entitlements` se entere. Si el feature ya no está en el plan, el middleware aborta con 403. Si el user tiene un `Entitlement` con `granted_via = Purchase` para ese recurso, sigue teniendo acceso (porque la regla 3 de `userCanAccess` lo autoriza).
+
+**El test que pinea este contrato es 6.1** (`after_premium_to_free_plan_change__premium_content_feature_gate_returns_403`): tenant en premium hace GET a `/premium/analytics` → 200; baja a free; hace GET al mismo path → 403. Si alguien futuro agrega código que mute entitlements en el `ChangePlanService`, este test empieza a fallar (porque la lógica del read-path asume entitlements inmutables).
+
+**Trade-off aceptado:** un free tier con un `Entitlement` con `granted_via = Plan` para un recurso premium puede ver ese recurso individualmente (regla 3 de `userCanAccess`), aunque ya no tenga acceso al "premium zone" en general. Es la semántica correcta: el admin otorgó ese acceso, persiste. Borrarlo automáticamente sería una sorpresa peor.
+
+### 24.4 Rutas y contratos
+
+| Ruta | Verbo | Controller | Auth | Propósito |
+|---|---|---|---|---|
+| `billing/change-plan` | GET | `Billing\ChangePlanController@show` | `tenant + auth + verified` + `can('change-plan')` | Render Inertia page con planes disponibles + plan actual |
+| `billing/change-plan` | POST | `Billing\ChangePlanController@update` | mismo | Ejecuta el cambio, redirige a `show` con flash de éxito |
+| `admin/tenants/{tenant}/subscription/change` | POST | `Landlord\ChangePlanController@update` | `auth + verified + EnsureUserIsAdmin` | Backdoor del landlord, mismo servicio |
+
+**Por qué el permiso se chequea en el controller, no como middleware de ruta:** `Gate::allows('change-plan')` requiere que el modelo `User` con trait `HasRoles` esté disponible y que el cache de permisos de Spatie (`PermissionRegistrar`) haya resuelto. Eso es exactamente lo que el `Gate::define` callback ya hace (ver §23.4). Hacer un middleware separado para esto duplica la lógica del Gate y abre la puerta a divergencia (middleware resuelve contra `auth()->user()`, Gate contra `$request->user()` — el primero no siempre es Spatie-aware). El patrón "gate check como primera línea del método" es la convención del proyecto.
+
+**Por qué `Plan` no es route binding en el POST:** la URL del POST es `POST /billing/change-plan` (no `/billing/change-plan/{plan}`) porque la intención es "cambiar" y el destino viene en el body (`plan_id`). Esto permite que el mismo endpoint reciba cualquier plan futuro sin que cambie la URL. Es la convención de REST para acciones que no son idempotentes por URL.
+
+### 24.5 UI: la página de cambio de plan
+
+`resources/js/pages/billing/change-plan.tsx` es la Inertia page que:
+
+1. Recibe `plans: Plan[]` y `currentPlan: Plan | null` del controller.
+2. Filtra `plans` por `id !== currentPlan.id` (defensivo: el server ya filtra, pero el client verifica por si la prop drift).
+3. Renderiza un card por plan disponible con un botón "Change to {plan.name}" que abre el `<ChangePlanDialog>`.
+4. El dialog (que vive en `resources/js/components/billing/change-plan-dialog.tsx`) usa `useForm({ plan_id: 0 })` + `setData('plan_id', plan.id)` antes de `post(update().url, { preserveScroll: true })`. El POST devuelve redirect a `show`, Inertia re-renderiza con el `currentPlan` nuevo, el badge "Current: {plan}" se actualiza.
+
+**Frozen `data-testid`s** para los tests (browser-testing §3.5 — top priority):
+- `change-plan-dialog-{slug}` — el dialog container
+- `change-plan-confirm-btn-{slug}` — el botón Confirm
+- `change-plan-cancel-btn-{slug}` — el botón Cancel
+- `change-plan-trigger-btn-{slug}` — el botón "Change to {plan}" en el card
+- `change-plan-card-{slug}` — el card de cada plan disponible
+- `current-plan-card-{slug}` — el card del plan actual
+
+### 24.6 Rollback plan
+
+Si la slice resulta no deseada:
+
+```bash
+# 1. Quitar las rutas
+# Editar routes/web.php: remover el grupo prefix('billing')
+# Editar routes/landlord.php: remover POST /admin/tenants/{tenant}/subscription/change
+
+# 2. Quitar controllers + service
+rm app/Http/Controllers/Billing/ChangePlanController.php
+rm app/Http/Controllers/Landlord/ChangePlanController.php
+rm app/Services/Billing/ChangePlanService.php
+
+# 3. Quitar la UI
+rm resources/js/pages/billing/change-plan.tsx
+rm resources/js/components/billing/change-plan-dialog.tsx
+rm resources/js/types/billing.ts
+# Editar resources/js/components/user-menu-content.tsx: remover el <Link> "Change plan"
+# Editar resources/js/types/index.ts: remover la export de billing
+
+# 4. Regenerar Wayfinder
+php artisan wayfinder:generate
+
+# 5. Quitar tests
+rm tests/Unit/Services/Billing/ChangePlanServiceTest.php
+rm tests/Feature/Billing/ChangePlanControllerTest.php
+rm tests/Feature/Landlord/ChangePlanControllerTest.php
+rm tests/Browser/Billing/ChangePlanFlowTest.php
+# Editar tests/Feature/Auth/TenantPermissionsTest.php: remover Requirement 8 test
+```
+
+**Lo que NO se toca** (pertenece a 1.5G.0):
+- El trait `HasRoles` en `User`
+- `TenantPermissionsSeeder` con la permission `change-plan`
+- El badge "Admin" en `user-menu-content.tsx`
+- `EnsureUserIsAdmin` middleware (se sigue usando para otras rutas landlord)
+
+### 24.7 OpenSpec change artifacts
+
+- **Proposal:** `openspec/changes/1.5G-buy-plan/proposal.md`
+- **Spec:** `openspec/changes/1.5G-buy-plan/specs/plan-change/spec.md`
+- **Design:** `openspec/changes/1.5G-buy-plan/design.md`
+- **Tasks:** `openspec/changes/1.5G-buy-plan/tasks.md`
+
+### 24.8 Archivos clave
+
+| Archivo | Rol en 1.5G-buy-plan |
+|---|---|
+| `app/Services/Billing/ChangePlanService.php` | NEW: 50 líneas — la mutación compartida |
+| `app/Http/Controllers/Billing/ChangePlanController.php` | NEW: ~80 líneas — superficie tenant (gate `change-plan`) |
+| `app/Http/Controllers/Landlord/ChangePlanController.php` | NEW: ~55 líneas — backdoor landlord (`EnsureUserIsAdmin`) |
+| `routes/web.php` | Modificado: `prefix('billing')->name('billing.')` con GET + POST |
+| `routes/landlord.php` | Modificado: `POST admin/tenants/{tenant}/subscription/change` |
+| `resources/js/types/billing.ts` | NEW: tipos `Plan` + `ChangePlanPageProps` |
+| `resources/js/types/index.ts` | Modificado: re-exporta `./billing` |
+| `resources/js/pages/billing/change-plan.tsx` | NEW: Inertia page con grid de planes disponibles + dialog |
+| `resources/js/components/billing/change-plan-dialog.tsx` | NEW: shadcn `Dialog` + `useForm` (mirror de `BuyResourceDialog`) |
+| `resources/js/components/user-menu-content.tsx` | Modificado: link "Change plan" para `tenant-admin` role |
+| `resources/js/routes/billing/change-plan/index.ts` | wayfinder-generated: helpers `show` + `update` |
+| `tests/Unit/Services/Billing/ChangePlanServiceTest.php` | NEW: 3 tests (transaction + lock + same-plan guard) |
+| `tests/Feature/Billing/ChangePlanControllerTest.php` | NEW: 7 tests (auth + gate + show + POST + same-plan + cross-tenant) |
+| `tests/Feature/Landlord/ChangePlanControllerTest.php` | NEW: 3 tests (happy + 422 + cross-tenant 403) |
+| `tests/Browser/Billing/ChangePlanFlowTest.php` | NEW: 2 browser tests (tenant flow + landlord flow) |
+| `tests/Feature/Auth/TenantPermissionsTest.php` | Modificado: 1 test nuevo (Requirement 8 — downgrade regression) |
+
 

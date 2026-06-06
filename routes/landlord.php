@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Landlord\AdminPanelController;
+use App\Http\Controllers\Landlord\ChangePlanController;
 use App\Http\Controllers\Landlord\PlanController;
 use App\Http\Controllers\Landlord\ResourceController;
 use App\Http\Controllers\Landlord\SubscriptionController;
@@ -45,4 +46,14 @@ Route::middleware(['auth', 'verified', EnsureUserIsAdmin::class])->prefix('admin
     Route::get('subscriptions', [SubscriptionController::class, 'index'])->name('subscriptions.index');
     Route::get('subscriptions/{subscription}', [SubscriptionController::class, 'show'])->name('subscriptions.show');
     Route::post('tenants/{tenant}/subscriptions', [SubscriptionController::class, 'assign'])->name('subscriptions.assign');
+
+    // Plan change (1.5G-buy-plan) — mid-life switch for a tenant
+    // that already has a subscription. Distinct from `assign` (the
+    // "no subscription / initial assignment" path): this one
+    // delegates to ChangePlanService which holds the row lock and
+    // the same-plan guard. Both routes coexist on the tenant
+    // show page. The new plan comes from the request body
+    // (`plan_id`), matching the `assign` style.
+    Route::post('tenants/{tenant}/subscription/change', [ChangePlanController::class, 'update'])
+        ->name('subscriptions.change');
 });

@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Billing\ChangePlanController;
 use App\Http\Controllers\Premium\AnalyticsController;
 use App\Http\Controllers\Resource\ResourceController;
 use Illuminate\Support\Facades\Route;
@@ -79,6 +80,22 @@ Route::middleware(['tenant', 'auth', 'verified'])->group(function () {
         Route::get('{slug}', [ResourceController::class, 'show'])->name('show');
         Route::post('{slug}/request', [ResourceController::class, 'request'])->name('request');
         Route::get('{slug}/download', [ResourceController::class, 'download'])->name('download');
+    });
+
+    // Billing — self-service plan change (1.5G-buy-plan).
+    //
+    // The tenant UI for picking a new plan. The `change-plan`
+    // permission check lives INSIDE the controller (not as route
+    // middleware) because the gate is a Spatie permission lookup
+    // that requires the Spatie `User` model + the tenant's
+    // permission tables to be live — exactly the same shape the
+    // `Gate::allows(...)` path takes. See
+    // `Billing\ChangePlanController` for the auth intent and
+    // `App\Services\Billing\ChangePlanService` for the shared
+    // mutation.
+    Route::prefix('billing')->name('billing.')->group(function () {
+        Route::get('change-plan', [ChangePlanController::class, 'show'])->name('change-plan.show');
+        Route::post('change-plan', [ChangePlanController::class, 'update'])->name('change-plan.update');
     });
 });
 
