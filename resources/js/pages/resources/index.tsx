@@ -1,6 +1,7 @@
 import { Link } from '@inertiajs/react';
 import { Download, FileText, Lock, Package, Sparkles } from 'lucide-react';
 import { useState } from 'react';
+import { formatPrice } from '@/lib/utils';
 import {
     BuyResourceDialog
     
@@ -31,10 +32,6 @@ type Resource = {
     can_download: boolean;
     has_explicit_entitlement: boolean;
 };
-
-function formatPrice(cents: number): string {
-    return `$${(cents / 100).toFixed(2)}`;
-}
 
 /**
  * Phase 1.5F — the resources catalog with the simulated "Buy" flow.

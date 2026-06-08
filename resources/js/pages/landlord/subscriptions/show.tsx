@@ -1,5 +1,6 @@
 import { Link } from '@inertiajs/react';
 import { ArrowLeft, Receipt, Building, Package, Calendar, Clock, CheckCircle2, XCircle } from 'lucide-react';
+import { formatPrice } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -49,10 +50,6 @@ function statusVariant(status: Subscription['status']): 'default' | 'secondary' 
         default:
             return 'outline';
     }
-}
-
-function formatPrice(cents: number): string {
-    return `$${(cents / 100).toFixed(2)}`;
 }
 
 export default function SubscriptionShow({ subscription }: { subscription: Subscription }) {

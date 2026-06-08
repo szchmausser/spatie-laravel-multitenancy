@@ -3,6 +3,7 @@ import { ArrowRightCircle, CircleCheck, Info } from 'lucide-react';
 import { useEffect, type ReactNode } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { formatPrice } from '@/lib/utils';
 import {
     Card,
     CardContent,
@@ -30,10 +31,6 @@ type ChangePlanDialogProps = {
     onOpenChange?: (open: boolean) => void;
     onSuccess?: () => void;
 };
-
-function formatPrice(cents: number): string {
-    return `$${(cents / 100).toFixed(2)}`;
-}
 
 /**
  * Phase 1.5G — the "Change plan" confirmation dialog.

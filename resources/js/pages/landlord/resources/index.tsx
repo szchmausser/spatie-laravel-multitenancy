@@ -1,6 +1,7 @@
 import { router, Link } from '@inertiajs/react';
 import { FileText, Pencil, Plus, Power, Search, Sparkles } from 'lucide-react';
 import { useState } from 'react';
+import { formatPrice } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -41,10 +42,6 @@ type Resource = {
     price_cents: number;
     is_active: boolean;
 };
-
-function formatPrice(cents: number): string {
-    return `$${(cents / 100).toFixed(2)}`;
-}
 
 /**
  * Phase 1.5C — landlord-side catalog of every published resource.

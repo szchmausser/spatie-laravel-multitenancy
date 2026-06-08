@@ -3,6 +3,7 @@ import { FileText, Info, ShoppingCart, Sparkles } from 'lucide-react';
 import { useEffect  } from 'react';
 import type {ReactNode} from 'react';
 import { Badge } from '@/components/ui/badge';
+import { formatPrice } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import {
     Card,
@@ -42,10 +43,6 @@ type BuyResourceDialogProps = {
     onOpenChange?: (open: boolean) => void;
     onSuccess?: () => void;
 };
-
-function formatPrice(cents: number): string {
-    return `$${(cents / 100).toFixed(2)}`;
-}
 
 /**
  * Phase 1.5F — the "Buy" confirmation dialog.

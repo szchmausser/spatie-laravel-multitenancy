@@ -3,6 +3,7 @@ import { ArrowRightCircle, CircleCheck, Package } from 'lucide-react';
 import { useState } from 'react';
 import { ChangePlanDialog } from '@/components/billing/change-plan-dialog';
 import { Badge } from '@/components/ui/badge';
+import { formatPrice } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import {
     Card,
@@ -17,10 +18,6 @@ type ChangePlanProps = {
     plans: Plan[];
     currentPlan: Plan | null;
 };
-
-function formatPrice(cents: number): string {
-    return `$${(cents / 100).toFixed(2)}`;
-}
 
 /**
  * Phase 1.5G — the self-service plan change page.

@@ -1,6 +1,7 @@
 import { router, Link } from '@inertiajs/react';
 import { Plus, Pencil, Power, Package, Search } from 'lucide-react';
 import { useState } from 'react';
+import { formatPrice } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -37,10 +38,6 @@ type Plan = {
     price_cents: number;
     is_active: boolean;
 };
-
-function formatPrice(cents: number): string {
-    return `$${(cents / 100).toFixed(2)}`;
-}
 
 export default function PlansIndex({ plans }: { plans: Plan[] }) {
     const [search, setSearch] = useState('');
