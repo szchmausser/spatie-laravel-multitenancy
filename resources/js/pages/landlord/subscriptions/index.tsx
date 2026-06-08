@@ -1,3 +1,4 @@
+import { Link } from '@inertiajs/react';
 import { Receipt, Search, Building, Package, Eye, Calendar } from 'lucide-react';
 import { useState } from 'react';
 import { Badge } from '@/components/ui/badge';
@@ -130,10 +131,10 @@ export default function SubscriptionsIndex({ subscriptions }: { subscriptions: S
                                         asChild
                                         data-testid={`view-subscription-btn-${sub.id}`}
                                     >
-                                        <a href={show(sub.id).url}>
+                                        <Link href={show(sub.id).url}>
                                             <Eye className="h-4 w-4" />
                                             View
-                                        </a>
+                                        </Link>
                                     </Button>
                                 </div>
                             ))}

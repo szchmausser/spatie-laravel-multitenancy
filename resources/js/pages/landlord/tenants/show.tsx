@@ -1,4 +1,4 @@
-import { router } from '@inertiajs/react';
+import { router, Link } from '@inertiajs/react';
 import { Building, Globe, Database, Calendar, ArrowLeft, Pencil, Trash2, CreditCard, Check } from 'lucide-react';
 import { useState } from 'react';
 import { Badge } from '@/components/ui/badge';
@@ -78,16 +78,16 @@ return;
                 <h1 className="text-2xl font-bold w-[200px] truncate">{tenant.name}</h1>
                 <div className="flex gap-2 shrink-0">
                     <Button variant="outline" asChild>
-                        <a href={index().url}>
+                        <Link href={index().url}>
                             <ArrowLeft className="h-4 w-4" />
                             Back
-                        </a>
+                        </Link>
                     </Button>
                     <Button variant="outline" asChild>
-                        <a href={edit(tenant.id).url}>
+                        <Link href={edit(tenant.id).url}>
                             <Pencil className="h-4 w-4" />
                             Edit
-                        </a>
+                        </Link>
                     </Button>
                     <Dialog>
                         <DialogTrigger asChild>

@@ -1,4 +1,4 @@
-import { router } from '@inertiajs/react';
+import { router, Link } from '@inertiajs/react';
 import { FileText, Pencil, Plus, Power, Search, Sparkles } from 'lucide-react';
 import { useState } from 'react';
 import { Badge } from '@/components/ui/badge';
@@ -92,10 +92,10 @@ export default function ResourcesIndex({
                         />
                     </div>
                     <Button asChild data-testid="create-resource-btn">
-                        <a href={create().url}>
+                        <Link href={create().url}>
                             <Plus className="h-4 w-4" />
                             Publish Resource
-                        </a>
+                        </Link>
                     </Button>
                 </div>
             </div>
@@ -196,10 +196,10 @@ export default function ResourcesIndex({
                                             asChild
                                             data-testid={`edit-resource-btn-${resource.id}`}
                                         >
-                                            <a href={edit(resource.id).url}>
+                                            <Link href={edit(resource.id).url}>
                                                 <Pencil className="h-4 w-4" />
                                                 Edit
-                                            </a>
+                                            </Link>
                                         </Button>
                                         {resource.is_active && (
                                             <Dialog>

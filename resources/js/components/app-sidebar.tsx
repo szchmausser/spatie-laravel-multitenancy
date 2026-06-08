@@ -52,10 +52,10 @@ const footerNavItems: NavItem[] = [
 
 export function AppSidebar() {
     const { auth, tenant } = usePage().props;
-    const isAdmin = (auth as any)?.is_admin ?? false;
-    const isFreeTier = (tenant as any)?.is_free_tier ?? true;
-    const hasFreeResources = (tenant as any)?.has_free_resources ?? false;
-    const hasPremiumZone = (tenant as any)?.has_premium_zone ?? false;
+    const isAdmin = auth?.is_admin ?? false;
+    const isFreeTier = tenant?.is_free_tier ?? true;
+    const hasFreeResources = tenant?.has_free_resources ?? false;
+    const hasPremiumZone = tenant?.has_premium_zone ?? false;
 
     // The "Resources" link is shown when the tenant is on a paid
     // plan (full catalog) OR when the tenant is free but the

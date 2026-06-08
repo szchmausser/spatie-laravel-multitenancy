@@ -1,4 +1,4 @@
-import { useForm } from '@inertiajs/react';
+import { useForm, Link } from '@inertiajs/react';
 import { X, Save, Package } from 'lucide-react';
 import type { FormEventHandler } from 'react';
 import InputError from '@/components/input-error';
@@ -75,10 +75,10 @@ export default function PlansEdit({ plan }: { plan: Plan }) {
                     <h1 className="text-2xl font-bold">Edit Plan</h1>
                     <div className="flex gap-2 shrink-0">
                         <Button variant="outline" asChild>
-                            <a href={index().url}>
+                            <Link href={index().url}>
                                 <X className="h-4 w-4" />
                                 Cancel
-                            </a>
+                            </Link>
                         </Button>
                         <Button type="submit" disabled={processing} data-testid="submit-plan-btn">
                             <Save className="h-4 w-4" />

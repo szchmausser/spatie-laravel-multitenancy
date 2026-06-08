@@ -1,3 +1,4 @@
+import { Link } from '@inertiajs/react';
 import { ArrowLeft, Receipt, Building, Package, Calendar, Clock, CheckCircle2, XCircle } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -65,10 +66,10 @@ export default function SubscriptionShow({ subscription }: { subscription: Subsc
                 <h1 className="text-2xl font-bold">Subscription #{subscription.id}</h1>
                 <div className="flex gap-2 shrink-0">
                     <Button variant="outline" asChild>
-                        <a href={subscriptionsIndex().url}>
+                        <Link href={subscriptionsIndex().url}>
                             <ArrowLeft className="h-4 w-4" />
                             Back
-                        </a>
+                        </Link>
                     </Button>
                 </div>
             </div>

@@ -1,4 +1,4 @@
-import { useForm } from '@inertiajs/react';
+import { useForm, Link } from '@inertiajs/react';
 import { FileText, Plus, X } from 'lucide-react';
 import type { FormEventHandler} from 'react';
 import type {ChangeEvent} from 'react';
@@ -67,10 +67,10 @@ export default function ResourcesCreate() {
                     <h1 className="text-2xl font-bold">Publish Resource</h1>
                     <div className="flex shrink-0 gap-2">
                         <Button variant="outline" asChild>
-                            <a href={index().url}>
+                            <Link href={index().url}>
                                 <X className="h-4 w-4" />
                                 Cancel
-                            </a>
+                            </Link>
                         </Button>
                         <Button
                             type="submit"

@@ -1,4 +1,4 @@
-import { Head } from '@inertiajs/react';
+import { Head, Link } from '@inertiajs/react';
 import { Building, CreditCard, Download, Users } from 'lucide-react';
 import {
     Card,
@@ -58,7 +58,7 @@ export default function AdminPanel() {
                 <div className="grid auto-rows-min gap-4 md:grid-cols-3">
                     {cards.map(
                         ({ title, description, href, icon: Icon, testId }) => (
-                            <a
+                            <Link
                                 key={title}
                                 href={href}
                                 data-testid={testId}
@@ -75,7 +75,7 @@ export default function AdminPanel() {
                                         </CardDescription>
                                     </CardHeader>
                                 </Card>
-                            </a>
+                            </Link>
                         ),
                     )}
                 </div>

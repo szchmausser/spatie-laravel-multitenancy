@@ -1,4 +1,4 @@
-import { router } from '@inertiajs/react';
+import { router, Link } from '@inertiajs/react';
 import { Plus, Pencil, Power, Package, Search } from 'lucide-react';
 import { useState } from 'react';
 import { Badge } from '@/components/ui/badge';
@@ -70,10 +70,10 @@ export default function PlansIndex({ plans }: { plans: Plan[] }) {
                         />
                     </div>
                     <Button asChild data-testid="create-plan-btn">
-                        <a href={create().url}>
+                        <Link href={create().url}>
                             <Plus className="h-4 w-4" />
                             Create Plan
-                        </a>
+                        </Link>
                     </Button>
                 </div>
             </div>
@@ -146,10 +146,10 @@ export default function PlansIndex({ plans }: { plans: Plan[] }) {
                                             asChild
                                             data-testid={`edit-plan-btn-${plan.id}`}
                                         >
-                                            <a href={edit(plan.id).url}>
+                                            <Link href={edit(plan.id).url}>
                                                 <Pencil className="h-4 w-4" />
                                                 Edit
-                                            </a>
+                                            </Link>
                                         </Button>
                                         <Dialog>
                                             <DialogTrigger asChild>

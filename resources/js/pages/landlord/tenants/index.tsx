@@ -1,4 +1,5 @@
 import { Plus, Pencil, Eye, Building, Globe, Database, CreditCard, Calendar } from 'lucide-react';
+import { Link } from '@inertiajs/react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { create, show, edit } from '@/routes/landlord/tenants';
@@ -56,10 +57,10 @@ export default function TenantIndex({ tenants }: { tenants: TenantRow[] }) {
             <div className="flex justify-between items-center mb-6">
                 <h1 className="text-2xl font-bold">Tenants</h1>
                 <Button asChild data-testid="create-tenant-btn">
-                    <a href={create().url}>
+                    <Link href={create().url}>
                         <Plus className="h-4 w-4" />
                         Create Tenant
-                    </a>
+                    </Link>
                 </Button>
             </div>
             <div className="border rounded-lg divide-y">
@@ -124,16 +125,16 @@ export default function TenantIndex({ tenants }: { tenants: TenantRow[] }) {
 
                                 <div className="flex gap-2 md:justify-end">
                                     <Button variant="outline" size="sm" asChild data-testid={`edit-tenant-btn-${tenant.id}`}>
-                                        <a href={edit(tenant.id).url}>
+                                        <Link href={edit(tenant.id).url}>
                                             <Pencil className="h-4 w-4" />
                                             Edit
-                                        </a>
+                                        </Link>
                                     </Button>
                                     <Button variant="outline" size="sm" asChild data-testid={`view-tenant-btn-${tenant.id}`}>
-                                        <a href={show(tenant.id).url}>
+                                        <Link href={show(tenant.id).url}>
                                             <Eye className="h-4 w-4" />
                                             View
-                                        </a>
+                                        </Link>
                                     </Button>
                                 </div>
                             </div>
