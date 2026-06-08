@@ -1,7 +1,7 @@
 <?php
 
 use App\Enums\SubscriptionStatus;
-use App\Http\Controllers\Billing\ChangePlanController;
+use App\Http\Controllers\Billing\PlanChangeController;
 use App\Models\Plan;
 use App\Models\Subscription;
 use App\Models\Tenant;
@@ -16,7 +16,7 @@ use Spatie\Multitenancy\Http\Middleware\EnsureValidTenantSession;
 use Spatie\Multitenancy\Http\Middleware\NeedsTenant;
 
 /**
- * Feature tests for {@see ChangePlanController}.
+ * Feature tests for {@see PlanChangeController}.
  *
  * The tenant-side write surface for self-service plan change.
  * Guarded by `$user->can('change-plan')` (permission-based, not

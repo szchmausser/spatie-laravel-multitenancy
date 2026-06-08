@@ -1,6 +1,6 @@
 <?php
 
-use App\Http\Controllers\Billing\ChangePlanController;
+use App\Http\Controllers\Billing\PlanChangeController;
 use App\Http\Controllers\Premium\AnalyticsController;
 use App\Http\Controllers\Resource\ResourceController;
 use Illuminate\Support\Facades\Route;
@@ -90,12 +90,12 @@ Route::middleware(['tenant', 'auth', 'verified'])->group(function () {
     // that requires the Spatie `User` model + the tenant's
     // permission tables to be live — exactly the same shape the
     // `Gate::allows(...)` path takes. See
-    // `Billing\ChangePlanController` for the auth intent and
+    // `Billing\PlanChangeController` for the auth intent and
     // `App\Services\Billing\ChangePlanService` for the shared
     // mutation.
     Route::prefix('billing')->name('billing.')->group(function () {
-        Route::get('change-plan', [ChangePlanController::class, 'show'])->name('change-plan.show');
-        Route::post('change-plan', [ChangePlanController::class, 'update'])->name('change-plan.update');
+        Route::get('change-plan', [PlanChangeController::class, 'show'])->name('change-plan.show');
+        Route::post('change-plan', [PlanChangeController::class, 'update'])->name('change-plan.update');
     });
 });
 

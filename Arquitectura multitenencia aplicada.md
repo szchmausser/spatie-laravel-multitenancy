@@ -5044,9 +5044,9 @@ Cuando el plan cambia, `Plan.features` cambia. El read-path re-evalúa con el pl
 
 | Ruta | Verbo | Controller | Auth | Propósito |
 |---|---|---|---|---|
-| `billing/change-plan` | GET | `Billing\ChangePlanController@show` | `tenant + auth + verified` + `can('change-plan')` | Render Inertia page con planes disponibles + plan actual |
-| `billing/change-plan` | POST | `Billing\ChangePlanController@update` | mismo | Ejecuta el cambio, redirige a `show` con flash de éxito |
-| `admin/tenants/{tenant}/subscription/change` | POST | `Landlord\ChangePlanController@update` | `auth + verified + EnsureUserIsAdmin` | Backdoor del landlord, mismo servicio |
+| `billing/change-plan` | GET | `Billing\PlanChangeController@show` | `tenant + auth + verified` + `can('change-plan')` | Render Inertia page con planes disponibles + plan actual |
+| `billing/change-plan` | POST | `Billing\PlanChangeController@update` | mismo | Ejecuta el cambio, redirige a `show` con flash de éxito |
+| `admin/tenants/{tenant}/subscription/change` | POST | `Landlord\SubscriptionChangeController@update` | `auth + verified + EnsureUserIsAdmin` | Backdoor del landlord, mismo servicio |
 
 **Por qué el permiso se chequea en el controller, no como middleware de ruta:** `Gate::allows('change-plan')` requiere que el modelo `User` con trait `HasRoles` esté disponible y que el cache de permisos de Spatie (`PermissionRegistrar`) haya resuelto. Eso es exactamente lo que el `Gate::define` callback ya hace (ver §23.4). Hacer un middleware separado para esto duplica la lógica del Gate y abre la puerta a divergencia (middleware resuelve contra `auth()->user()`, Gate contra `$request->user()` — el primero no siempre es Spatie-aware). El patrón "gate check como primera línea del método" es la convención del proyecto.
 
@@ -5079,8 +5079,8 @@ Si la slice resulta no deseada:
 # Editar routes/landlord.php: remover POST /admin/tenants/{tenant}/subscription/change
 
 # 2. Quitar controllers + service
-rm app/Http/Controllers/Billing/ChangePlanController.php
-rm app/Http/Controllers/Landlord/ChangePlanController.php
+rm app/Http/Controllers/Billing/PlanChangeController.php
+rm app/Http/Controllers/Landlord/SubscriptionChangeController.php
 rm app/Services/Billing/ChangePlanService.php
 
 # 3. Quitar la UI
@@ -5095,8 +5095,8 @@ php artisan wayfinder:generate
 
 # 5. Quitar tests
 rm tests/Unit/Services/Billing/ChangePlanServiceTest.php
-rm tests/Feature/Billing/ChangePlanControllerTest.php
-rm tests/Feature/Landlord/ChangePlanControllerTest.php
+rm tests/Feature/Billing/PlanChangeControllerTest.php
+rm tests/Feature/Landlord/SubscriptionChangeControllerTest.php
 rm tests/Browser/Billing/ChangePlanFlowTest.php
 # Editar tests/Feature/Auth/TenantPermissionsTest.php: remover Requirement 8 test
 ```
@@ -5119,8 +5119,8 @@ rm tests/Browser/Billing/ChangePlanFlowTest.php
 | Archivo | Rol en 1.5G-buy-plan |
 |---|---|
 | `app/Services/Billing/ChangePlanService.php` | NEW: 50 líneas — la mutación compartida |
-| `app/Http/Controllers/Billing/ChangePlanController.php` | NEW: ~80 líneas — superficie tenant (gate `change-plan`) |
-| `app/Http/Controllers/Landlord/ChangePlanController.php` | NEW: ~55 líneas — backdoor landlord (`EnsureUserIsAdmin`) |
+| `app/Http/Controllers/Billing/PlanChangeController.php` | NEW: ~80 líneas — superficie tenant (gate `change-plan`) |
+| `app/Http/Controllers/Landlord/SubscriptionChangeController.php` | NEW: ~55 líneas — backdoor landlord (`EnsureUserIsAdmin`) |
 | `routes/web.php` | Modificado: `prefix('billing')->name('billing.')` con GET + POST |
 | `routes/landlord.php` | Modificado: `POST admin/tenants/{tenant}/subscription/change` |
 | `resources/js/types/billing.ts` | NEW: tipos `Plan` + `ChangePlanPageProps` |
@@ -5130,8 +5130,8 @@ rm tests/Browser/Billing/ChangePlanFlowTest.php
 | `resources/js/components/user-menu-content.tsx` | Modificado: link "Change plan" para `tenant-admin` role |
 | `resources/js/routes/billing/change-plan/index.ts` | wayfinder-generated: helpers `show` + `update` |
 | `tests/Unit/Services/Billing/ChangePlanServiceTest.php` | NEW: 3 tests (transaction + lock + same-plan guard) |
-| `tests/Feature/Billing/ChangePlanControllerTest.php` | NEW: 7 tests (auth + gate + show + POST + same-plan + cross-tenant) |
-| `tests/Feature/Landlord/ChangePlanControllerTest.php` | NEW: 3 tests (happy + 422 + cross-tenant 403) |
+| `tests/Feature/Billing/PlanChangeControllerTest.php` | NEW: 7 tests (auth + gate + show + POST + same-plan + cross-tenant) |
+| `tests/Feature/Landlord/SubscriptionChangeControllerTest.php` | NEW: 3 tests (happy + 422 + cross-tenant 403) |
 | `tests/Browser/Billing/ChangePlanFlowTest.php` | NEW: 2 browser tests (tenant flow + landlord flow) |
 | `tests/Feature/Auth/TenantPermissionsTest.php` | Modificado: 1 test nuevo (Requirement 8 — downgrade regression) |
 

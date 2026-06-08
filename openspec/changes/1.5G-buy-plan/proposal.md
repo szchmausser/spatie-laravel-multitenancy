@@ -7,12 +7,12 @@
 ## Scope
 
 ### In Scope
-- Tenant action: `GET/POST /billing/change-plan` guarded by `Gate::allows('change-plan')`. New `Billing\ChangePlanController::update()`.
-- Landlord backdoor: `POST /admin/tenants/{tenant}/subscription/change` guarded by `EnsureUserIsAdmin` (no `Gate` call — permission tables absent from the landlord DB per §23.1). New `Landlord\ChangePlanController::update()`.
+- Tenant action: `GET/POST /billing/change-plan` guarded by `Gate::allows('change-plan')`. New `Billing\PlanChangeController::update()`.
+- Landlord backdoor: `POST /admin/tenants/{tenant}/subscription/change` guarded by `EnsureUserIsAdmin` (no `Gate` call — permission tables absent from the landlord DB per §23.1). New `Landlord\SubscriptionChangeController::update()`.
 - Shared mutation: `App\Services\Billing\ChangePlanService::applyPlanChange(Subscription, Plan)` — `DB::transaction` + `lockForUpdate()`, updates `plan_id` and resets `ends_at` to `now()->addMonth()`. Both controllers call it.
 - New `resources/js/components/billing/change-plan-dialog.tsx` mirroring `buy-resource-dialog.tsx` (`useForm` + Wayfinder, frozen `data-testid`).
 - "Change plan" link in `user-menu-content.tsx` for `user.roles.includes('tenant-admin')`.
-- Tests: `tests/Feature/Billing/ChangePlanControllerTest.php` (~6) + `tests/Browser/Billing/ChangePlanFlowTest.php` (~2). Target: 206 → 213–216 passing.
+- Tests: `tests/Feature/Billing/PlanChangeControllerTest.php` (~6) + `tests/Browser/Billing/ChangePlanFlowTest.php` (~2). Target: 206 → 213–216 passing.
 
 ### Out of Scope
 - Payment gateway, payment UI, confirmation, refunds → Phase 2
@@ -42,13 +42,13 @@ None.
 
 | Area | Impact | Description |
 |------|--------|-------------|
-| `app/Http/Controllers/Billing/ChangePlanController.php` | New | Tenant; `Gate::allows('change-plan')` |
-| `app/Http/Controllers/Landlord/ChangePlanController.php` | New | Landlord; `EnsureUserIsAdmin` |
+| `app/Http/Controllers/Billing/PlanChangeController.php` | New | Tenant; `Gate::allows('change-plan')` |
+| `app/Http/Controllers/Landlord/SubscriptionChangeController.php` | New | Landlord; `EnsureUserIsAdmin` |
 | `app/Services/Billing/ChangePlanService.php` | New | Shared `applyPlanChange()` |
 | `routes/web.php` / `routes/landlord.php` | Modified | `GET/POST billing/change-plan` + `POST admin/tenants/{tenant}/subscription/change` |
 | `resources/js/components/billing/change-plan-dialog.tsx` | New | shadcn Dialog (mirrors `buy-resource-dialog.tsx`) |
 | `resources/js/components/user-menu-content.tsx` | Modified | Conditional "Change plan" link for `tenant-admin` |
-| `tests/Feature/Billing/ChangePlanControllerTest.php` + `tests/Browser/Billing/ChangePlanFlowTest.php` | New | ~8 tests total |
+| `tests/Feature/Billing/PlanChangeControllerTest.php` + `tests/Browser/Billing/ChangePlanFlowTest.php` | New | ~8 tests total |
 
 ## Risks
 

@@ -13,10 +13,10 @@ use Symfony\Component\HttpKernel\Exception\HttpException;
  * Unit tests for {@see ChangePlanService}.
  *
  * Pins the contract of the shared mutation that backs both the
- * tenant-side self-service flow (Billing\ChangePlanController) and
- * the landlord backdoor (Landlord\ChangePlanController). Both
- * controllers are thin auth + resolution wrappers; the row lock,
- * the same-plan guard, and the ends_at reset live HERE.
+ * tenant-side self-service flow (Billing\PlanChangeController) and
+ * the landlord backdoor (Landlord\SubscriptionChangeController). Both
+ * controllers are thin auth + resolution wrappers; the same-plan
+ * guard and the ends_at reset live HERE.
  */
 beforeEach(function () {
     $testDatabase = config('database.connections.landlord.database');

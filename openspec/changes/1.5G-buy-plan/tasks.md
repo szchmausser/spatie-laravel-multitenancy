@@ -71,8 +71,8 @@ Create empty Pest test files with `uses(RefreshDatabase::class)` and `pointTenan
 
 **Files**:
 - `tests/Unit/Services/Billing/ChangePlanServiceTest.php` (NEW) — `uses(RefreshDatabase::class)`, `beforeEach` repoints tenant connection
-- `tests/Feature/Billing/ChangePlanControllerTest.php` (NEW) — `uses(RefreshDatabase::class)`, `beforeEach` repoints tenant connection
-- `tests/Feature/Landlord/ChangePlanControllerTest.php` (NEW) — `uses(RefreshDatabase::class)` (landlord transacted by default)
+- `tests/Feature/Billing/PlanChangeControllerTest.php` (NEW) — `uses(RefreshDatabase::class)`, `beforeEach` repoints tenant connection
+- `tests/Feature/Landlord/PlanChangeControllerTest.php` (NEW) — `uses(RefreshDatabase::class)` (landlord transacted by default)
 - `tests/Browser/Billing/ChangePlanFlowTest.php` (NEW) — extends `Tests\Browser\BrowserTestCase`, adds `pointTenantConnectionAtTestDatabase()` in `setUp`
 
 **Acceptance**: `php artisan test --filter=ChangePlan` returns "no tests executed" (files exist, 0 test methods). No PHP errors.
@@ -112,11 +112,11 @@ Create empty Pest test files with `uses(RefreshDatabase::class)` and `pointTenan
 ### 2.1 [x] Controller scaffolding + auth redirect
 
 **Files**:
-- `app/Http/Controllers/Billing/ChangePlanController.php` (NEW) — skeleton: `show()` returns 200, `update()` returns 302
+- `app/Http/Controllers/Billing/PlanChangeController.php` (NEW) — skeleton: `show()` returns 200, `update()` returns 302
 - `routes/web.php` (MODIFIED) — add `Route::prefix('billing')->name('billing.')` group inside the `tenant + auth + verified` middleware block: `GET /billing/change-plan` → `[show]` and `POST /billing/change-plan` → `[update]`
 - Wayfinder regenerate: `php artisan wayfinder:generate`
 
-**Test that leads**: `tests/Feature/Billing/ChangePlanControllerTest.php` (1 method)
+**Test that leads**: `tests/Feature/Billing/PlanChangeControllerTest.php` (1 method)
 - `test('redirects unauthenticated user to login')` — visit GET `/billing/change-plan` without auth, assert redirect to login
 
 **Implementation**: Controller skeleton with 2 empty methods. Route registration. Wayfinder regen.
@@ -134,14 +134,14 @@ Create empty Pest test files with `uses(RefreshDatabase::class)` and `pointTenan
 ### 2.2 [x] Gate check on show + update
 
 **Files**:
-- `app/Http/Controllers/Billing/ChangePlanController.php` (MODIFIED) — add `abort_unless($request->user()->can('change-plan'), 403)` in `show()` and `update()`
+- `app/Http/Controllers/Billing/PlanChangeController.php` (MODIFIED) — add `abort_unless($request->user()->can('change-plan'), 403)` in `show()` and `update()`
 
-**Test that leads**: `tests/Feature/Billing/ChangePlanControllerTest.php` (1 method)
+**Test that leads**: `tests/Feature/Billing/PlanChangeControllerTest.php` (1 method)
 - `test('returns 403 for user without change-plan permission')` — create a user without `change-plan`, `actingAs`, visit GET `/billing/change-plan`, assert 403
 
 **Implementation**: `abort_unless($request->user()->can('change-plan'), 403)` as the first line in both controller methods.
 
-**Verify**: `vendor/bin/pint --dirty --format agent`; `php artisan test --filter=ChangePlanControllerTest::returns_403_for_user_without_change_plan`.
+**Verify**: `vendor/bin/pint --dirty --format agent`; `php artisan test --filter=PlanChangeControllerTest::returns_403_for_user_without_change_plan`.
 
 **Acceptance**: User without permission receives 403 on both GET and POST. (POST not yet wired beyond the gate.)
 
@@ -154,16 +154,16 @@ Create empty Pest test files with `uses(RefreshDatabase::class)` and `pointTenan
 ### 2.3 [x] Show page renders plans + current
 
 **Files**:
-- `app/Http/Controllers/Billing/ChangePlanController.php` (MODIFIED) — `show()` loads `Plan::query()->active()->get()`, gets current subscription, passes `availablePlans` and `currentPlan` to Inertia
+- `app/Http/Controllers/Billing/PlanChangeController.php` (MODIFIED) — `show()` loads `Plan::query()->active()->get()`, gets current subscription, passes `availablePlans` and `currentPlan` to Inertia
 
-**Test that leads**: `tests/Feature/Billing/ChangePlanControllerTest.php` (3 methods)
+**Test that leads**: `tests/Feature/Billing/PlanChangeControllerTest.php` (3 methods)
 - `test('shows change-plan page for user with change-plan permission')` — admin user visits GET, assert 200
 - `test('available plans exclude current plan')` — tenant on `basic`, assert `free` and `premium` are available, `basic` is not
 - `test('available plans include all plans when tenant on free')` — tenant on `free`, assert `basic` and `premium` are available
 
 **Implementation**: `show()` resolves `Tenant::current()`, fetches `subscription.plan` as `currentPlan`, passes `plans` (all active) + `currentPlan` to `Inertia::render('billing/change-plan', [...])`.
 
-**Verify**: `vendor/bin/pint --dirty --format agent`; `php artisan test --filter=ChangePlanControllerTest::test_shows_change_plan_page`; `php artisan test --filter=ChangePlanControllerTest::test_available_plans_exclude_current`.
+**Verify**: `vendor/bin/pint --dirty --format agent`; `php artisan test --filter=PlanChangeControllerTest::test_shows_change_plan_page`; `php artisan test --filter=PlanChangeControllerTest::test_available_plans_exclude_current`.
 
 **Acceptance**: Inertia page renders with correct available/current plan data. Notion page component not yet created — test uses `assertInertia(fn ($page) => $page->component('billing/change-plan')->has('plans')->has('currentPlan'))`.
 
@@ -176,16 +176,16 @@ Create empty Pest test files with `uses(RefreshDatabase::class)` and `pointTenan
 ### 2.4 [x] Update calls service + 422 same-plan guard
 
 **Files**:
-- `app/Http/Controllers/Billing/ChangePlanController.php` (MODIFIED) — `update()` validates `plan_id`, same-plan check, calls `ChangePlanService::applyPlanChange`
+- `app/Http/Controllers/Billing/PlanChangeController.php` (MODIFIED) — `update()` validates `plan_id`, same-plan check, calls `ChangePlanService::applyPlanChange`
 
-**Test that leads**: `tests/Feature/Billing/ChangePlanControllerTest.php` (3 methods)
+**Test that leads**: `tests/Feature/Billing/PlanChangeControllerTest.php` (3 methods)
 - `test('POST updates subscription plan_id and resets ends_at')` — POST with valid new plan_id, assert DB updated
 - `test('POST with current plan returns 422')` — POST with the same plan_id as current, assert 422
 - `test('POST applies correct plan to current tenant only')` — create two tenants, POST on tenant1, assert tenant2's subscription unchanged
 
 **Implementation**: `update()` receives `Plan $newPlan` via route binding, resolves subscription from `Tenant::current()`, runs same-plan `abort_if`, calls `ChangePlanService::applyPlanChange`, redirects to `route('billing.change-plan.show')` with success flash.
 
-**Verify**: `vendor/bin/pint --dirty --format agent`; `php artisan test --filter=ChangePlanControllerTest::test_post_updates`; `php artisan test --filter=ChangePlanControllerTest::test_post_with_current_plan_returns_422`; `php artisan test --filter=ChangePlanControllerTest::test_post_applies_correct_plan_to_only_current_tenant`.
+**Verify**: `vendor/bin/pint --dirty --format agent`; `php artisan test --filter=PlanChangeControllerTest::test_post_updates`; `php artisan test --filter=PlanChangeControllerTest::test_post_with_current_plan_returns_422`; `php artisan test --filter=PlanChangeControllerTest::test_post_applies_correct_plan_to_only_current_tenant`.
 
 **Acceptance**: Full POST flow works — DB mutation, same-plan guard, cross-tenant isolation.
 
@@ -200,16 +200,16 @@ Create empty Pest test files with `uses(RefreshDatabase::class)` and `pointTenan
 ### 3.1 [x] Landlord controller + admin middleware
 
 **Files**:
-- `app/Http/Controllers/Landlord/ChangePlanController.php` (NEW) — `update(Tenant $tenant, Plan $newPlan)` resolves subscription, same-plan guard, calls service, redirects
+- `app/Http/Controllers/Landlord/SubscriptionChangeController.php` (NEW) — `update(Tenant $tenant, Plan $newPlan)` resolves subscription, same-plan guard, calls service, redirects
 - `routes/landlord.php` (MODIFIED) — add `POST admin/tenants/{tenant}/subscription/change` inside the existing `auth + verified + EnsureUserIsAdmin` group
 - Wayfinder regenerate: `php artisan wayfinder:generate`
 
-**Test that leads**: `tests/Feature/Landlord/ChangePlanControllerTest.php` (1 method)
+**Test that leads**: `tests/Feature/Landlord/PlanChangeControllerTest.php` (1 method)
 - `test('landlord can change a tenant plan')` — create Landlord, `actingAs`, POST valid `plan_id`, assert tenant's subscription updated and `ends_at` reset
 
 **Implementation**: Controller with `update()` method. Route `landlord.subscriptions.change`. Service call.
 
-**Verify**: `vendor/bin/pint --dirty --format agent`; `php artisan route:list --name=landlord.subscriptions.change`; `php artisan test --filter=Landlord/ChangePlanControllerTest::test_landlord_can_change`.
+**Verify**: `vendor/bin/pint --dirty --format agent`; `php artisan route:list --name=landlord.subscriptions.change`; `php artisan test --filter=Landlord/PlanChangeControllerTest::test_landlord_can_change`.
 
 **Acceptance**: Landlord POST succeeds, subscription mutated. Route is inside `EnsureUserIsAdmin` group.
 
@@ -221,12 +221,12 @@ Create empty Pest test files with `uses(RefreshDatabase::class)` and `pointTenan
 
 ### 3.2 [x] Cross-tenant landlord isolation
 
-**Test that leads**: `tests/Feature/Landlord/ChangePlanControllerTest.php` (1 method)
+**Test that leads**: `tests/Feature/Landlord/PlanChangeControllerTest.php` (1 method)
 - `test('tenant user hitting landlord route is rejected with 403')` — create a tenant User (not Landlord), `actingAs`, POST `/admin/tenants/{tenant}/subscription/change`, assert 403 from `EnsureUserIsAdmin`
 
 **Implementation**: No new production code — the `EnsureUserIsAdmin` middleware already handles this. Test pins the contract.
 
-**Verify**: `php artisan test --filter=Landlord/ChangePlanControllerTest::test_tenant_user_hitting_landlord_route`.
+**Verify**: `php artisan test --filter=Landlord/PlanChangeControllerTest::test_tenant_user_hitting_landlord_route`.
 
 **Acceptance**: Tenant user gets 403 on landlord route.
 

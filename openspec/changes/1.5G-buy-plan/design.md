@@ -22,9 +22,9 @@ Payment gateway, refunds, prorated credits, scheduled changes, grace periods, co
 ```
 Tenant side (subdomain, tenant DB):
   User menu Link -> route('billing.change-plan.show')
-    -> Billing\ChangePlanController::show (Inertia render)
+    -> Billing\PlanChangeController::show (Inertia render)
        -> ChangePlanDialog (useForm POST)
-          -> Billing\ChangePlanController::update
+          -> Billing\PlanChangeController::update
              -> Gate::allows('change-plan')  | abort 403
              -> same-plan guard             | abort 422
    -> ChangePlanService::applyPlanChange
@@ -34,7 +34,7 @@ Tenant side (subdomain, tenant DB):
 Landlord side (landlord domain, landlord DB):
   Tenant show page "Change plan" form
     -> POST admin/tenants/{tenant}/subscription/change
-       -> Landlord\ChangePlanController::update
+       -> Landlord\SubscriptionChangeController::update
           -> EnsureUserIsAdmin (route group, no Gate)
           -> ChangePlanService::applyPlanChange
           -> redirect landord.tenants.show with success flash
@@ -46,8 +46,8 @@ Authorization diverges at the controller level (permission-based vs. identity-ba
 
 | File | Kind | Purpose |
 |------|------|---------|
-| `app/Http/Controllers/Billing/ChangePlanController.php` | NEW Controller | Tenant. `show()` renders; `update(Plan $newPlan)` runs `Gate::allows('change-plan')`, the same-plan guard, calls the service. |
-| `app/Http/Controllers/Landlord/ChangePlanController.php` | NEW Controller | Landlord. `update(Tenant, Plan)` runs the same-plan guard, calls the service. No `Gate` — `EnsureUserIsAdmin` middleware is the only auth. |
+| `app/Http/Controllers/Billing/PlanChangeController.php` | NEW Controller | Tenant. `show()` renders; `update(Plan $newPlan)` runs `Gate::allows('change-plan')`, the same-plan guard, calls the service. |
+| `app/Http/Controllers/Landlord/SubscriptionChangeController.php` | NEW Controller | Landlord. `update(Tenant, Plan)` runs the same-plan guard, calls the service. No `Gate` — `EnsureUserIsAdmin` middleware is the only auth. |
 | `app/Services/Billing/ChangePlanService.php` | NEW Service | `applyPlanChange(Subscription, Plan): void` — same-plan `abort_if` + `plan_id`/`ends_at` update. Simple inline validation, no explicit transaction or row lock. First file under `app/Services/`; establishes the "shared mutations in a service" convention. |
 | `routes/web.php` | MODIFIED | Adds `prefix('billing')->name('billing.')` group with `GET/POST billing/change-plan` (`billing.change-plan.show` / `.update`), inside the existing `tenant + auth + verified` group. |
 | `routes/landlord.php` | MODIFIED | Adds `POST admin/tenants/{tenant}/subscription/change` (`landlord.subscriptions.change`) inside the existing `auth + verified + EnsureUserIsAdmin` group. Distinct from the existing `landlord.subscriptions.assign` (initial assignment vs. mid-life switch). |
@@ -55,8 +55,8 @@ Authorization diverges at the controller level (permission-based vs. identity-ba
 | `resources/js/components/billing/change-plan-dialog.tsx` | NEW React component | shadcn `Dialog` + `useForm({})`; POSTs to `route('billing.change-plan.update', { plan: plan.id })`; frozen `data-testid="change-plan-dialog-{planSlug}"` and `data-testid="change-plan-confirm-btn-{planSlug}"`. Mirrors `BuyResourceDialog` line-for-line (controlled-open, `useEffect` on `wasSuccessful`, `useEffect` on `!open` for `clearErrors` + `reset`). |
 | `resources/js/components/user-menu-content.tsx` | MODIFIED | Adds a `Link` to `route('billing.change-plan.show')` inside the `DropdownMenuGroup`, visible only when `user.roles?.includes('tenant-admin')`. `data-testid="change-plan-link"`. |
 | `resources/js/types/auth.ts` | (verify) | No change required (`roles: string[]` is already in `User` from `1.5G.0`); verification only. |
-| `tests/Feature/Billing/ChangePlanControllerTest.php` | NEW Pest | 6 tests covering Requirements 1-7 (tenant side). Reuses the `pointTenantConnectionAtTestDatabase()` helper from `TenantPermissionsTest.php`. |
-| `tests/Feature/Landlord/ChangePlanControllerTest.php` | NEW Pest | 2 tests for Requirement 6 (landlord succeeds, tenant user 403s). |
+| `tests/Feature/Billing/PlanChangeControllerTest.php` | NEW Pest | 6 tests covering Requirements 1-7 (tenant side). Reuses the `pointTenantConnectionAtTestDatabase()` helper from `TenantPermissionsTest.php`. |
+| `tests/Feature/Landlord/SubscriptionChangeControllerTest.php` | NEW Pest | 2 tests for Requirement 6 (landlord succeeds, tenant user 403s). |
 | `tests/Feature/Auth/TenantPermissionsTest.php` | MODIFIED | +1 test for the "downgrade blocks premium" scenario (Req 3 of the new spec) — proves the read-path gate works on downgrade with no new production code. |
 | `tests/Browser/Billing/ChangePlanFlowTest.php` | NEW Pest | 2 browser tests: tenant-admin click-confirm; landlord change-plan from tenant show page. `actingAs()` + `data-testid` + `assertNoJavaScriptErrors()`. |
 | `openspec/changes/1.5G-buy-plan/design.md` + `tasks.md` | NEW OpenSpec | This file + the next-phase work units. |
@@ -68,9 +68,9 @@ Authorization diverges at the controller level (permission-based vs. identity-ba
 ### Tenant side
 
 1. User opens the user menu. `user-menu-content.tsx` renders the "Change plan" `Link` only when `user.roles?.includes('tenant-admin')`.
-2. `Billing\ChangePlanController::show()` resolves `Tenant::current()`, loads `Plan::query()->active()->get()`, and passes `availablePlans` + `currentPlan` to the Inertia view. The page filters out `currentPlan.id` and renders one `ChangePlanDialog` per remaining option.
+2. `Billing\PlanChangeController::show()` resolves `Tenant::current()`, loads `Plan::query()->active()->get()`, and passes `availablePlans` + `currentPlan` to the Inertia view. The page filters out `currentPlan.id` and renders one `ChangePlanDialog` per remaining option.
 3. User clicks "Change to {{ plan.name }}". `useForm` POSTs to `route('billing.change-plan.update', { plan: plan.id })` with `preserveScroll: true`.
-4. `Billing\ChangePlanController::update(Plan $newPlan)` runs three checks in order:
+4. `Billing\PlanChangeController::update(Plan $newPlan)` runs three checks in order:
    - `abort_unless($request->user()->can('change-plan'), 403)`
    - `abort_unless($newPlan->id !== $tenant->subscription->plan_id, 422, 'You are already on this plan.')`
    - `ChangePlanService::applyPlanChange($tenant->subscription, $newPlan)`
@@ -80,7 +80,7 @@ Authorization diverges at the controller level (permission-based vs. identity-ba
 
 The tenant show page already has a "plan select" + "Assign" form wired to `landlord.subscriptions.assign` (the "no subscription" path). This slice adds a sibling "Change plan" form that POSTs to the new `landlord.subscriptions.change` (the "tenant already has a plan" path). The two coexist.
 
-`Landlord\ChangePlanController::update(Tenant $tenant, Plan $newPlan)`:
+`Landlord\SubscriptionChangeController::update(Tenant $tenant, Plan $newPlan)`:
 
 - `EnsureUserIsAdmin` middleware in the route group — 403 on a tenant user.
 - Resolve `$subscription = $tenant->subscription` (lazy via the `HasOne`).
@@ -120,13 +120,13 @@ The service is intentionally simple: validate, then update. No explicit transact
 
 Each step is red → green → refactor. Run `php artisan test --compact` between cycles. Final pass targets 213-216 tests, 0 failing (current: 206).
 
-1. **`ChangePlanService` skeleton + same-plan guard.** Add `tests/Feature/Billing/ChangePlanControllerTest.php::test_post_with_current_plan_returns_422` first. Then add `App\Services\Billing\ChangePlanService` with `applyPlanChange()` and the same-plan `abort_if`. Test goes green by calling the service directly (no controller yet). Pins the guard contract before the controller exists.
+1. **`ChangePlanService` skeleton + same-plan guard.** Add `tests/Feature/Billing/PlanChangeControllerTest.php::test_post_with_current_plan_returns_422` first. Then add `App\Services\Billing\ChangePlanService` with `applyPlanChange()` and the same-plan `abort_if`. Test goes green by calling the service directly (no controller yet). Pins the guard contract before the controller exists.
 2. **Tenant route 401.** `test_redirects_unauthenticated_user_to_login`. Green when the route is placed inside the `tenant + auth + verified` group.
-3. **Tenant route 403 without permission.** `test_returns_403_for_user_without_change_plan`. Green when `Billing\ChangePlanController::update` runs `abort_unless($request->user()->can('change-plan'), 403)`.
+3. **Tenant route 403 without permission.** `test_returns_403_for_user_without_change_plan`. Green when `Billing\PlanChangeController::update` runs `abort_unless($request->user()->can('change-plan'), 403)`.
 4. **Tenant route 200 with permission.** `test_shows_change_plan_page_for_admin_excluding_current_plan`. Green when `show()` returns `Inertia::render('billing/change-plan', [...])` with `availablePlans` (filtered) + `currentPlan`.
 5. **Tenant route 200 + DB write.** `test_post_updates_plan_id_and_resets_ends_at`. Green when `update()` resolves the subscription from `Tenant::current()` and calls the service.
 6. **Cross-tenant isolation.** `test_user_on_tenant1_cannot_change_tenant2_plan`. Pin test — controller already resolves from the `tenant` middleware context.
-7. **Landlord controller happy path.** `tests/Feature/Landlord/ChangePlanControllerTest.php::test_landlord_can_change_tenant_plan`. Green when the controller exists and the route is registered.
+7. **Landlord controller happy path.** `tests/Feature/Landlord/SubscriptionChangeControllerTest.php::test_landlord_can_change_tenant_plan`. Green when the controller exists and the route is registered.
 8. **Landlord controller 403 for tenant user.** `test_tenant_user_hitting_landlord_route_is_rejected`. Green when the route is in the `EnsureUserIsAdmin` group.
 9. **Read-path gate proof on downgrade.** `test_downgrade_premium_to_free_blocks_premium_content` in `TenantPermissionsTest.php`. Uses a `premium-content`-gated route, simulates a plan change, asserts 403. No new production code — pins that the slice works with the existing read-path gate.
 10. **Browser test: tenant click-confirm.** `test_tenant_admin_can_click_confirm_a_plan_change` in `ChangePlanFlowTest.php`. `actingAs()`, navigate to `billing.change-plan.show`, click `[data-testid="change-plan-confirm-btn-{planSlug}"]`, assert the new plan name is visible.
@@ -140,7 +140,7 @@ After each green, run `vendor/bin/pint --dirty --format agent` on the changed PH
 - **No locking for this slice.** The initial implementation used `DB::transaction` + `lockForUpdate()` to serialize concurrent plan changes. During review, the lock was deemed unnecessary: PHP-FPM does not multiplex requests within a single worker, and there is no payment gateway, no proration, and no intermediate state that could corrupt. The service is now a simple `abort_if` + `update`. If Phase 2 introduces multi-table writes (e.g., payment ledger + subscription), a transaction with or without row lock should be reintroduced at that point.
 - **No entitlement writes on plan change.** `Purchase` and `Direct` rows persist for the audit trail; the read-path gate (`ResourceController::userCanAccess` rule 2 + `EnsureTenantHasFeature`) does the right thing on downgrade without any new code. We add a one-line code comment on `ResourceController::userCanAccess` noting that rule-3 survival of `Purchase` rows is by design, so a future reader doesn't "fix" it.
 - **`now()->addMonth()` not `addMonthNoOverflow()`.** Naive add matches the existing `EnsureDefaultSubscription` convention and is good enough for the first iteration. A 31st-of-the-month reset landing on a 28/29-day month is a known trade-off; if it bites, the fix is a column rename to `next_renewal_at` plus a service-level strategy.
-- **`Billing\ChangePlanController` as a new namespace.** Phase 1 has no `Tenant::changePlan()` method, and adding one would force every controller to know the entire subscription model. The `Billing\ChangePlanController` namespace signals "this is about billing, not tenant lifecycle" and is forward-compatible with Phase 2 (a `Billing\CheckoutController` will sit next to it).
+- **`Billing\PlanChangeController` as a new namespace.** Phase 1 has no `Tenant::changePlan()` method, and adding one would force every controller to know the entire subscription model. The `Billing\PlanChangeController` namespace signals "this is about billing, not tenant lifecycle" and is forward-compatible with Phase 2 (a `Billing\CheckoutController` will sit next to it).
 - **Distinct landlord route `landlord.subscriptions.change`, not a refactor of `assign`.** The existing `landlord.subscriptions.assign` is the "create or replace" path used during tenant provisioning. The new `landlord.subscriptions.change` is the "mid-life switch" path; it shares the service but the URL, name, and intent are different.
 
 ## Risks and Mitigations

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Billing;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Landlord\SubscriptionChangeController;
 use App\Models\Plan;
 use App\Models\Tenant;
 use App\Services\Billing\ChangePlanService;
@@ -17,16 +18,16 @@ use Inertia\Response as InertiaResponse;
  * The user-facing surface of the `plan-change` capability
  * (1.5G-buy-plan). Two write surfaces share a single mutation:
  *   - Tenant-side: this controller
- *   - Landlord-side: {@see \App\Http\Controllers\Landlord\ChangePlanController}
+ *   - Landlord-side: {@see SubscriptionChangeController}
  *
  * Authorization is permission-based (`$user->can('change-plan')`),
  * not role-based — see §23.4 of the architecture doc for the
  * rationale. The mutation itself is delegated to
  * {@see ChangePlanService::applyPlanChange()}, which holds the
- * row lock and the same-plan guard so the write surface stays
- * thin and auth intent stays local to the controller.
+ * same-plan guard so the write surface stays thin and auth intent
+ * stays local to the controller.
  */
-class ChangePlanController extends Controller
+class PlanChangeController extends Controller
 {
     /**
      * Render the change-plan page.
@@ -67,23 +68,12 @@ class ChangePlanController extends Controller
 
         abort_unless($tenant?->subscription, 404, 'No subscription found for the current tenant.');
 
+        $validated = $request->validate([
+            'plan_id' => 'required|exists:plans,id',
+        ]);
+
         $subscription = $tenant->subscription;
-
-        $newPlanId = (int) $request->input('plan_id');
-
-        abort_if(
-            $newPlanId === 0,
-            422,
-            'A plan_id is required.',
-        );
-
-        $newPlan = Plan::query()->active()->findOrFail($newPlanId);
-
-        abort_if(
-            $subscription->plan_id === $newPlan->id,
-            422,
-            'You are already on this plan.',
-        );
+        $newPlan = Plan::query()->active()->findOrFail($validated['plan_id']);
 
         $service->applyPlanChange($subscription, $newPlan);
 

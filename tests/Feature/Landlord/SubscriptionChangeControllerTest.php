@@ -1,7 +1,7 @@
 <?php
 
 use App\Enums\SubscriptionStatus;
-use App\Http\Controllers\Landlord\ChangePlanController;
+use App\Http\Controllers\Landlord\SubscriptionChangeController;
 use App\Models\Landlord;
 use App\Models\Plan;
 use App\Models\Subscription;
@@ -11,7 +11,7 @@ use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
 use Illuminate\Support\Carbon;
 
 /**
- * Feature tests for {@see ChangePlanController}.
+ * Feature tests for {@see SubscriptionChangeController}.
  *
  * The landlord-side backdoor for plan change. Bypasses the
  * tenant-side `change-plan` permission (the landlord DB has no

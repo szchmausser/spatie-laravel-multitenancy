@@ -1,9 +1,9 @@
 <?php
 
 use App\Http\Controllers\Landlord\AdminPanelController;
-use App\Http\Controllers\Landlord\ChangePlanController;
 use App\Http\Controllers\Landlord\PlanController;
 use App\Http\Controllers\Landlord\ResourceController;
+use App\Http\Controllers\Landlord\SubscriptionChangeController;
 use App\Http\Controllers\Landlord\SubscriptionController;
 use App\Http\Controllers\Landlord\TenantController;
 use App\Http\Middleware\EnsureUserIsAdmin;
@@ -54,6 +54,6 @@ Route::middleware(['auth', 'verified', EnsureUserIsAdmin::class])->prefix('admin
     // the same-plan guard. Both routes coexist on the tenant
     // show page. The new plan comes from the request body
     // (`plan_id`), matching the `assign` style.
-    Route::post('tenants/{tenant}/subscription/change', [ChangePlanController::class, 'update'])
+    Route::post('tenants/{tenant}/subscription/change', [SubscriptionChangeController::class, 'update'])
         ->name('subscriptions.change');
 });

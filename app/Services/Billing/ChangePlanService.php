@@ -7,8 +7,8 @@ use App\Models\Subscription;
 
 /**
  * Shared mutation that backs the two write surfaces for plan change:
- *   - Tenant-side: Billing\ChangePlanController
- *   - Landlord-side: Landlord\ChangePlanController
+ *   - Tenant-side: Billing\PlanChangeController
+ *   - Landlord-side: Landlord\SubscriptionChangeController
  *
  * The same-plan guard and the `ends_at` reset live HERE. Controllers
  * are thin auth + resolution wrappers; both call

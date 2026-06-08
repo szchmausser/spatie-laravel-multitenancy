@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Landlord;
 
+use App\Http\Controllers\Billing\PlanChangeController;
 use App\Http\Controllers\Controller;
 use App\Models\Landlord;
 use App\Models\Plan;
@@ -20,12 +21,11 @@ use Illuminate\Http\Request;
  * that any caller is a {@see Landlord} instance.
  *
  * The mutation is shared with the tenant-side controller
- * ({@see \App\Http\Controllers\Billing\ChangePlanController})
+ * ({@see PlanChangeController})
  * via {@see ChangePlanService::applyPlanChange()}, so the
- * row-lock + same-plan-guard contract has a single source of
- * truth.
+ * same-plan guard has a single source of truth.
  */
-class ChangePlanController extends Controller
+class SubscriptionChangeController extends Controller
 {
     /**
      * Apply a plan change to a tenant from the admin panel.
@@ -33,8 +33,7 @@ class ChangePlanController extends Controller
      * Resolves the target subscription through the route's
      * `{tenant}` parameter (NOT through `Tenant::current()` — the
      * landlord never enters tenant context, so there is no
-     * "current" tenant), runs the same-plan guard, then delegates
-     * to the shared service.
+     * "current" tenant), then delegates to the shared service.
      *
      * The destination plan comes from the request body
      * (`plan_id`), matching the `assign` style on the existing
@@ -51,12 +50,6 @@ class ChangePlanController extends Controller
 
         $plan = Plan::query()->findOrFail($validated['plan_id']);
         $subscription = $tenant->subscription()->firstOrFail();
-
-        abort_if(
-            $subscription->plan_id === $plan->id,
-            422,
-            'Tenant is already on this plan.',
-        );
 
         $service->applyPlanChange($subscription, $plan);
 

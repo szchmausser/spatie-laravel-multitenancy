@@ -13,8 +13,8 @@ Self-service plan change for tenants whose users hold `change-plan` permission, 
 | File | Action |
 |------|--------|
 | `app/Services/Billing/ChangePlanService.php` | NEW — shared mutation |
-| `app/Http/Controllers/Billing/ChangePlanController.php` | NEW — tenant surface |
-| `app/Http/Controllers/Landlord/ChangePlanController.php` | NEW — landlord backdoor |
+| `app/Http/Controllers/Billing/PlanChangeController.php` | NEW — tenant surface |
+| `app/Http/Controllers/Landlord/SubscriptionChangeController.php` | NEW — landlord backdoor |
 | `routes/web.php` | MODIFIED — billing prefix group |
 | `routes/landlord.php` | MODIFIED — subscriptions.change route |
 | `resources/js/types/billing.ts` | NEW — Plan type |
@@ -29,8 +29,8 @@ Self-service plan change for tenants whose users hold `change-plan` permission, 
 | File | Count |
 |------|-------|
 | `tests/Unit/Services/Billing/ChangePlanServiceTest.php` | 3 tests |
-| `tests/Feature/Billing/ChangePlanControllerTest.php` | 7 tests |
-| `tests/Feature/Landlord/ChangePlanControllerTest.php` | 3 tests |
+| `tests/Feature/Billing/PlanChangeControllerTest.php` | 7 tests |
+| `tests/Feature/Landlord/PlanChangeControllerTest.php` | 3 tests |
 | `tests/Browser/Billing/ChangePlanFlowTest.php` | 2 browser tests |
 | `tests/Feature/Auth/TenantPermissionsTest.php` | +1 test (downgrade regression) |
 
