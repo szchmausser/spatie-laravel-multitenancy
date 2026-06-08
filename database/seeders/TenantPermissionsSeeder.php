@@ -87,18 +87,35 @@ class TenantPermissionsSeeder extends Seeder
     public function run(): void
     {
         foreach (Tenant::query()->orderBy('id')->get() as $tenant) {
-            $this->pointTenantConnectionAt($tenant->database);
+            $this->forTenant($tenant);
+        }
+    }
 
-            try {
-                // Flush the Spatie permission cache so a previous run
-                // (or test) can't mask missing rows.
-                app(PermissionRegistrar::class)->forgetCachedPermissions();
+    /**
+     * Run the seeding logic on the currently configured tenant connection.
+     * Useful for tests where the connection is already pointed at the target DB,
+     * avoiding iteration over all landlord tenants (which may include non-existent test DBs).
+     */
+    public function runForCurrentConnection(): void
+    {
+        app(PermissionRegistrar::class)->forgetCachedPermissions();
+        $permissions = $this->ensurePermissionsExist();
+        $this->ensureRolesWithPermissionsExist($permissions);
+    }
 
-                $permissions = $this->ensurePermissionsExist();
-                $this->ensureRolesWithPermissionsExist($permissions);
-            } finally {
-                $this->forgetTenantConnection();
-            }
+    public function forTenant(Tenant $tenant): void
+    {
+        $this->pointTenantConnectionAt($tenant->database);
+
+        try {
+            // Flush the Spatie permission cache so a previous run
+            // (or test) can't mask missing rows.
+            app(PermissionRegistrar::class)->forgetCachedPermissions();
+
+            $permissions = $this->ensurePermissionsExist();
+            $this->ensureRolesWithPermissionsExist($permissions);
+        } finally {
+            $this->forgetTenantConnection();
         }
     }
 
@@ -108,8 +125,8 @@ class TenantPermissionsSeeder extends Seeder
      * opens a fresh connection against the new DB.
      *
      * The Spatie Role and Permission models are bound to the
-     * `tenant` connection via {@see \App\Models\Auth\Role} and
-     * {@see \App\Models\Auth\Permission}, so flipping the global
+     * `tenant` connection via {@see Role} and
+     * {@see Permission}, so flipping the global
      * default is not required: the model queries land on the
      * `tenant` connection automatically.
      */
@@ -132,7 +149,7 @@ class TenantPermissionsSeeder extends Seeder
      *
      * @return array<string, Permission>
      */
-    private function ensurePermissionsExist(): array
+    protected function ensurePermissionsExist(): array
     {
         $resolved = [];
 
@@ -154,7 +171,7 @@ class TenantPermissionsSeeder extends Seeder
      *
      * @param  array<string, Permission>  $permissions
      */
-    private function ensureRolesWithPermissionsExist(array $permissions): void
+    protected function ensureRolesWithPermissionsExist(array $permissions): void
     {
         foreach (self::ROLES_WITH_PERMISSIONS as $roleName => $permissionNames) {
             $role = Role::findOrCreate($roleName, 'web');

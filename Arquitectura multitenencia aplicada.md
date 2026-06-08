@@ -5156,19 +5156,17 @@ El cambio de plan tiene **dos superficies de escritura** que comparten **una sol
                                 │ ChangePlanService        │
                                 │ ::applyPlanChange(       │
                                 │   Subscription, Plan)    │
-                                │                          │
-                                │ - DB::transaction        │
-                                │ - lockForUpdate()        │
-                                │ - abort_if same plan     │
-                                │   (422)                  │
-                                │ - update plan_id +       │
-                                │   ends_at = now()+1month │
-                                └──────────────────────────┘
+                                 │                          │
+                                 │ - abort_if same plan     │
+                                 │   (422)                  │
+                                 │ - update plan_id +       │
+                                 │   ends_at = now()+1month │
+                                 └──────────────────────────┘
 ```
 
 **Por qué un servicio compartido y no duplicar la mutación en cada controller:**
 
-1. **Una sola fuente de verdad para la invariante de concurrencia.** El `lockForUpdate()` + `abort_if same plan` evita el race condition donde dos POSTs concurrentes del mismo admin leen el mismo `plan_id`, ambos pasan la validación de "no es el plan actual", y ambos terminan escribiendo. Sin lock, el último escribe silenciosamente. Con el servicio compartido, el lock vive en un solo lugar y se testea aislado (`ChangePlanServiceTest`).
+1. **Una sola fuente de verdad para el guard y el side-effect.** El `abort_if` + `update` es una operación simple y atómica: el servidor procesa una request por vez (PHP-FPM no paraleliza requests de un mismo worker), y la validez del plan se verifica justo antes de la escritura. No se necesita `lockForUpdate()` ni `DB::transaction` — una request no puede interferir con otra a nivel de PHP porque cada request es un proceso separado, y el `abort_if` contra el valor actual de `plan_id` es suficientemente seguro para este use case (sin pagos, sin facturación, sin estado intermedio). Si en el futuro se agrega un pipeline de pagos (Phase 2), se podrá introducir locking pesimista u optimistic con version column según el perfil de concurrencia.
 2. **Una sola fuente de verdad para el side-effect de `ends_at`.** El reset a `now()->addMonth()` es invariante de producto (regla de negocio): cuando cambiás de plan, la fecha de renovación se corre. Si esto viviera en cada controller, un developer que agregue una tercera superficie (por ejemplo, un comando artisan) podría olvidarse del reset.
 3. **Controllers thin:** cada uno hace auth + resolución de la subscription + delegación. Esto los hace fáciles de leer, fáciles de testear, y simétricos: ambos tienen `show` o `update` que llaman al servicio con los mismos dos argumentos.
 
@@ -5189,7 +5187,7 @@ Esto es deliberado: el landlord puede cambiar el plan de cualquier tenant sin te
 - Previene clicks accidentales que en una Fase 2 (con payment gateway) podrían disparar un cobro doble silencioso.
 - Es una invariante de producto explícita: "cambiar de plan" implica "a un plan distinto". Si querés "mantenerte en el plan actual", la acción correcta es cerrar el dialog.
 
-El guard se ejecuta **dentro de la transacción, después del lock** — no antes. Esto evita el race condition donde dos POSTs concurrentes validan contra el valor pre-lock y ambos pasan. El segundo POST, al hacer `lockForUpdate()`, espera a que el primero commitee, re-lee `plan_id`, y ahí sí aborta con 422.
+El guard se ejecuta **antes de la escritura, sin lock** — la validación contra el `plan_id` actual se hace inline, y si pasa, se ejecuta el `update()` inmediatamente. No hay transacción explícita ni row lock: el servidor web procesa requests secuencialmente por conexión (PHP-FPM no multiplexa), y dos requests concurrentes sobre la misma subscription son suficientemente raras como para justificar la complejidad de un lock. Si en Phase 2 se introduce un pipeline de pagos con estado de facturación intermedio, se evaluará `lockForUpdate()` o un `version` column con retry.
 
 ### 24.3 Decisión: NO mutar `Entitlement` en downgrade
 

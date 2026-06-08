@@ -724,8 +724,11 @@ function restoreDefaultConnection(string $previous): void
  * Run the TenantPermissionsSeeder on the active tenant connection.
  * Caller MUST have set the default connection to `tenant` first
  * (use {@see setDefaultConnectionToTenant()}).
+ * 
+ * Uses `runForCurrentConnection()` to avoid iterating over all landlord
+ * tenants (which in tests includes fake tenants with non-existent DBs).
  */
 function runTenantPermissionsSeeder(): void
 {
-    (new TenantPermissionsSeeder)->run();
+    (new TenantPermissionsSeeder)->runForCurrentConnection();
 }

@@ -2,6 +2,7 @@
 
 namespace Database\Seeders;
 
+use App\Models\Auth\Role;
 use App\Models\Tenant;
 use App\Models\User;
 use Illuminate\Database\Seeder;
@@ -45,24 +46,29 @@ class TenantUsersSeeder extends Seeder
     public function run(): void
     {
         foreach (Tenant::query()->orderBy('id')->get() as $tenant) {
-            $subdomain = "tenant{$tenant->id}";
+            $this->forTenant($tenant);
+        }
+    }
 
-            $this->pointTenantConnectionAt($tenant->database);
+    public function forTenant(Tenant $tenant): void
+    {
+        $subdomain = "tenant{$tenant->id}";
 
-            try {
-                $user = User::on('tenant')->updateOrCreate(
-                    ['email' => "{$subdomain}@{$tenant->domain}"],
-                    [
-                        'name' => ucfirst($subdomain),
-                        'password' => Hash::make('password'),
-                        'email_verified_at' => now(),
-                    ],
-                );
+        $this->pointTenantConnectionAt($tenant->database);
 
-                $this->assignFirstUserRole($user);
-            } finally {
-                $this->forgetTenantConnection();
-            }
+        try {
+            $user = User::on('tenant')->updateOrCreate(
+                ['email' => "{$subdomain}@{$tenant->domain}"],
+                [
+                    'name' => ucfirst($subdomain),
+                    'password' => Hash::make('password'),
+                    'email_verified_at' => now(),
+                ],
+            );
+
+            $this->assignFirstUserRole($user);
+        } finally {
+            $this->forgetTenantConnection();
         }
     }
 
@@ -76,7 +82,7 @@ class TenantUsersSeeder extends Seeder
      *
      * The Spatie Role model used by the underlying `syncRoles`
      * call is bound to the `tenant` connection (see
-     * {@see \App\Models\Auth\Role}), so flipping the global
+     * {@see Role}), so flipping the global
      * default is not required: the role-lookup query lands on
      * the `tenant` connection automatically. Without that
      * binding, `syncRoles` would query the landlord DB and fail

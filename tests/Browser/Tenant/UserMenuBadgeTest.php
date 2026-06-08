@@ -178,5 +178,14 @@ function restoreDefaultConnection(string $previous): void
  */
 function runTenantPermissionsSeeder(): void
 {
-    (new TenantPermissionsSeeder)->run();
+    $tenant = Tenant::latest('id')->first();
+
+    if ($tenant) {
+        $originalDb = $tenant->database;
+        $tenant->database = config('database.connections.landlord.database');
+        (new TenantPermissionsSeeder)->forTenant($tenant);
+        $tenant->database = originalDb;
+    } else {
+        (new TenantPermissionsSeeder)->run();
+    }
 }
