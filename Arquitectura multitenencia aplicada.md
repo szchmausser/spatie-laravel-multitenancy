@@ -1997,271 +1997,91 @@ Detener y reiniciar Laragon (Stop → Start All).
 
 ---
 
-## 18. Flujo completo de reset de datos para desarrollo (reset total)
+## 18. Reset de datos para desarrollo
 
-Esta sección documenta **el reset total**: limpia todas las BDs (landlord, tenants, y cualquier default de Laravel), borra las entradas de hosts de todos los tenants, y recrea todo desde cero ejecutando las migraciones — incluida la migración manual de la tabla `tenants` del landlord. Es el flujo "como si nunca hubieras corrido nada".
+Este flujo dropea y recrea las BDs, corre migraciones, y siembra **solo los planes** (el seeder estrictamente obligatorio). Los tenants, usuarios y permisos se crean manualmente desde el panel admin y el registro de usuarios.
 
-> Si solo querés repoblar datos manteniendo todo lo demás, este flujo es overkill — pero sigue siendo seguro correrlo, sólo que es más lento. El reset total es útil cuando el entorno está roto, después de cambios grandes de esquema, o cuando querés un estado de desarrollo 100% limpio.
+> **Pre-flight:** Laragon (o tu dev stack) corriendo con PostgreSQL activo. Credenciales del `.env` funcionando. Usá ventana incógnita del navegador (las cookies viejas causan 419). Si escribís al archivo `hosts`, necesitás permisos de Administrador (Windows) o `sudo` (Linux/macOS).
 
-### 18.0 Pre-flight (antes de correr el reset)
+### 18.1 Reset limpio con seeders esenciales
 
-- **Laragon (o tu dev stack) está corriendo** con PostgreSQL y Apache/Nginx activos.
-- **Las credenciales de BD del `.env` funcionan.** Verificá con `php artisan tinker --execute 'DB::connection("landlord")->getPdo();'`.
-- **Tenés una terminal con permisos de Administrador** (Windows) o `sudo` (Linux/macOS) lista para los scripts de `hosts`. Sin privilegios elevados, los scripts fallan silenciosamente con `is_writable() == false`.
-- **(Recomendado) Usá una ventana incógnita del navegador** para verificar. Las cookies de sesión viejas apuntan a IDs de sesión que ya no van a existir (la tabla `sessions` se dropea en el reset), y causan loops de redirect al `/login` o errores 419.
-- **(Si la autorización per-tenant 1.5G.0 está habilitada) Verificá que las subclases de Spatie existen.** El paquete y la guard de la migration son obligatorios, pero la subclase `App\Models\Auth\Role` también: si no está apuntada en `config/permission.php`, el `db:seed` pasa y los tests siguen verdes, pero el primer HTTP request real a un tenant falla con "no existe la relación «roles»" (la default de Spatie consulta la landlord DB). Ver §23.2.
-
-### 18.1 Reset total
-
-**Cuidado: este flujo destruye TODOS los datos del landlord y de los tenants**, incluyendo el `admin@example.test` y cualquier tenant que hayas creado a mano.
+**Cuándo usar este flujo:** cuando querés datos a mano (no de prueba), o cuando estás desarrollando un feature nuevo y necesitás un estado limpio sin los 10 tenants de prueba del seeder completo.
 
 ```bash
-# 1. (Opcional) Detener servicios con conexiones abiertas a las BDs
-#    (php artisan serve, queue:work, vite dev, etc.)
-```
+# 1. Drop todas las BDs
+psql -U postgres -c 'DROP DATABASE IF EXISTS "spatie-laravel-multitenancy";'
+psql -U postgres -c 'DROP DATABASE IF EXISTS "spatie-laravel-multitenancy-testing";'
 
-**2. Eliminá las BDs del proyecto:** la BD del landlord (la que figura como `DB_DATABASE` en tu `.env`), la BD de testing de Pest (la que figura como `DB_DATABASE` en tu `.env.testing` — típicamente `spatie-laravel-multitenancy-testing`), y la BD de cada tenant registrado en la tabla `tenants` del landlord. Cómo hacerlo queda a tu criterio — `psql`, `pgAdmin`, `DBeaver`, un script propio, lo que prefieras. La eliminación de las BDs forma parte del reset total, independientemente de la herramienta o método que elijas.
-
-> **Gotcha de testing descubierto en dog food:** La BD de testing de Pest (`spatie-laravel-multitenancy-testing`) NO se regenera sola. El trait `RefreshLandlordDatabase` la usa pero la da por existente. Si la dropeás en el reset (lo cual es correcto: es una BD del proyecto), hay que recrearla en el paso 4b antes de correr tests. Sin esto, el primer test que corre falla con `SQLSTATE[08006] FATAL: no existe la base de datos spatie-laravel-multitenancy-testing`, y eso se propaga a los 180+ restantes porque comparten la misma conexión. Si querés confirmar visualmente que la BD no existe después de dropearla (antes de recrearla), podés correr `psql -U postgres -c '\l spatie-laravel-multitenancy-testing'` y la respuesta será 0 filas — eso es el estado esperado entre el paso 2 y el 4b.
-
-> **Bug histórico del seeder (corregido):** El `PlansSeeder` original solo seteaba `premium-content: true` en el plan `basic`, no en el `premium`. Esto significaba que un tenant con plan `premium` (el más caro) NO veía el contenido premium — exactamente al revés de la intención. Fue descubierto durante el dog food de este reset. Si en algún momento se vuelve a introducir el bug, los tests de §22.1 (per-resource gating) lo detectarían en el primero: el caso "tenant premium puede ver un recurso premium" fallaría con 404. La cobertura actual lo blinda.
-
-```bash
-# 3. (Opcional) Limpiar TODAS las entradas de hosts de subdominios de tenant
-#    Si vas a re-sincronizar al final con el paso 7, podés saltarte este paso.
-#    Dejar hosts entries huérfanas apuntando a BDs que ya no existen NO rompe
-#    nada (el browser simplemente no resuelve a un servidor vivo y tira un
-#    error de DNS) — solo ensucia el archivo. Si querés un reset quirúrgico,
-#    corré esto. Si no, salto al paso 4.
-#    (No podemos consultar la BD porque la dropeamos en el paso 2, así que
-#    listá los tenants según tu última corrida de TenantsSeeder. Si querés
-#    descubrir los hosts entries existentes: `cat /c/Windows/System32/drivers/etc/hosts`
-#    en Windows, `sudo cat /etc/hosts` en Linux/macOS.)
-#    Con el set de seed actual son 10 tenants (tenant1..tenant10):
-#    (PowerShell — ajustar a bash/seq si corrés en Linux/macOS)
-1..10 | ForEach-Object { php scripts/remove-host.php "tenant$_.spatie-laravel-multitenancy.test" }
-
-# 4. Recreate la BD landlord
-#    (Las BDs de tenants se crean después automáticamente via el callback
-#    `creating` de Tenant, cuando el seeder corre Tenant::create() para cada
-#    uno y createDatabase() corre sobre cada uno.)
-#    El nombre debe coincidir con `DB_DATABASE` del .env (típicamente
-#    "spatie-laravel-multitenancy" con guiones). Las comillas dobles son
-#    obligatorias porque los guiones son caracteres especiales en psql.
+# 2. Recrear landlord + testing
 psql -U postgres -c 'CREATE DATABASE "spatie-laravel-multitenancy";'
-
-# 4b. Recreate la BD de testing de Pest
-#     Ver el gotcha del paso 2. La BD debe existir antes de correr
-#     `php artisan test` por primera vez post-reset. El nombre debe
-#     coincidir con `DB_DATABASE` del .env.testing (típicamente
-#     "spatie-laravel-multitenancy-testing" con guiones).
 psql -U postgres -c 'CREATE DATABASE "spatie-laravel-multitenancy-testing";'
 
-# 5. Fresh migrate del landlord
-#    Corre todas las migraciones estándar de Laravel (users, sessions, cache,
-#    jobs, etc.) + la migración manual de la tabla `tenants` que vive en
-#    database/migrations/landlord/ (sección 6 del doc). Sin esta migración
-#    manual, la tabla `tenants` no se recrea y el reset falla en el paso 6.
-#    El `--force` en el segundo migrate evita el prompt de confirmación
-#    ("Are you sure you want to run this command?") en entornos donde
-#    APP_ENV no es `local`.
+# 3. Migraciones
 php artisan migrate:fresh
 php artisan migrate --path=database/migrations/landlord --database=landlord --force
-
-# 5b. Limpiar cachés de Laravel (config, route, view, application cache)
-#     OBLIGATORIO si tocaste `config/permission.php`, agregaste clases de
-#     modelo, o cualquier otro config. Sin esto, el `db:seed` del paso 6
-#     usaría el config cacheado de la corrida anterior y los seeders
-#     apuntarían a las clases Spatie default (en lugar de las subclases
-#     `App\Models\Auth\Role` / `App\Models\Auth\Permission` de §23.2).
-#     El síntoma típico es que `db:seed` pasa "verde" pero `can('change-plan')`
-#     falla en HTTP real con "no existe la relación «roles»".
 php artisan optimize:clear
 
-# 6. Seed del landlord
-#    Crea en orden:
-#      - LandlordUserSeeder   → admin del landlord (admin@example.test)
-#      - PlansSeeder          → 3 planes (free/basic/premium) en la tabla plans.
-#                                El plan `premium` incluye `premium-content: true`
-#                                en su JSONB de features (necesario para que el
-#                                gating de recursos premium funcione, ver §22.1).
-#                                El plan `basic` también lo incluye (mismo nivel
-#                                de acceso al contenido premium que premium; la
-#                                diferencia entre basic y premium está en otras
-#                                features, no en el gating de contenido).
-#      - TenantsSeeder        → 10 tenants en la tabla tenants. Cada
-#                                Tenant::create() dispara el callback `creating`
-#                                que ejecuta:
-#                                  - createDatabase()            — chequea pg_database; crea la BD solo
-#                                                                si no existe (idempotente)
-#                                  - configureTenantConnection() — apunta la conexión `tenant` a esa BD
-#                                  - runMigrations()             — corre las migraciones pendientes
-#                                Y el callback `created` posterior invoca
-#                                `ensureDefaultSubscription()` que asigna el plan
-#                                (`assignPlanSlug` si está seteado, sino `free`).
-#      - TenantUsersSeeder    → 1 User por tenant en la BD de cada uno
-#                                (apunta la conexión `tenant` a cada BD y hace
-#                                updateOrCreate por email). Credenciales en §10.1.
-#    IMPORTANTE: NO agregar `WithoutModelEvents` a DatabaseSeeder — eso
-#    deshabilitaría AMBOS callbacks de Tenant y dejaría las BDs huérfanas
-#    + tenants sin suscripción.
-#
-#    Si las BDs de los tenants no se terminaron de crear (por permisos,
-#    error transitorio, o lo que sea), ver bloque 6b abajo.
-#
-#    Si la autorización per-tenant (1.5G.0) está habilitada, los seeders
-#    `TenantPermissionsSeeder` y `TenantUsersSeeder` también iteran y
-#    siembran las 5 tablas de Spatie Permission + el primer usuario con
-#    el rol `tenant-admin` en CADA tenant DB. Verificar en §18.3 (los
-#    nuevos checks de Spatie) que las 5 tablas y el role+permission
-#    aparezcan en cada tenant. Si el primer user de un tenant no tiene
-#    el rol, ver §23.2 (la subclase `App\Models\Auth\Role` es obligatoria).
-php artisan db:seed
-
-# 6b. (Solo si hace falta) Workaround para BDs de tenants que no se crearon
-#      Verificá primero con `psql -U postgres -l` que sólo aparece la BD
-#      del landlord. Si faltan las BDs tenant, corré esto (PowerShell):
-1..10 | ForEach-Object { psql -U postgres -c "CREATE DATABASE \"tenant$_-spatie-laravel-multitenancy\"" }
-php artisan tenants:artisan "migrate --database=tenant"
-
-# 7. Re-sincronizar el archivo hosts con los subdominios de tenant
-#    (Requiere permisos de Administrador en Windows o sudo en Linux/macOS.
-#    El dominio principal lo maneja Laragon solo; estos son los subdominios.)
-1..10 | ForEach-Object { php scripts/add-host.php "tenant$_.spatie-laravel-multitenancy.test" }
+# 4. Seed SOLO planes (obligatorio — Tenant::created busca el plan 'free'
+#    por slug al crear un tenant. Sin este seeder, la creación de tenants falla.)
+php artisan db:seed --class=PlansSeeder
 ```
 
-> **¿Por qué no automatizamos este flujo en un comando Artisan?** Porque mezcla acciones que requieren privilegios elevados (escribir `hosts`), con acciones destructivas irreversibles (drop databases), y con migraciones sensibles (`migrate:fresh`). Si lo necesitás seguido, escribilo como script bash con `set -e` y revisalo cada vez — pero no lo metas en un comando mágico de Laravel.
+**Después de los seeders esenciales, el flujo manual es:**
 
-### 18.2 Post-reset housekeeping
-
-```bash
-# Limpiar todas las cachés de Laravel (config, route, view, application cache)
-php artisan optimize:clear
-
-# (Opcional) Si no tenés `npm run dev` corriendo y querés el build de producción
-npm run build
-
-# (Opcional) Verificar que las rutas estén registradas
-php artisan route:list --path=admin
-php artisan route:list --path=admin/tenants
-php artisan route:list --path=admin/plans
-php artisan route:list --path=admin/subscriptions
-php artisan route:list --path=premium
+```
+Landlord                              Tenant
+────────                              ──────
+1. Registrar landlord desde           7. Registrar primer usuario desde
+   /register (Fortify)                   el dominio del tenant
+                                         (ej: tenant1.test/register)
+2. Loguearse como landlord
+                                      8. El sistema detecta que es el
+3. Crear tenant desde                   primer usuario y le asigna
+   /admin/tenants                       tenant-admin automáticamente
+   (el callback Tenant::created       9. Loguearse como ese usuario
+   crea la BD + corre migraciones         → tiene permisos de admin
+   + seedea permisos en la tenant       → puede cambiar de plan
+   DB + asigna plan free)
+                                      10. (Opcional) Crear más usuarios
+4. Agregar subdominio al hosts           desde /register del tenant
+   (requiere Admin en Windows)           → NO reciben rol automáticamente
 ```
 
-### 18.3 Comprobación rápida post-reset
+**¿Por qué solo `PlansSeeder`?** Porque es el único seeder estrictamente obligatorio:
+
+- `PlansSeeder` → crea free/basic/premium. **Sin esto, `Tenant::created` falla** porque `ensureDefaultSubscription()` busca un plan por slug `free` y no lo encuentra.
+- `LandlordUserSeeder` → lo reemplazás con el registro manual desde `/register`.
+- `TenantsSeeder` → lo reemplazás creando tenants desde el panel admin.
+- `TenantPermissionsSeeder` → lo reemplaza `Tenant::seedPermissions()` que se ejecuta automáticamente al crear el tenant.
+- `TenantUsersSeeder` → lo reemplazás registrando usuarios desde el dominio del tenant.
+
+### 18.2 Verificación post-reset
 
 ```bash
-# ¿Existe el admin del landlord?
-psql -U postgres -d spatie_laravel_multitenancy -c 'SELECT email FROM users;'
-# Esperado: 1 fila con admin@example.test
-
 # ¿Están los planes cargados?
 psql -U postgres -d spatie_laravel_multitenancy -c 'SELECT slug, name, price_cents FROM plans ORDER BY id;'
-# Esperado: 3 filas (free | Free | 0, basic | Basic | 4900, premium | Premium | 14900)
+# Esperado: 3 filas (free, basic, premium)
 
-# ¿Están los tenants registrados?
+# ¿Existe el admin del landlord (o el que registraste)?
+psql -U postgres -d spatie_laravel_multitenancy -c 'SELECT email FROM users;'
+# Esperado: al menos 1 fila
+
+# ¿Está el primer tenant creado desde el panel?
 psql -U postgres -d spatie_laravel_multitenancy -c 'SELECT name, domain FROM tenants ORDER BY id;'
-# Esperado: 10 filas (Tenant1..Tenant10)
+# Esperado: al menos 1 fila
 
-# ¿Cada tenant tiene exactamente una suscripción?
+# ¿Cada tenant tiene una suscripción?
 psql -U postgres -d spatie_laravel_multitenancy -c 'SELECT t.name, p.slug AS plan, s.status FROM tenants t LEFT JOIN subscriptions s ON s.tenant_id = t.id LEFT JOIN plans p ON p.id = s.plan_id ORDER BY t.id;'
-# Esperado: 10 filas, todas con plan asignado:
-#   - 4 basic (tenant1..tenant4)
-#   - 4 premium (tenant5..tenant8)
-#   - 2 free   (tenant9..tenant10)
-# Si alguna fila tiene plan=NULL, el listener `created` no corrió
-# (probable causa: WithoutModelEvents habilitado en DatabaseSeeder).
-
-# ¿Existen las BDs físicas de los tenants?
-psql -U postgres -c "SELECT datname FROM pg_database WHERE datname LIKE 'tenant%';"
-# Esperado: 10 BDs (tenant1-... a tenant10-...)
-
-# ¿Hay un usuario creado en cada BD de tenant? (TenantUsersSeeder)
-# PowerShell:
-1..10 | ForEach-Object { Write-Host "tenant$_"; psql -U postgres -d "tenant$_-spatie-laravel-multitenancy" -c "SELECT id, name, email FROM users;" }
-# Esperado: cada BD muestra 1 fila con email `tenantN@tenantN.spatie-laravel-multitenancy.test`.
-# Si alguna BD no tiene fila, el TenantUsersSeeder no corrió (o falló a mitad).
-
-# ¿Existen las 5 tablas de Spatie Permission en cada BD de tenant?
-# (permissions, roles, model_has_permissions, model_has_roles, role_has_permissions)
-# PowerShell:
-1..10 | ForEach-Object { Write-Host "tenant$_"; psql -U postgres -d "tenant$_-spatie-laravel-multitenancy" -c "\dt" | Select-String -Pattern "^\s+(permissions|roles|model_has_permissions|model_has_roles|role_has_permissions)\s+\|" }
-# Esperado: 5 líneas por tenant (10 tenants = 50 filas en total).
-# Si alguna BD no tiene las 5 tablas, la migration de Spatie
-# (`database/migrations/2026_06_06_132424_create_permission_tables.php`)
-# no se corrió contra ese tenant. Verificar la guard al inicio del `up()`:
-# el migration se skippea en conexiones distintas a `tenant`. Si la BD
-# se creó fuera del callback `Tenant::creating` (ej. manualmente con
-# `CREATE DATABASE` y `migrate --database=tenant`), hay que re-correr
-# `php artisan tenants:artisan "migrate --tenants=<id>"`.
-
-# ¿Tiene cada tenant DB el permiso `change-plan` y el rol `tenant-admin` sembrados?
-# (TenantPermissionsSeeder)
-# PowerShell:
-1..10 | ForEach-Object { Write-Host "tenant$_"; psql -U postgres -d "tenant$_-spatie-laravel-multitenancy" -c "SELECT name FROM permissions; SELECT name FROM roles;" }
-# Esperado: cada BD muestra 1 fila de `change-plan` y 1 fila de `tenant-admin`.
-# Si alguna BD no las tiene, `TenantPermissionsSeeder` no iteró sobre ese
-# tenant. Causa típica: en una versión anterior del seeder, el `run()`
-# no iteraba y dependía del estado residual de la conexión `tenant` —
-# sembraba solo el último tenant creado por `TenantsSeeder`. Asegurarse
-# de tener la versión iterativa del seeder (ver §23.3).
-
-# ¿Tiene cada primer usuario el rol `tenant-admin` asignado?
-# (TenantUsersSeeder::assignFirstUserRole)
-# PowerShell:
-1..10 | ForEach-Object { Write-Host "tenant$_"; psql -U postgres -d "tenant$_-spatie-laravel-multitenancy" -c "SELECT u.email, r.name AS role FROM users u JOIN model_has_roles mhr ON mhr.model_id = u.id AND mhr.model_type = 'App\\Models\\User' JOIN roles r ON r.id = mhr.role_id;" }
-# Esperado: cada BD muestra 1 fila con `tenant1@...` (o N correspondiente) y role=`tenant-admin`.
-# Si alguna BD no tiene la fila, `syncRoles` falló. Causa típica: la
-# subclase `App\Models\Auth\Role` no está apuntada en `config/permission.php`
-# — sin ella, `syncRoles` usa la default de Spatie, que conecta a la
-# landlord DB, que no tiene `roles`. Ver §23.2.
+# Esperado: todas las filas con plan asignado (no NULL).
 
 # ¿Resuelve el DNS?
 nslookup tenant1.spatie-laravel-multitenancy.test
 # Esperado: 127.0.0.1 (o 127.0.2.2 si tenés WARP activo — ver gotcha abajo)
 ```
 
-### 18.4 Verificación end-to-end compacta (un solo script)
-
-La verificación manual de §18.3 (4 queries SQL por tenant × 10 tenants + DNS lookup) es segura pero lenta. Para dogfoods rápidos y para CI local, este one-liner de Tinker valida todo el ciclo de 1.5G.0 en una sola corrida, incluyendo el `User->can('change-plan')` y `User->hasRole('tenant-admin')` que es la **prueba de fuego** (los seeds pueden estar mal y los queries psql dar verde sin que la autorización funcione en HTTP real):
-
-```bash
-php artisan tinker --execute '
-$ok = 0; $fail = 0;
-foreach (range(1, 10) as $i) {
-    $tenant = \App\Models\Tenant::find($i);
-    $tenant->makeCurrent();
-    try {
-        $email = "tenant{$i}@tenant{$i}.spatie-laravel-multitenancy.test";
-        $user = \App\Models\User::where("email", $email)->first();
-        if (! $user) { echo "  tenant{$i}: USER NOT FOUND\n"; $fail++; continue; }
-        $can = $user->can("change-plan");
-        $has = $user->hasRole("tenant-admin");
-        $perms = $user->getAllPermissions()->count();
-        echo "  tenant{$i}: can={$can}, hasRole={$has}, perms={$perms}\n";
-        $can && $has ? $ok++ : $fail++;
-    } finally {
-        \Illuminate\Support\Facades\DB::purge("tenant");
-    }
-}
-echo "\nOK: {$ok}/10, FAIL: {$fail}/10\n";
-'
-```
-
-**Esperado:** `OK: 10/10, FAIL: 0/10`. Si alguna fila da `FAIL`:
-
-- `can(change-plan)=false` o `hasRole(tenant-admin)=false` → la subclase `App\Models\Auth\Role` no está apuntada en `config/permission.php` (causa #1; ver §23.2). O `TenantPermissionsSeeder` no corrió (causa #2; ver §18.1 paso 6).
-- `USER NOT FOUND` → `TenantUsersSeeder` no corrió o falló a mitad. Correr el seeder de nuevo: `php artisan tenants:artisan "db:seed --class=TenantUsersSeeder"`.
-- `Undefined table: roles` o similar → la migration de Spatie no se corrió contra la BD del tenant. Re-correr: `php artisan tenants:artisan "migrate --tenants={$id}"`.
-
-**Por qué este script es mejor que los queries psql de §18.3 para dogfood:** los queries psql verifican **estado** (las filas existen). Este script verifica **comportamiento** (`can()` y `hasRole()` invocan la chain completa de Spatie — model connection → pivot query → role lookup → permission check). Si el `User` model está en una conexión pero el `Role` model en otra (el bug que motivó las subclases de §23.2), los queries psql darían verde pero `can()` fallaría. Por eso este es el verdadero canary.
-
-**Complemento con queries psql (verificación de estado, no de comportamiento).** Si el script de arriba pasa, las queries de §18.3 son opcionales — pero son útiles para documentar evidencia en un PR.
-
 > **Gotcha de DNS — Cloudflare WARP:** Si tenés WARP activo, la resolución de DNS pasa por un resolver local en `127.0.2.2` con su propio caché independiente del sistema. `ipconfig /flushdns` no lo toca. Si un subdominio recién agregado no resuelve, esperá ~30 segundos (caché TTL de WARP) o deshabilitá WARP temporalmente.
 
-> **Gotcha de sesiones:** Después de este reset, las cookies viejas del navegador apuntan a IDs de sesión que ya no existen. El síntoma típico es un redirect loop al `/login` o un error 419. Solución: cerrar sesión explícita antes del reset, o usar ventana incógnita (mencionado en 18.0).
+> **Gotcha de sesiones:** Después de este reset, las cookies viejas del navegador apuntan a IDs de sesión que ya no existen. El síntoma típico es un redirect loop al `/login` o un error 419. Solución: cerrar sesión explícita antes del reset, o usar ventana incógnita.
 
 ---
 

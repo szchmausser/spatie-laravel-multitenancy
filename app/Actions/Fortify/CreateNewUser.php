@@ -4,11 +4,12 @@ namespace App\Actions\Fortify;
 
 use App\Concerns\PasswordValidationRules;
 use App\Concerns\ProfileValidationRules;
-use App\Concerns\ResolvesUserModel; // ← AGREGADO: Fuente única de verdad
-use Illuminate\Foundation\Auth\User; // ← CORREGIDO: Tipo de contrato Fortify
+use App\Concerns\ResolvesUserModel;
+use Illuminate\Foundation\Auth\User;
 use Illuminate\Foundation\Auth\User as BaseUser;
 use Illuminate\Support\Facades\Validator;
 use Laravel\Fortify\Contracts\CreatesNewUsers;
+use Spatie\Permission\Traits\HasRoles;
 
 /**
  * Acción de Fortify para crear nuevos usuarios.
@@ -37,19 +38,42 @@ class CreateNewUser implements CreatesNewUsers
         $userModel = $this->resolveUserModel();
 
         // ← CREACIÓN DINÁMICA: Usa el modelo resuelto para crear el usuario
-        return $userModel::create([
+        $user = $userModel::create([
             'name' => $input['name'],
             'email' => $input['email'],
             'password' => $input['password'],
         ]);
+
+        // Assign tenant-admin role to the first user of each tenant.
+        // The permission catalog (change-plan permission + tenant-admin role)
+        // is seeded by Tenant::seedPermissions() when the tenant is created.
+        $this->assignRoleToFirstUserIfTenant($user);
+
+        return $user;
+    }
+
+    /**
+     * Assign the tenant-admin role to the first user of a tenant.
+     *
+     * Only runs when the user model uses the HasRoles trait (i.e.,
+     * tenant context — not landlord). Checks the user count on the
+     * tenant connection: if this is the first user, they receive
+     * the tenant-admin role automatically.
+     *
+     * The tenant-admin role and change-plan permission must already
+     * exist in the tenant database (seeded by Tenant::seedPermissions()
+     * when the tenant was created).
+     */
+    private function assignRoleToFirstUserIfTenant(BaseUser $user): void
+    {
+        if (! in_array(HasRoles::class, class_uses_recursive($user))) {
+            return;
+        }
+
+        $userCount = $user->on('tenant')->count();
+
+        if ($userCount === 1) {
+            $user->assignRole('tenant-admin');
+        }
     }
 }
-
-// Cambios clave y su importancia:
-// - Añadido: use App\Concerns\ResolvesUserModel; - Acceso a la lógica centralizada
-// - Añadido: use ResolvesUserModel; en la clase - Consumo del trait
-// - Cambiado: Tipo de retorno de User a Illuminate\Foundation\Auth\User as BaseUser
-//  - Por qué: El contrato Laravel\Fortify\Contracts\CreatesNewUsers::create() espera específicamente retornar \Illuminate\Foundation\Auth\User
-//  - Tanto Landlord como User extienden esta clase base, por lo que cumple con el principio de substitutividad
-//  - Evita TypeError en PHP 8.5+ cuando se retorna Landlord desde el dominio landlord
-// - Modificado: Lógica de creación - Ahora usa $userModel::create([...]) en lugar de User::create([...])

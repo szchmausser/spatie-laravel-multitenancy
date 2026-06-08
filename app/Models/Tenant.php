@@ -3,6 +3,8 @@
 namespace App\Models;
 
 use App\Enums\SubscriptionStatus;
+use App\Models\Auth\Permission;
+use App\Models\Auth\Role;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Facades\Artisan;
@@ -12,6 +14,7 @@ use Spatie\Multitenancy\Contracts\IsTenant;
 use Spatie\Multitenancy\Models\Concerns\ImplementsTenant;
 use Spatie\Multitenancy\Models\Concerns\UsesLandlordConnection;
 use Spatie\Multitenancy\Models\Tenant as SpatieTenant;
+use Spatie\Permission\PermissionRegistrar;
 
 /**
  * Tenant model with automatic provisioning.
@@ -81,6 +84,7 @@ class Tenant extends SpatieTenant implements IsTenant
 
         static::created(function (Tenant $tenant): void {
             $tenant->ensureDefaultSubscription();
+            $tenant->seedPermissions();
         });
     }
 
@@ -124,6 +128,30 @@ class Tenant extends SpatieTenant implements IsTenant
             'plan_id' => $plan->id,
             'status' => SubscriptionStatus::Active,
         ]);
+    }
+
+    /**
+     * Seed the Spatie permission catalog for this tenant.
+     *
+     * Creates the `change-plan` permission and the `tenant-admin` role
+     * (granted `change-plan`) in the tenant's database. Called by the
+     * `created` callback after `ensureDefaultSubscription()`, so every
+     * new tenant has the permission catalog ready before any user
+     * registers.
+     *
+     * Uses the custom {@see Role} and {@see Permission} models that
+     * are bound to the `tenant` connection, so the queries land in the
+     * correct database without flipping the default connection.
+     */
+    public function seedPermissions(): void
+    {
+        app(PermissionRegistrar::class)->forgetCachedPermissions();
+
+        $permission = Permission::findOrCreate('change-plan', 'web');
+        $role = Role::findOrCreate('tenant-admin', 'web');
+        $role->givePermissionTo($permission);
+
+        app(PermissionRegistrar::class)->forgetCachedPermissions();
     }
 
     /**
