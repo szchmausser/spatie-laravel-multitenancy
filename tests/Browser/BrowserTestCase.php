@@ -47,5 +47,8 @@ class BrowserTestCase extends TestCase
         $landlord = $this->app->make('db')->connection('landlord');
         $landlord->table('tenants')->delete();
         $landlord->table('users')->delete();
+        $landlord->table('resources')->delete();
+        $landlord->table('subscriptions')->delete();
+        $landlord->table('plans')->delete();
     }
 }
