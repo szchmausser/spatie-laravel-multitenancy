@@ -6,7 +6,6 @@ use App\Models\Auth\Permission;
 use App\Models\Auth\Role;
 use App\Models\Tenant;
 use Illuminate\Database\Seeder;
-use Illuminate\Support\Facades\DB;
 use Spatie\Permission\PermissionRegistrar;
 
 /**
@@ -105,7 +104,7 @@ class TenantPermissionsSeeder extends Seeder
 
     public function forTenant(Tenant $tenant): void
     {
-        $this->pointTenantConnectionAt($tenant->database);
+        Tenant::pointConnectionAt($tenant->database);
 
         try {
             // Flush the Spatie permission cache so a previous run
@@ -115,7 +114,7 @@ class TenantPermissionsSeeder extends Seeder
             $permissions = $this->ensurePermissionsExist();
             $this->ensureRolesWithPermissionsExist($permissions);
         } finally {
-            $this->forgetTenantConnection();
+            Tenant::forgetConnection();
         }
     }
 
@@ -130,16 +129,6 @@ class TenantPermissionsSeeder extends Seeder
      * default is not required: the model queries land on the
      * `tenant` connection automatically.
      */
-    private function pointTenantConnectionAt(string $database): void
-    {
-        config(['database.connections.tenant.database' => $database]);
-        DB::purge('tenant');
-    }
-
-    private function forgetTenantConnection(): void
-    {
-        DB::purge('tenant');
-    }
 
     /**
      * Ensure every permission in {@see self::PERMISSIONS} exists

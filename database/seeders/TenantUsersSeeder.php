@@ -6,7 +6,6 @@ use App\Models\Auth\Role;
 use App\Models\Tenant;
 use App\Models\User;
 use Illuminate\Database\Seeder;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 
 /**
@@ -54,7 +53,7 @@ class TenantUsersSeeder extends Seeder
     {
         $subdomain = "tenant{$tenant->id}";
 
-        $this->pointTenantConnectionAt($tenant->database);
+        Tenant::pointConnectionAt($tenant->database);
 
         try {
             $user = User::on('tenant')->updateOrCreate(
@@ -68,7 +67,7 @@ class TenantUsersSeeder extends Seeder
 
             $this->assignFirstUserRole($user);
         } finally {
-            $this->forgetTenantConnection();
+            Tenant::forgetConnection();
         }
     }
 
@@ -99,19 +98,4 @@ class TenantUsersSeeder extends Seeder
      * in-memory config and drop the cached PDO so the next query
      * opens a fresh connection against the new DB.
      */
-    protected function pointTenantConnectionAt(string $database): void
-    {
-        config(['database.connections.tenant.database' => $database]);
-        DB::purge('tenant');
-    }
-
-    /**
-     * Drop the cached tenant connection so a subsequent call (e.g.
-     * from a later seeder) starts from the configuration defined
-     * in config/database.php, not whatever this seeder last set.
-     */
-    protected function forgetTenantConnection(): void
-    {
-        DB::purge('tenant');
-    }
 }

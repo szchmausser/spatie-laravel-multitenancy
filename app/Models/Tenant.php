@@ -254,16 +254,35 @@ class Tenant extends SpatieTenant implements IsTenant
     }
 
     /**
-     * Point the 'tenant' database connection to this tenant's database.
+     * Point the 'tenant' database connection to a specific database.
      *
      * Changes the config at runtime so that any query using the 'tenant'
-     * connection targets this specific tenant's database. DB::purge()
-     * forces Laravel to create a fresh connection with the updated config.
+     * connection targets the given database. DB::purge() forces Laravel
+     * to create a fresh connection with the updated config.
+     */
+    public static function pointConnectionAt(string $database): void
+    {
+        config(['database.connections.tenant.database' => $database]);
+        DB::purge('tenant');
+    }
+
+    /**
+     * Drop the cached tenant connection so the next query starts from
+     * the configuration defined in config/database.php.
+     */
+    public static function forgetConnection(): void
+    {
+        DB::purge('tenant');
+    }
+
+    /**
+     * Point the 'tenant' database connection to this tenant's database.
+     *
+     * Convenience wrapper used by the Tenant::creating callback.
      */
     protected function configureTenantConnection(): void
     {
-        config(['database.connections.tenant.database' => $this->database]);
-        DB::purge('tenant');
+        static::pointConnectionAt($this->database);
     }
 
     /**
