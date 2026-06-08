@@ -12,22 +12,12 @@ import {
 } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { index, show } from '@/routes/landlord/subscriptions';
-import type {BreadcrumbItem} from '@/types';
+import type {BreadcrumbItem, Subscription} from '@/types';
 
 const breadcrumbs: BreadcrumbItem[] = [
     { title: 'Admin', href: '/admin' },
     { title: 'Subscriptions', href: '/admin/subscriptions' },
 ];
-
-type Subscription = {
-    id: number;
-    status: 'active' | 'trialing' | 'cancelled' | 'expired';
-    tenant?: { id: number; name: string; domain: string };
-    plan?: { id: number; name: string; price_cents: number };
-    starts_at: string | null;
-    ends_at: string | null;
-    created_at: string;
-};
 
 function statusVariant(status: Subscription['status']): 'default' | 'secondary' | 'destructive' | 'outline' {
     switch (status) {
@@ -145,3 +135,7 @@ export default function SubscriptionsIndex({ subscriptions }: { subscriptions: S
         </div>
     );
 }
+
+SubscriptionsIndex.layout = {
+    breadcrumbs,
+};

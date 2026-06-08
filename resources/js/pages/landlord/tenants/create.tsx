@@ -108,3 +108,7 @@ export default function TenantCreate() {
         </form>
     );
 }
+
+TenantCreate.layout = {
+    breadcrumbs,
+};

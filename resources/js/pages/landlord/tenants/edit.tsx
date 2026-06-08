@@ -105,3 +105,7 @@ export default function TenantEdit({ tenant }: { tenant: { id: number; name: str
         </form>
     );
 }
+
+TenantEdit.layout = {
+    breadcrumbs,
+};

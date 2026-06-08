@@ -22,22 +22,12 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { create, edit, index, update } from '@/routes/landlord/plans';
-import type {BreadcrumbItem} from '@/types';
+import type {BreadcrumbItem, Plan} from '@/types';
 
 const breadcrumbs: BreadcrumbItem[] = [
     { title: 'Admin', href: '/admin' },
     { title: 'Plans', href: '/admin/plans' },
 ];
-
-type Plan = {
-    id: number;
-    name: string;
-    slug: string;
-    description: string | null;
-    features: Record<string, boolean>;
-    price_cents: number;
-    is_active: boolean;
-};
 
 export default function PlansIndex({ plans }: { plans: Plan[] }) {
     const [search, setSearch] = useState('');
@@ -197,3 +187,7 @@ export default function PlansIndex({ plans }: { plans: Plan[] }) {
         </div>
     );
 }
+
+PlansIndex.layout = {
+    breadcrumbs,
+};

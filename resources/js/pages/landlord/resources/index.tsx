@@ -22,26 +22,12 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { create, destroy, edit, index } from '@/routes/landlord/resources';
-import type {BreadcrumbItem} from '@/types';
+import type {BreadcrumbItem, Resource} from '@/types';
 
 const breadcrumbs: BreadcrumbItem[] = [
     { title: 'Admin', href: '/admin' },
     { title: 'Resources', href: '/admin/resources' },
 ];
-
-type Resource = {
-    id: number;
-    name: string;
-    slug: string;
-    description: string | null;
-    file_path: string;
-    file_size_bytes: number;
-    formatted_file_size: string | null;
-    mime_type: string;
-    is_premium: boolean;
-    price_cents: number;
-    is_active: boolean;
-};
 
 /**
  * Phase 1.5C — landlord-side catalog of every published resource.
@@ -257,3 +243,7 @@ export default function ResourcesIndex({
         </div>
     );
 }
+
+ResourcesIndex.layout = {
+    breadcrumbs,
+};

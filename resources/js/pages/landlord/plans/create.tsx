@@ -199,3 +199,7 @@ export default function PlansCreate() {
         </form>
     );
 }
+
+PlansCreate.layout = {
+    breadcrumbs,
+};

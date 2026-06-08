@@ -13,30 +13,13 @@ import {
 import { Label } from '@/components/ui/label';
 import { index as subscriptionsIndex } from '@/routes/landlord/subscriptions';
 import { show as tenantShow } from '@/routes/landlord/tenants';
-import type {BreadcrumbItem} from '@/types';
+import type {BreadcrumbItem, Subscription} from '@/types';
 
 const breadcrumbs: BreadcrumbItem[] = [
     { title: 'Admin', href: '/admin' },
     { title: 'Subscriptions', href: '/admin/subscriptions' },
     { title: 'Details', href: '#' },
 ];
-
-type Subscription = {
-    id: number;
-    status: 'active' | 'trialing' | 'cancelled' | 'expired';
-    tenant?: { id: number; name: string; domain: string; database: string };
-    plan?: {
-        id: number;
-        name: string;
-        slug: string;
-        description: string | null;
-        features: Record<string, boolean>;
-        price_cents: number;
-    };
-    trial_ends_at: string | null;
-    ends_at: string | null;
-    created_at: string;
-};
 
 function statusVariant(status: Subscription['status']): 'default' | 'secondary' | 'destructive' | 'outline' {
     switch (status) {
@@ -214,3 +197,7 @@ export default function SubscriptionShow({ subscription }: { subscription: Subsc
         </div>
     );
 }
+
+SubscriptionShow.layout = {
+    breadcrumbs,
+};

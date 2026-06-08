@@ -22,29 +22,13 @@ import {
 import { Label } from '@/components/ui/label';
 import { assign } from '@/routes/landlord/subscriptions';
 import { destroy, edit, index } from '@/routes/landlord/tenants';
-import type {BreadcrumbItem} from '@/types';
+import type {BreadcrumbItem, Plan, Subscription} from '@/types';
 
 const breadcrumbs: BreadcrumbItem[] = [
     { title: 'Admin', href: '/admin' },
     { title: 'Tenants', href: '/admin/tenants' },
     { title: 'Details', href: '#' },
 ];
-
-type Plan = {
-    id: number;
-    name: string;
-    slug: string;
-    price_cents: number;
-    features: Record<string, boolean>;
-};
-
-type Subscription = {
-    id: number;
-    plan_id: number;
-    status: string;
-    ends_at: string | null;
-    plan?: Plan;
-} | null;
 
 export default function TenantShow({
     tenant,
@@ -264,3 +248,7 @@ return;
         </div>
     );
 }
+
+TenantShow.layout = {
+    breadcrumbs,
+};

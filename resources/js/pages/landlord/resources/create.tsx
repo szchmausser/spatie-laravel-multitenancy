@@ -255,3 +255,7 @@ export default function ResourcesCreate() {
         </form>
     );
 }
+
+ResourcesCreate.layout = {
+    breadcrumbs,
+};

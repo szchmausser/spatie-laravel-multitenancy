@@ -14,7 +14,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { index, update } from '@/routes/landlord/plans';
-import type {BreadcrumbItem} from '@/types';
+import type {BreadcrumbItem, Plan} from '@/types';
 
 const breadcrumbs: BreadcrumbItem[] = [
     { title: 'Admin', href: '/admin' },
@@ -38,16 +38,6 @@ function buildFeaturesFromPlan(features: Record<string, boolean>): Record<string
         {} as Record<string, boolean>,
     );
 }
-
-type Plan = {
-    id: number;
-    name: string;
-    slug: string;
-    description: string | null;
-    features: Record<string, boolean>;
-    price_cents: number;
-    is_active: boolean;
-};
 
 export default function PlansEdit({ plan }: { plan: Plan }) {
     const { data, setData, put, processing, errors } = useForm({
@@ -204,3 +194,7 @@ export default function PlansEdit({ plan }: { plan: Plan }) {
         </form>
     );
 }
+
+PlansEdit.layout = {
+    breadcrumbs,
+};

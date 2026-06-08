@@ -18,20 +18,7 @@ import {
 } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { download, index as indexRoute } from '@/routes/resources';
-
-type Resource = {
-    id: number;
-    name: string;
-    slug: string;
-    description: string | null;
-    is_premium: boolean;
-    price_cents: number;
-    file_size_bytes: number;
-    formatted_file_size: string;
-    mime_type: string;
-    can_download: boolean;
-    has_explicit_entitlement: boolean;
-};
+import type { Resource } from '@/types';
 
 /**
  * Phase 1.5F — the detail page for a single resource with the

@@ -18,20 +18,7 @@ import {
     CardTitle,
 } from '@/components/ui/card';
 import { download, show } from '@/routes/resources';
-
-type Resource = {
-    id: number;
-    name: string;
-    slug: string;
-    description: string | null;
-    is_premium: boolean;
-    price_cents: number;
-    file_size_bytes: number;
-    formatted_file_size: string;
-    mime_type: string;
-    can_download: boolean;
-    has_explicit_entitlement: boolean;
-};
+import type { Resource } from '@/types';
 
 /**
  * Phase 1.5F — the resources catalog with the simulated "Buy" flow.

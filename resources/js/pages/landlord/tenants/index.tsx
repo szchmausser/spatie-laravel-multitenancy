@@ -3,26 +3,12 @@ import { Link } from '@inertiajs/react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { create, show, edit } from '@/routes/landlord/tenants';
-import type {BreadcrumbItem} from '@/types';
+import type {BreadcrumbItem, Plan, Subscription} from '@/types';
 
 const breadcrumbs: BreadcrumbItem[] = [
     { title: 'Admin', href: '/admin' },
     { title: 'Tenants', href: '/admin/tenants' },
 ];
-
-type Plan = {
-    id: number;
-    name: string;
-    slug: string;
-    price_cents: number;
-};
-
-type Subscription = {
-    id: number;
-    status: string;
-    ends_at: string | null;
-    plan?: Plan;
-} | null;
 
 type TenantRow = {
     id: number;
@@ -145,3 +131,7 @@ export default function TenantIndex({ tenants }: { tenants: TenantRow[] }) {
         </div>
     );
 }
+
+TenantIndex.layout = {
+    breadcrumbs,
+};
