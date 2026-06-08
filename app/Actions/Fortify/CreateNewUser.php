@@ -5,7 +5,7 @@ namespace App\Actions\Fortify;
 use App\Concerns\PasswordValidationRules;
 use App\Concerns\ProfileValidationRules;
 use App\Concerns\ResolvesUserModel;
-use Illuminate\Foundation\Auth\User;
+use App\Models\Landlord;
 use Illuminate\Foundation\Auth\User as BaseUser;
 use Illuminate\Support\Facades\Validator;
 use Laravel\Fortify\Contracts\CreatesNewUsers;
@@ -36,6 +36,14 @@ class CreateNewUser implements CreatesNewUsers
 
         // ← RESOLUCIÓN DINÁMICA: Obtiene el modelo correcto según tenancy
         $userModel = $this->resolveUserModel();
+
+        // Block landlord registration — landlord users are created
+        // via seeder or the future admin panel, never through the
+        // public registration form. This prevents anyone from
+        // self-promoting to platform admin.
+        if ($userModel === Landlord::class) {
+            abort(403, 'Landlord registration is not allowed.');
+        }
 
         // ← CREACIÓN DINÁMICA: Usa el modelo resuelto para crear el usuario
         $user = $userModel::create([

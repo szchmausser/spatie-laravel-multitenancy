@@ -20,6 +20,7 @@ test('new users can register', function () {
         'password_confirmation' => 'password',
     ]);
 
-    $this->assertAuthenticated();
-    $response->assertRedirect('/admin');
+    // Landlord registration is blocked — only tenant registration is allowed.
+    // Landlord users are created via seeder or the admin panel.
+    $response->assertForbidden();
 });

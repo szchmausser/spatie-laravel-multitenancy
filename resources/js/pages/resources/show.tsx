@@ -19,13 +19,12 @@ import { download, index as indexRoute } from '@/routes/resources';
 import type { Resource } from '@/types';
 
 /**
- * Phase 1.5F — the detail page for a single resource with the
- * simulated "Buy" flow.
+ * Phase 1.5F — the detail page for a single resource.
  *
  * Same download rules as the catalog card, just expanded: full
  * description, larger metadata grid, and the action button is
  * visually centred because there is exactly one decision the user
- * can make on this page (download or buy).
+ * can make on this page.
  */
 export default function ResourceShow({ resource }: { resource: Resource }) {
     const [buyOpen, setBuyOpen] = useState(false);

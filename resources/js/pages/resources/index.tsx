@@ -21,27 +21,20 @@ import { download, show } from '@/routes/resources';
 import type { Resource } from '@/types';
 
 /**
- * Phase 1.5F — the resources catalog with the simulated "Buy" flow.
+ * Phase 1.5F — the resources catalog.
  *
  * One card per active resource. Each card carries enough metadata
  * for the user to make a decision without opening the detail page
  * (size, mime type, price, premium badge) and a single action
  * button:
  *
- *   - can_download = true        → "Download" (primary, links to the
- *                                  streaming endpoint — no Inertia
- *                                  navigation because the response is
- *                                  a binary stream).
- *   - can_download = false       → "Buy" (secondary, opens the
- *                                  BuyResourceDialog; on confirm the
- *                                  server creates a purchase
- *                                  entitlement and Inertia
- *                                  re-renders the card with
- *                                  can_download = true).
+ *   - can_download = true  → "Download" (streaming endpoint)
+ *   - can_download = false → "Buy" (mock purchase, creates
+ *                            entitlement — Phase 2 placeholder)
  *
- * Free-tier tenants see premium entries too — the dialog is the
- * on-ramp. The server controller's `userCanAccess()` is the single
- * source of truth for the `can_download` flag.
+ * Free-tier tenants can buy individual premium resources via the
+ * mock purchase flow. The entitlement grants permanent access
+ * regardless of the tenant's plan.
  */
 export default function ResourcesIndex({
     resources,
