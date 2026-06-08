@@ -69,12 +69,9 @@ test('ensureDefaultSubscription does not duplicate an existing subscription', fu
     expect($tenant->subscription->plan->slug)->toBe('basic');
 });
 
-test('ensureDefaultSubscription is a no-op when the requested plan does not exist', function () {
+test('ensureDefaultSubscription throws when the requested plan does not exist', function () {
     $tenant = Tenant::factory()->createQuietly();
     $tenant->assignPlanSlug = 'non-existent-plan';
 
     $tenant->ensureDefaultSubscription();
-    $tenant->refresh();
-
-    expect($tenant->subscription)->toBeNull();
-});
+})->throws(RuntimeException::class, "plan with slug 'non-existent-plan' not found");
