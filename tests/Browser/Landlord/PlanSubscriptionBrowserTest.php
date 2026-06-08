@@ -35,7 +35,7 @@ test('admin can create a plan with features', function () {
         ->type('@input-name', 'Pro')
         ->type('@input-slug', 'pro')
         ->type('@input-description', 'Pro tier with premium access')
-        ->check('@feature-premium-zone')
+        ->check('@input-feature-premium-zone')
         ->click('@submit-plan-btn')
         ->waitForText('Pro')
         ->assertNoJavaScriptErrors();
@@ -69,7 +69,7 @@ test('admin can assign a plan to a tenant from the tenant detail page', function
 
 test('admin panel shows links to plans and subscriptions', function () {
     $this->actingAs($this->admin)
-        ->visit(route('landlord.dashboard'))
+        ->visit(route('landlord.admin-panel'))
         ->assertSee('Plans')
         ->assertSee('Subscriptions')
         ->assertNoJavaScriptErrors();

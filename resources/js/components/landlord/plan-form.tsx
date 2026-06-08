@@ -39,6 +39,7 @@ export function PlanForm({
     const [features, setFeatures] = useState<Record<string, boolean>>(
         defaults?.features ?? Object.fromEntries(FEATURE_CATALOG.map((f) => [f.key, false]))
     );
+    const [isActive, setIsActive] = useState(defaults?.is_active ?? true);
 
     const toggleFeature = (key: FeatureKey, checked: boolean) => {
         setFeatures((prev) => ({ ...prev, [key]: checked }));
@@ -60,6 +61,7 @@ export function PlanForm({
             </div>
 
             <input type="hidden" name="features" value={JSON.stringify(features)} />
+            <input type="hidden" name="is_active" value={isActive ? '1' : '0'} />
 
             <div className="space-y-4">
                 <Card>
@@ -126,10 +128,11 @@ export function PlanForm({
                         <div className="flex items-center gap-2">
                             <Checkbox
                                 id="is_active"
-                                name="is_active"
                                 data-testid="input-active"
-                                defaultChecked={defaults?.is_active ?? true}
-                                onCheckedChange={() => {}}
+                                checked={isActive}
+                                onCheckedChange={(checked) =>
+                                    setIsActive(checked === true)
+                                }
                             />
                             <Label htmlFor="is_active">Active (available for assignment)</Label>
                         </div>

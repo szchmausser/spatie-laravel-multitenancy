@@ -34,6 +34,8 @@ class PlanController extends Controller
      */
     public function store(Request $request)
     {
+        $this->decodeFeatures($request);
+
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'slug' => 'required|string|max:255|unique:plans,slug',
@@ -63,6 +65,8 @@ class PlanController extends Controller
      */
     public function update(Request $request, Plan $plan)
     {
+        $this->decodeFeatures($request);
+
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'slug' => 'required|string|max:255|unique:plans,slug,'.$plan->id,
@@ -80,6 +84,26 @@ class PlanController extends Controller
     /**
      * Remove the specified resource from storage.
      */
+    /**
+     * Decode the features JSON string sent by the hidden input.
+     *
+     * When the form uses a hidden input for features (JSON string),
+     * Laravel receives a string instead of an array. This decodes
+     * it before validation so the `array` rule passes.
+     */
+    private function decodeFeatures(Request $request): void
+    {
+        $features = $request->input('features');
+
+        if (is_string($features)) {
+            $decoded = json_decode($features, true);
+
+            if (is_array($decoded)) {
+                $request->merge(['features' => $decoded]);
+            }
+        }
+    }
+
     public function destroy(Plan $plan)
     {
         $plan->update(['is_active' => false]);
