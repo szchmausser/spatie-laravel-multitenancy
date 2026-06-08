@@ -165,22 +165,7 @@ export default function ResourcesIndex({
                                         variant="secondary"
                                         className="w-full"
                                         onClick={() =>
-                                            setSelectedResource({
-                                                id: resource.id,
-                                                name: resource.name,
-                                                slug: resource.slug,
-                                                description:
-                                                    resource.description,
-                                                is_premium:
-                                                    resource.is_premium,
-                                                price_cents:
-                                                    resource.price_cents,
-                                                file_size_bytes:
-                                                    resource.file_size_bytes,
-                                                formatted_file_size:
-                                                    resource.formatted_file_size,
-                                                mime_type: resource.mime_type,
-                                            })
+                                            setSelectedResource(resource)
                                         }
                                         data-testid={`resource-buy-btn-${resource.slug}`}
                                     >

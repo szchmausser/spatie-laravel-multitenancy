@@ -1,9 +1,8 @@
-import { useForm } from '@inertiajs/react';
 import { FileText, Info, ShoppingCart, Sparkles } from 'lucide-react';
-import { useEffect  } from 'react';
 import type {ReactNode} from 'react';
 import { Badge } from '@/components/ui/badge';
 import { formatPrice } from '@/lib/utils';
+import { useDialogForm } from '@/lib/use-dialog-form';
 import { Button } from '@/components/ui/button';
 import {
     Card,
@@ -23,18 +22,13 @@ import {
 } from '@/components/ui/dialog';
 import { Separator } from '@/components/ui/separator';
 import { request as requestRoute } from '@/routes/resources';
+import type { Resource } from '@/types';
 
-export type BuyResource = {
-    id: number;
-    name: string;
-    slug: string;
-    description: string | null;
-    is_premium: boolean;
-    price_cents: number;
-    file_size_bytes: number;
-    formatted_file_size: string | null;
-    mime_type: string | null;
-};
+/**
+ * BuyResource is a Resource minus the fields the dialog doesn't need.
+ * Pages can pass a Resource directly — no manual mapping required.
+ */
+export type BuyResource = Omit<Resource, 'file_path' | 'is_active' | 'can_download' | 'has_explicit_entitlement'>;
 
 type BuyResourceDialogProps = {
     resource: BuyResource | null;
@@ -66,39 +60,10 @@ export function BuyResourceDialog({
     onOpenChange,
     onSuccess,
 }: BuyResourceDialogProps) {
-    const isControlled = controlledOpen !== undefined;
-    const open = isControlled ? Boolean(controlledOpen) : Boolean(resource);
-
-    const { post, processing, reset, wasSuccessful, clearErrors } = useForm({});
-
-    function setOpen(next: boolean) {
-        if (next) {
-            onOpenChange?.(true);
-        } else {
-            onOpenChange?.(false);
-        }
-    }
-
-    // Close the dialog on a successful POST. Inertia already reloads
-    // the page props for the parent, so the button flips to "Download".
-    useEffect(() => {
-        if (wasSuccessful) {
-            setOpen(false);
-            onSuccess?.();
-            reset();
-        }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [wasSuccessful]);
-
-    // Reset the form state when the dialog closes (cancels or after
-    // a successful submit), so reopening starts clean.
-    useEffect(() => {
-        if (!open) {
-            clearErrors();
-            reset();
-        }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [open]);
+    const { processing, open, setOpen, isControlled, handleSubmit } = useDialogForm(
+        { url: requestRoute(resource?.slug ?? '').url, controlledOpen, onOpenChange, onSuccess },
+        {},
+    );
 
     if (!resource) {
         return (
@@ -112,23 +77,6 @@ export function BuyResourceDialog({
     }
 
     const hasPrice = resource.price_cents > 0;
-
-    function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
-        event.preventDefault();
-
-        // Phase 2: replace this simulated purchase with PaymentGateway::charge(...)
-        // The dialog is already shaped for the swap: keep the
-        // updateOrCreate on the server, but route through a payment
-        // intent + webhook confirmation first.
-        if (!resource) {
-            return;
-        }
-
-        post(requestRoute(resource.slug).url, {
-            preserveScroll: true,
-        });
-    }
-
     const slug = resource.slug;
 
     return (

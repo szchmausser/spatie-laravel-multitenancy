@@ -12,26 +12,13 @@ import {
 } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { index, show } from '@/routes/landlord/subscriptions';
+import { statusVariant } from '@/lib/subscription-utils';
 import type {BreadcrumbItem, Subscription} from '@/types';
 
 const breadcrumbs: BreadcrumbItem[] = [
     { title: 'Admin', href: '/admin' },
     { title: 'Subscriptions', href: '/admin/subscriptions' },
 ];
-
-function statusVariant(status: Subscription['status']): 'default' | 'secondary' | 'destructive' | 'outline' {
-    switch (status) {
-        case 'active':
-            return 'default';
-        case 'trialing':
-            return 'secondary';
-        case 'cancelled':
-        case 'expired':
-            return 'destructive';
-        default:
-            return 'outline';
-    }
-}
 
 export default function SubscriptionsIndex({ subscriptions }: { subscriptions: Subscription[] }) {
     const [search, setSearch] = useState('');

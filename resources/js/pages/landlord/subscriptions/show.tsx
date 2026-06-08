@@ -13,6 +13,7 @@ import {
 import { Label } from '@/components/ui/label';
 import { index as subscriptionsIndex } from '@/routes/landlord/subscriptions';
 import { show as tenantShow } from '@/routes/landlord/tenants';
+import { statusVariant } from '@/lib/subscription-utils';
 import type {BreadcrumbItem, Subscription} from '@/types';
 
 const breadcrumbs: BreadcrumbItem[] = [
@@ -20,20 +21,6 @@ const breadcrumbs: BreadcrumbItem[] = [
     { title: 'Subscriptions', href: '/admin/subscriptions' },
     { title: 'Details', href: '#' },
 ];
-
-function statusVariant(status: Subscription['status']): 'default' | 'secondary' | 'destructive' | 'outline' {
-    switch (status) {
-        case 'active':
-            return 'default';
-        case 'trialing':
-            return 'secondary';
-        case 'cancelled':
-        case 'expired':
-            return 'destructive';
-        default:
-            return 'outline';
-    }
-}
 
 export default function SubscriptionShow({ subscription }: { subscription: Subscription }) {
     const features = Object.entries(subscription.plan?.features ?? {})

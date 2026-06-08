@@ -4,9 +4,7 @@ import { useState } from 'react';
 import { formatPrice } from '@/lib/utils';
 import {
     BuyResourceDialog
-    
 } from '@/components/resources/buy-resource-dialog';
-import type {BuyResource} from '@/components/resources/buy-resource-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -31,18 +29,6 @@ import type { Resource } from '@/types';
  */
 export default function ResourceShow({ resource }: { resource: Resource }) {
     const [buyOpen, setBuyOpen] = useState(false);
-
-    const buyResource: BuyResource = {
-        id: resource.id,
-        name: resource.name,
-        slug: resource.slug,
-        description: resource.description,
-        is_premium: resource.is_premium,
-        price_cents: resource.price_cents,
-        file_size_bytes: resource.file_size_bytes,
-        formatted_file_size: resource.formatted_file_size,
-        mime_type: resource.mime_type,
-    };
 
     return (
         <div
@@ -174,7 +160,7 @@ export default function ResourceShow({ resource }: { resource: Resource }) {
             </Card>
 
             <BuyResourceDialog
-                resource={buyOpen ? buyResource : null}
+                resource={buyOpen ? resource : null}
                 open={buyOpen}
                 onOpenChange={setBuyOpen}
             />

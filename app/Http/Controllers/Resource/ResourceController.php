@@ -68,19 +68,7 @@ class ResourceController extends Controller
             ->orderBy('is_premium') // free first, premium last
             ->orderBy('name')
             ->get()
-            ->map(fn (Resource $r): array => [
-                'id' => $r->id,
-                'name' => $r->name,
-                'slug' => $r->slug,
-                'description' => $r->description,
-                'is_premium' => $r->is_premium,
-                'price_cents' => $r->price_cents,
-                'file_size_bytes' => $r->file_size_bytes,
-                'formatted_file_size' => $r->formattedFileSize(),
-                'mime_type' => $r->mime_type,
-                'can_download' => $this->userCanAccess($tenant, $user, $r),
-                'has_explicit_entitlement' => $this->userHasExplicitEntitlement($tenant, $user, $r),
-            ])
+            ->map(fn (Resource $r): array => $this->serializeResource($r, $tenant, $user))
             ->all();
 
         return Inertia::render('resources/index', [
@@ -107,19 +95,7 @@ class ResourceController extends Controller
             ->firstOrFail();
 
         return Inertia::render('resources/show', [
-            'resource' => [
-                'id' => $resource->id,
-                'name' => $resource->name,
-                'slug' => $resource->slug,
-                'description' => $resource->description,
-                'is_premium' => $resource->is_premium,
-                'price_cents' => $resource->price_cents,
-                'file_size_bytes' => $resource->file_size_bytes,
-                'formatted_file_size' => $resource->formattedFileSize(),
-                'mime_type' => $resource->mime_type,
-                'can_download' => $this->userCanAccess($tenant, $user, $resource),
-                'has_explicit_entitlement' => $this->userHasExplicitEntitlement($tenant, $user, $resource),
-            ],
+            'resource' => $this->serializeResource($resource, $tenant, $user),
         ]);
     }
 
@@ -246,6 +222,29 @@ class ResourceController extends Controller
                 $q->whereNull('expires_at')->orWhere('expires_at', '>', now());
             })
             ->exists();
+    }
+
+    /**
+     * Serialize a Resource model for the Inertia response.
+     *
+     * Single source of truth for the resource array shape.
+     * Used by both index() (via map) and show() (single item).
+     */
+    private function serializeResource(Resource $r, ?Tenant $tenant, mixed $user): array
+    {
+        return [
+            'id' => $r->id,
+            'name' => $r->name,
+            'slug' => $r->slug,
+            'description' => $r->description,
+            'is_premium' => $r->is_premium,
+            'price_cents' => $r->price_cents,
+            'file_size_bytes' => $r->file_size_bytes,
+            'formatted_file_size' => $r->formattedFileSize(),
+            'mime_type' => $r->mime_type,
+            'can_download' => $this->userCanAccess($tenant, $user, $r),
+            'has_explicit_entitlement' => $this->userHasExplicitEntitlement($tenant, $user, $r),
+        ];
     }
 
     /**

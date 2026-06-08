@@ -1,9 +1,9 @@
-import { useForm } from '@inertiajs/react';
 import { ArrowRightCircle, CircleCheck, Info } from 'lucide-react';
-import { useEffect, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { formatPrice } from '@/lib/utils';
+import { useDialogForm } from '@/lib/use-dialog-form';
 import {
     Card,
     CardContent,
@@ -40,11 +40,6 @@ type ChangePlanDialogProps = {
  * destination plan's details + price, and POSTs the new
  * `plan_id` to `billing.change-plan.update` on confirm.
  *
- * `useForm({})` with an empty payload — the `plan_id` is sent as
- * a body parameter (Wayfinder's POST signature accepts an options
- * arg with `data`). The controller resolves the plan by id and
- * delegates to the shared mutation.
- *
  * Frozen `data-testid` selectors — `change-plan-dialog-{slug}`
  * and `change-plan-confirm-btn-{slug}` — so the browser test
  * stays stable across copy edits.
@@ -56,43 +51,10 @@ export function ChangePlanDialog({
     onOpenChange,
     onSuccess,
 }: ChangePlanDialogProps) {
-    const isControlled = controlledOpen !== undefined;
-    const open = isControlled ? Boolean(controlledOpen) : Boolean(plan);
-
-    const { data, setData, post, processing, reset, wasSuccessful, clearErrors } = useForm<{
-        plan_id: number;
-    }>({ plan_id: 0 });
-
-    function setOpen(next: boolean) {
-        if (next) {
-            onOpenChange?.(true);
-        } else {
-            onOpenChange?.(false);
-        }
-    }
-
-    // Close the dialog on a successful POST. The server redirects
-    // back to `billing.change-plan.show` with a success flash, and
-    // Inertia auto-refreshes the page props so the "Current plan"
-    // badge updates without a manual reload.
-    /* eslint-disable react-hooks/exhaustive-deps */
-    useEffect(() => {
-        if (wasSuccessful) {
-            setOpen(false);
-            onSuccess?.();
-            reset();
-        }
-    }, [wasSuccessful]);
-
-    // Reset the form state when the dialog closes (cancels or after
-    // a successful submit), so reopening starts clean.
-    useEffect(() => {
-        if (!open) {
-            clearErrors();
-            reset();
-        }
-    }, [open]);
-    /* eslint-enable react-hooks/exhaustive-deps */
+    const { data, setData, processing, open, setOpen, isControlled, handleSubmit } = useDialogForm(
+        { url: update().url, controlledOpen, onOpenChange, onSuccess },
+        { plan_id: 0 },
+    );
 
     if (!plan) {
         return (
@@ -110,23 +72,13 @@ export function ChangePlanDialog({
         .filter(([, on]) => on)
         .map(([k]) => k);
 
-    function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
-        event.preventDefault();
-
+    function onSubmit(event: React.FormEvent<HTMLFormElement>) {
         if (!plan) {
             return;
         }
-
         setData('plan_id', plan.id);
-
-        post(update().url, {
-            preserveScroll: true,
-        });
+        handleSubmit(event);
     }
-
-    // `data` is set by the submit handler; TypeScript needs the
-    // unused-locals silence for the strict TS check.
-    void data;
 
     return (
         <Dialog
@@ -135,7 +87,7 @@ export function ChangePlanDialog({
         >
             {trigger ? <DialogClose asChild>{trigger}</DialogClose> : null}
             <DialogContent data-testid={`change-plan-dialog-${slug}`}>
-                <form onSubmit={handleSubmit} className="space-y-4">
+                <form onSubmit={onSubmit} className="space-y-4">
                     <DialogHeader>
                         <DialogTitle
                             className="flex items-center gap-2"

@@ -14,7 +14,7 @@ export type Resource = {
     file_path: string;
     file_size_bytes: number;
     formatted_file_size: string | null;
-    mime_type: string;
+    mime_type: string | null;
     is_premium: boolean;
     price_cents: number;
     is_active: boolean;

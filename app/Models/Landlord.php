@@ -3,6 +3,7 @@
 namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
+use App\Concerns\HasAvatar;
 use Database\Factories\LandlordFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
@@ -11,7 +12,6 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Spatie\MediaLibrary\HasMedia;
 use Spatie\MediaLibrary\InteractsWithMedia;
-use Spatie\MediaLibrary\MediaCollections\Models\Media;
 use Spatie\Multitenancy\Models\Concerns\UsesLandlordConnection;
 
 #[Fillable(['name', 'email', 'password'])]
@@ -19,7 +19,7 @@ use Spatie\Multitenancy\Models\Concerns\UsesLandlordConnection;
 class Landlord extends Authenticatable implements HasMedia
 {
     /** @use HasFactory<LandlordFactory> */
-    use HasFactory, InteractsWithMedia, Notifiable, UsesLandlordConnection;
+    use HasAvatar, HasFactory, InteractsWithMedia, Notifiable, UsesLandlordConnection;
 
     /**
      * Reutiliza la tabla users del landlord (ya creada por Laravel por defecto).
@@ -48,17 +48,6 @@ class Landlord extends Authenticatable implements HasMedia
     protected $appends = [
         'avatar',
     ];
-
-    /**
-     * Get the URL of the first avatar media item.
-     */
-    protected function getAvatarAttribute(): ?string
-    {
-        /** @var Media|null $media */
-        $media = $this->getFirstMedia('avatar');
-
-        return $media?->getUrl();
-    }
 
     public function registerMediaCollections(): void
     {

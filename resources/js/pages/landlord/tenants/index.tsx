@@ -3,6 +3,7 @@ import { Link } from '@inertiajs/react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { create, show, edit } from '@/routes/landlord/tenants';
+import { statusVariant } from '@/lib/subscription-utils';
 import type {BreadcrumbItem, Plan, Subscription} from '@/types';
 
 const breadcrumbs: BreadcrumbItem[] = [
@@ -16,13 +17,6 @@ type TenantRow = {
     domain: string;
     database: string;
     subscription?: Subscription;
-};
-
-const STATUS_VARIANT: Record<string, 'default' | 'secondary' | 'destructive' | 'outline'> = {
-    active: 'default',
-    trialing: 'secondary',
-    cancelled: 'destructive',
-    expired: 'outline',
 };
 
 function formatDate(dateString: string | null): string {
@@ -57,7 +51,7 @@ export default function TenantIndex({ tenants }: { tenants: TenantRow[] }) {
                         const sub = tenant.subscription ?? null;
                         const plan = sub?.plan;
                         const status = sub?.status ?? 'unknown';
-                        const variant = STATUS_VARIANT[status] ?? 'outline';
+                        const variant = statusVariant(sub?.status ?? 'unknown');
 
                         return (
                             <div

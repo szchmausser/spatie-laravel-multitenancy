@@ -3,6 +3,7 @@
 namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
+use App\Concerns\HasAvatar;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
@@ -11,7 +12,6 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Spatie\MediaLibrary\HasMedia;
 use Spatie\MediaLibrary\InteractsWithMedia;
-use Spatie\MediaLibrary\MediaCollections\Models\Media;
 use Spatie\Multitenancy\Models\Concerns\UsesTenantConnection;
 use Spatie\Permission\Traits\HasRoles;
 
@@ -20,7 +20,7 @@ use Spatie\Permission\Traits\HasRoles;
 class User extends Authenticatable implements HasMedia
 {
     /** @use HasFactory<UserFactory> */
-    use HasFactory, HasRoles, InteractsWithMedia, Notifiable, UsesTenantConnection;
+    use HasAvatar, HasFactory, HasRoles, InteractsWithMedia, Notifiable, UsesTenantConnection;
 
     /**
      * Get the attributes that should be cast.
@@ -43,17 +43,6 @@ class User extends Authenticatable implements HasMedia
     protected $appends = [
         'avatar',
     ];
-
-    /**
-     * Get the URL of the first avatar media item.
-     */
-    protected function getAvatarAttribute(): ?string
-    {
-        /** @var Media|null $media */
-        $media = $this->getFirstMedia('avatar');
-
-        return $media?->getUrl();
-    }
 
     public function registerMediaCollections(): void
     {
