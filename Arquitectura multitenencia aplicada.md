@@ -1999,80 +1999,84 @@ Detener y reiniciar Laragon (Stop → Start All).
 
 ## 18. Reset de datos para desarrollo
 
-Este flujo dropea y recrea las BDs, corre migraciones, y siembra **solo los planes** (el seeder estrictamente obligatorio). Los tenants, usuarios y permisos se crean manualmente desde el panel admin y el registro de usuarios.
+Este flujo dropea y recrea las BDs, corre migraciones, y siembra **todos los datos** incluyendo landlord admin, planes, 10 tenants, permisos/roles por tenant, y un usuario owner por tenant.
 
 > **Pre-flight:** Laragon (o tu dev stack) corriendo con PostgreSQL activo. Credenciales del `.env` funcionando. Usá ventana incógnita del navegador (las cookies viejas causan 419). Si escribís al archivo `hosts`, necesitás permisos de Administrador (Windows) o `sudo` (Linux/macOS).
 
-### 18.1 Reset limpio con seeders esenciales
+### 18.1 Reset completo con todos los seeders
 
-**Cuándo usar este flujo:** cuando querés datos a mano (no de prueba), o cuando estás desarrollando un feature nuevo y necesitás un estado limpio sin los 10 tenants de prueba del seeder completo.
+**Cuándo usar este flujo:** cuando querés un estado completo de testing con 10 tenants, usuarios owner, y todos los permisos configurados.
 
 ```bash
-# 1. Drop todas las BDs
-psql -U postgres -c 'DROP DATABASE IF EXISTS "spatie-laravel-multitenancy";'
-psql -U postgres -c 'DROP DATABASE IF EXISTS "spatie-laravel-multitenancy-testing";'
+# 1. Drop todas las BDs (landlord + testing + tenantDBs)
+#    En Windows con psql de PostgreSQL 18:
+$env:PGPASSWORD = "postgres"
+& "C:\Program Files\PostgreSQL\18\bin\psql.exe" -U postgres -h 127.0.0.1 -d postgres -q -c 'DROP DATABASE IF EXISTS "spatie-laravel-multitenancy";' -c 'DROP DATABASE IF EXISTS "spatie-laravel-multitenancy-testing";' -c 'DROP DATABASE IF EXISTS "tenant1-spatie-laravel-multitenancy";' -c 'DROP DATABASE IF EXISTS "tenant2-spatie-laravel-multitenancy";' -c 'DROP DATABASE IF EXISTS "tenant3-spatie-laravel-multitenancy";' -c 'DROP DATABASE IF EXISTS "tenant4-spatie-laravel-multitenancy";' -c 'DROP DATABASE IF EXISTS "tenant5-spatie-laravel-multitenancy";' -c 'DROP DATABASE IF EXISTS "tenant6-spatie-laravel-multitenancy";' -c 'DROP DATABASE IF EXISTS "tenant7-spatie-laravel-multitenancy";' -c 'DROP DATABASE IF EXISTS "tenant8-spatie-laravel-multitenancy";' -c 'DROP DATABASE IF EXISTS "tenant9-spatie-laravel-multitenancy";' -c 'DROP DATABASE IF EXISTS "tenant10-spatie-laravel-multitenancy";'
 
 # 2. Recrear landlord + testing
-psql -U postgres -c 'CREATE DATABASE "spatie-laravel-multitenancy";'
-psql -U postgres -c 'CREATE DATABASE "spatie-laravel-multitenancy-testing";'
+& "C:\Program Files\PostgreSQL\18\bin\psql.exe" -U postgres -h 127.0.0.1 -d postgres -q -c 'CREATE DATABASE "spatie-laravel-multitenancy";' -c 'CREATE DATABASE "spatie-laravel-multitenancy-testing";'
 
 # 3. Migraciones
 php artisan migrate:fresh
 php artisan migrate --path=database/migrations/landlord --database=landlord --force
-php artisan optimize:clear
+php artisan config:clear
 
-# 4. Seed SOLO planes (obligatorio — Tenant::created busca el plan 'free'
-#    por slug al crear un tenant. Sin este seeder, la creación de tenants falla.)
-php artisan db:seed --class=PlansSeeder
+# 4. Seed completo (los tenants se crean con sus BDs via Tenant::creating callback)
+php artisan db:seed
 ```
 
-**Después de los seeders esenciales, el flujo manual es:**
+**¿Qué hace cada seeder en orden?**
 
-```
-Landlord                              Tenant
-────────                              ──────
-1. Registrar landlord desde           7. Registrar primer usuario desde
-   /register (Fortify)                   el dominio del tenant
-                                         (ej: tenant1.test/register)
-2. Loguearse como landlord
-                                      8. El sistema detecta que es el
-3. Crear tenant desde                   primer usuario y le asigna
-   /admin/tenants                       tenant-admin automáticamente
-   (el callback Tenant::created       9. Loguearse como ese usuario
-   crea la BD + corre migraciones         → tiene permisos de admin
-   + seedea permisos en la tenant       → puede cambiar de plan
-   DB + asigna plan free)
-                                      10. (Opcional) Crear más usuarios
-4. Agregar subdominio al hosts           desde /register del tenant
-   (requiere Admin en Windows)           → NO reciben rol automáticamente
-```
+| Seeder | Qué crea | Dónde |
+|--------|----------|-------|
+| `LandlordUserSeeder` | Usuario admin (`admin@example.test` / `password`) | BD landlord |
+| `PlansSeeder` | 3 planes (free, basic, premium) | BD landlord |
+| `TenantsSeeder` | 10 tenants (tenant1..tenant10) | BD landlord + crea BDs físicas |
+| `TenantPermissionsSeeder` | 9 permisos + 3 roles (owner, tenant-admin, member) | Cada BD tenant |
+| `TenantUsersSeeder` | 1 usuario owner por tenant (`tenant{N}@...` / `password`) | Cada BD tenant |
 
-**¿Por qué solo `PlansSeeder`?** Porque es el único seeder estrictamente obligatorio:
+> **Nota sobre `Tenant::creating`:** El callback crea la BD física, configura la conexión, y corre migraciones. PostgreSQL no permite `CREATE DATABASE` dentro de una transacción, por eso se usa `DB::statement()` (no `DB::unprepared()` que envuelve en transacción). Los nombres de BD con guiones son válidos en PostgreSQL.
 
-- `PlansSeeder` → crea free/basic/premium. **Sin esto, `Tenant::created` falla** porque `ensureDefaultSubscription()` busca un plan por slug `free` y no lo encuentra.
-- `LandlordUserSeeder` → lo reemplazás con el registro manual desde `/register`.
-- `TenantsSeeder` → lo reemplazás creando tenants desde el panel admin.
-- `TenantPermissionsSeeder` → lo reemplaza `Tenant::seedPermissions()` que se ejecuta automáticamente al crear el tenant.
-- `TenantUsersSeeder` → lo reemplazás registrando usuarios desde el dominio del tenant.
+**Credenciales resultantes:**
+
+| Dominio | Usuario | Password | Rol |
+|---------|---------|----------|-----|
+| `spatie-laravel-multitenancy.test` (landlord) | `admin@example.test` | `password` | — |
+| `tenant1.spatie-laravel-multitenancy.test` | `tenant1@tenant1.spatie-laravel-multitenancy.test` | `password` | owner |
+| `tenant2.spatie-laravel-multitenancy.test` | `tenant2@tenant2.spatie-laravel-multitenancy.test` | `password` | owner |
+| ... | ... | ... | owner |
+| `tenant10.spatie-laravel-multitenancy.test` | `tenant10@tenant10.spatie-laravel-multitenancy.test` | `password` | owner |
+
+> **Recordá:** cada tenant requiere su entrada en el archivo `hosts` antes de poder acceder a su subdominio en el navegador.
 
 ### 18.2 Verificación post-reset
 
 ```bash
 # ¿Están los planes cargados?
-psql -U postgres -d spatie_laravel_multitenancy -c 'SELECT slug, name, price_cents FROM plans ORDER BY id;'
+psql -U postgres -d spatie-laravel-multitenancy -c 'SELECT slug, name, price_cents FROM plans ORDER BY id;'
 # Esperado: 3 filas (free, basic, premium)
 
-# ¿Existe el admin del landlord (o el que registraste)?
-psql -U postgres -d spatie_laravel_multitenancy -c 'SELECT email FROM users;'
-# Esperado: al menos 1 fila
+# ¿Existe el admin del landlord?
+psql -U postgres -d spatie-laravel-multitenancy -c 'SELECT email FROM users;'
+# Esperado: 1 fila (admin@example.test)
 
-# ¿Está el primer tenant creado desde el panel?
-psql -U postgres -d spatie_laravel_multitenancy -c 'SELECT name, domain FROM tenants ORDER BY id;'
-# Esperado: al menos 1 fila
+# ¿Están los 10 tenants?
+psql -U postgres -d spatie-laravel-multitenancy -c 'SELECT name, domain FROM tenants ORDER BY id;'
+# Esperado: 10 filas (tenant1..tenant10)
 
 # ¿Cada tenant tiene una suscripción?
-psql -U postgres -d spatie_laravel_multitenancy -c 'SELECT t.name, p.slug AS plan, s.status FROM tenants t LEFT JOIN subscriptions s ON s.tenant_id = t.id LEFT JOIN plans p ON p.id = s.plan_id ORDER BY t.id;'
+psql -U postgres -d spatie-laravel-multitenancy -c 'SELECT t.name, p.slug AS plan, s.status FROM tenants t LEFT JOIN subscriptions s ON s.tenant_id = t.id LEFT JOIN plans p ON p.id = s.plan_id ORDER BY t.id;'
 # Esperado: todas las filas con plan asignado (no NULL).
+
+# ¿Tenant1 tiene los 3 roles y 1 usuario owner?
+# (usar php artisan tinker o un cliente PostgreSQL)
+config(['database.connections.tenant.database' => 'tenant1-spatie-laravel-multitenancy']);
+DB::purge('tenant');
+DB::connection('tenant')->select('SELECT name FROM roles ORDER BY name');
+// Esperado: member, owner, tenant-admin
+
+DB::connection('tenant')->select('SELECT u.email, r.name AS role FROM users u JOIN model_has_roles mhr ON mhr.model_id = u.id JOIN roles r ON r.id = mhr.role_id');
+// Esperado: tenant1@... con rol owner
 
 # ¿Resuelve el DNS?
 nslookup tenant1.spatie-laravel-multitenancy.test

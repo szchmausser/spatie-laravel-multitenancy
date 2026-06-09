@@ -1,8 +1,11 @@
 <?php
 
 use App\Models\User;
+use Database\Seeders\TenantPermissionsSeeder;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Inertia\Testing\AssertableInertia as Assert;
 use Spatie\Multitenancy\Http\Middleware\EnsureValidTenantSession;
 use Spatie\Multitenancy\Http\Middleware\NeedsTenant;
@@ -19,7 +22,68 @@ beforeEach(function () {
         NeedsTenant::class,
         EnsureValidTenantSession::class,
     ]);
+
+    // Ensure Spatie permission tables exist on the tenant connection.
+    // The permission migration is gated to the `tenant` connection, but
+    // `migrate:fresh` in TestCase::refreshDatabase() only runs on the
+    // default connection (which skips it). We create the tables here
+    // using Schema directly, which is safe inside a test transaction.
+    Schema::connection('tenant')->create('permissions', function (Blueprint $table) {
+        $table->id();
+        $table->string('name');
+        $table->string('guard_name');
+        $table->timestamps();
+        $table->unique(['name', 'guard_name']);
+    });
+
+    Schema::connection('tenant')->create('roles', function (Blueprint $table) {
+        $table->id();
+        $table->string('name');
+        $table->string('guard_name');
+        $table->timestamps();
+        $table->unique(['name', 'guard_name']);
+    });
+
+    Schema::connection('tenant')->create('model_has_permissions', function (Blueprint $table) {
+        $table->unsignedBigInteger('permission_id');
+        $table->string('model_type');
+        $table->unsignedBigInteger('model_id');
+        $table->index(['model_id', 'model_type'], 'model_has_permissions_model_id_model_type_index');
+        $table->foreign('permission_id')->references('id')->on('permissions')->cascadeOnDelete();
+        $table->primary(['permission_id', 'model_id', 'model_type'], 'model_has_permissions_permission_model_type_primary');
+    });
+
+    Schema::connection('tenant')->create('model_has_roles', function (Blueprint $table) {
+        $table->unsignedBigInteger('role_id');
+        $table->string('model_type');
+        $table->unsignedBigInteger('model_id');
+        $table->index(['model_id', 'model_type'], 'model_has_roles_model_id_model_type_index');
+        $table->foreign('role_id')->references('id')->on('roles')->cascadeOnDelete();
+        $table->primary(['role_id', 'model_id', 'model_type'], 'model_has_roles_role_model_type_primary');
+    });
+
+    Schema::connection('tenant')->create('role_has_permissions', function (Blueprint $table) {
+        $table->unsignedBigInteger('permission_id');
+        $table->unsignedBigInteger('role_id');
+        $table->foreign('permission_id')->references('id')->on('permissions')->cascadeOnDelete();
+        $table->foreign('role_id')->references('id')->on('roles')->cascadeOnDelete();
+        $table->primary(['permission_id', 'role_id'], 'role_has_permissions_permission_id_role_id_primary');
+    });
+
+    // Seed roles for the test tenant (required for role eager-loading)
+    (new TenantPermissionsSeeder)->runForCurrentConnection();
 });
+
+/**
+ * Create a user with the `owner` role for testing authorization-gated routes.
+ */
+function createUserWithOwnerRole(array $overrides = []): User
+{
+    $user = User::factory()->createQuietly($overrides);
+    $user->assignRole('owner');
+
+    return $user;
+}
 
 test('unauthenticated user is redirected to login on GET /users', function () {
     $this->get(route('users.index'))
@@ -67,7 +131,7 @@ test('unauthenticated user is redirected to login on DELETE /users/{user}', func
 // --- Index / List ---
 
 test('authenticated user can view paginated user list', function () {
-    $user = User::factory()->createQuietly(['name' => 'Alice']);
+    $user = createUserWithOwnerRole(['name' => 'Alice']);
 
     $this->actingAs($user)
         ->get(route('users.index'))
@@ -81,7 +145,7 @@ test('authenticated user can view paginated user list', function () {
 });
 
 test('index search filters users by name', function () {
-    $owner = User::factory()->createQuietly(['name' => 'Owner']);
+    $owner = createUserWithOwnerRole(['name' => 'Owner']);
     User::factory()->createQuietly(['name' => 'Alice Smith']);
     User::factory()->createQuietly(['name' => 'Bob Jones']);
 
@@ -95,7 +159,7 @@ test('index search filters users by name', function () {
 });
 
 test('index search filters users by email', function () {
-    $owner = User::factory()->createQuietly(['name' => 'Owner']);
+    $owner = createUserWithOwnerRole(['name' => 'Owner']);
     User::factory()->createQuietly(['email' => 'alice@example.com']);
     User::factory()->createQuietly(['email' => 'bob@example.com']);
 
@@ -109,7 +173,7 @@ test('index search filters users by email', function () {
 });
 
 test('index shows paginated results when more than 15 users exist', function () {
-    $owner = User::factory()->createQuietly(['name' => 'Owner']);
+    $owner = createUserWithOwnerRole(['name' => 'Owner']);
     User::factory()->count(20)->createQuietly();
 
     $this->actingAs($owner)
@@ -124,7 +188,7 @@ test('index shows paginated results when more than 15 users exist', function () 
 // --- Show ---
 
 test('authenticated user can view user detail', function () {
-    $owner = User::factory()->createQuietly(['name' => 'Owner']);
+    $owner = createUserWithOwnerRole(['name' => 'Owner']);
     $user = User::factory()->createQuietly(['name' => 'John Doe', 'email' => 'john@example.com']);
 
     $this->actingAs($owner)
@@ -138,7 +202,7 @@ test('authenticated user can view user detail', function () {
 });
 
 test('show returns 404 for non-existent user', function () {
-    $owner = User::factory()->createQuietly(['name' => 'Owner']);
+    $owner = createUserWithOwnerRole(['name' => 'Owner']);
 
     $this->actingAs($owner)
         ->get(route('users.show', 99999))
@@ -148,7 +212,7 @@ test('show returns 404 for non-existent user', function () {
 // --- Create ---
 
 test('authenticated user can view create user form', function () {
-    $owner = User::factory()->createQuietly(['name' => 'Owner']);
+    $owner = createUserWithOwnerRole(['name' => 'Owner']);
 
     $this->actingAs($owner)
         ->get(route('users.create'))
@@ -159,7 +223,7 @@ test('authenticated user can view create user form', function () {
 });
 
 test('store creates a user with valid data', function () {
-    $owner = User::factory()->createQuietly(['name' => 'Owner']);
+    $owner = createUserWithOwnerRole(['name' => 'Owner']);
 
     $this->actingAs($owner)
         ->post(route('users.store'), [
@@ -177,7 +241,7 @@ test('store creates a user with valid data', function () {
 });
 
 test('store validates required fields', function () {
-    $owner = User::factory()->createQuietly(['name' => 'Owner']);
+    $owner = createUserWithOwnerRole(['name' => 'Owner']);
 
     $this->actingAs($owner)
         ->post(route('users.store'), [])
@@ -185,7 +249,7 @@ test('store validates required fields', function () {
 });
 
 test('store rejects duplicate email', function () {
-    $owner = User::factory()->createQuietly(['name' => 'Owner']);
+    $owner = createUserWithOwnerRole(['name' => 'Owner']);
     User::factory()->createQuietly(['email' => 'existing@example.com']);
 
     $this->actingAs($owner)
@@ -199,7 +263,7 @@ test('store rejects duplicate email', function () {
 });
 
 test('store rejects short password', function () {
-    $owner = User::factory()->createQuietly(['name' => 'Owner']);
+    $owner = createUserWithOwnerRole(['name' => 'Owner']);
 
     $this->actingAs($owner)
         ->post(route('users.store'), [
@@ -214,7 +278,7 @@ test('store rejects short password', function () {
 // --- Edit ---
 
 test('authenticated user can view edit user form', function () {
-    $owner = User::factory()->createQuietly(['name' => 'Owner']);
+    $owner = createUserWithOwnerRole(['name' => 'Owner']);
     $user = User::factory()->createQuietly(['name' => 'Edit Me']);
 
     $this->actingAs($owner)
@@ -227,7 +291,7 @@ test('authenticated user can view edit user form', function () {
 });
 
 test('update modifies user name and email', function () {
-    $owner = User::factory()->createQuietly(['name' => 'Owner']);
+    $owner = createUserWithOwnerRole(['name' => 'Owner']);
     $user = User::factory()->createQuietly(['name' => 'Old Name', 'email' => 'old@example.com']);
 
     $this->actingAs($owner)
@@ -245,7 +309,7 @@ test('update modifies user name and email', function () {
 });
 
 test('update with blank password leaves password unchanged', function () {
-    $owner = User::factory()->createQuietly(['name' => 'Owner']);
+    $owner = createUserWithOwnerRole(['name' => 'Owner']);
     $user = User::factory()->createQuietly(['name' => 'Keep Pass']);
     $originalPassword = $user->password;
 
@@ -261,7 +325,7 @@ test('update with blank password leaves password unchanged', function () {
 });
 
 test('update with new password changes it', function () {
-    $owner = User::factory()->createQuietly(['name' => 'Owner']);
+    $owner = createUserWithOwnerRole(['name' => 'Owner']);
     $user = User::factory()->createQuietly(['name' => 'Change Pass']);
     $originalPassword = $user->password;
 
@@ -279,7 +343,7 @@ test('update with new password changes it', function () {
 });
 
 test('update rejects duplicate email from another user', function () {
-    $owner = User::factory()->createQuietly(['name' => 'Owner']);
+    $owner = createUserWithOwnerRole(['name' => 'Owner']);
     $user = User::factory()->createQuietly(['email' => 'user@example.com']);
     User::factory()->createQuietly(['email' => 'taken@example.com']);
 
@@ -292,7 +356,7 @@ test('update rejects duplicate email from another user', function () {
 });
 
 test('update allows keeping own email', function () {
-    $owner = User::factory()->createQuietly(['name' => 'Owner']);
+    $owner = createUserWithOwnerRole(['name' => 'Owner']);
     $user = User::factory()->createQuietly(['email' => 'keep@example.com']);
 
     $this->actingAs($owner)
@@ -309,7 +373,7 @@ test('update allows keeping own email', function () {
 });
 
 test('update returns 404 for non-existent user', function () {
-    $owner = User::factory()->createQuietly(['name' => 'Owner']);
+    $owner = createUserWithOwnerRole(['name' => 'Owner']);
 
     $this->actingAs($owner)
         ->put(route('users.update', 99999), [
@@ -322,7 +386,7 @@ test('update returns 404 for non-existent user', function () {
 // --- Delete ---
 
 test('authenticated user can delete another user', function () {
-    $owner = User::factory()->createQuietly(['name' => 'Owner']);
+    $owner = createUserWithOwnerRole(['name' => 'Owner']);
     $user = User::factory()->createQuietly(['name' => 'Delete Me']);
 
     $this->actingAs($owner)
@@ -333,7 +397,7 @@ test('authenticated user can delete another user', function () {
 });
 
 test('user cannot delete themselves', function () {
-    $owner = User::factory()->createQuietly(['name' => 'Owner']);
+    $owner = createUserWithOwnerRole(['name' => 'Owner']);
 
     $this->actingAs($owner)
         ->delete(route('users.destroy', $owner))
@@ -343,7 +407,7 @@ test('user cannot delete themselves', function () {
 });
 
 test('delete returns 404 for non-existent user', function () {
-    $owner = User::factory()->createQuietly(['name' => 'Owner']);
+    $owner = createUserWithOwnerRole(['name' => 'Owner']);
 
     $this->actingAs($owner)
         ->delete(route('users.destroy', 99999))
@@ -368,7 +432,7 @@ test('users are scoped to the tenant connection', function () {
 // --- Full integration flow ---
 
 test('full user management flow: create, verify, edit, verify, delete, verify', function () {
-    $owner = User::factory()->createQuietly(['name' => 'Owner', 'email' => 'owner@example.com']);
+    $owner = createUserWithOwnerRole(['name' => 'Owner', 'email' => 'owner@example.com']);
 
     // Step 1: Create a new user
     $this->actingAs($owner)

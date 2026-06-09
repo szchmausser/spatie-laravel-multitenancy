@@ -1,8 +1,9 @@
 import { Link, router } from '@inertiajs/react';
-import { Plus, Pencil, Eye, Users } from 'lucide-react';
+import { Plus, Pencil, Eye, Trash2, Users } from 'lucide-react';
 import { useState } from 'react';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { create, show, edit } from '@/routes/users';
+import { create, show, edit, destroy } from '@/routes/users';
 import type { BreadcrumbItem } from '@/types';
 
 const breadcrumbs: BreadcrumbItem[] = [
@@ -13,6 +14,7 @@ type UserRow = {
     id: number;
     name: string;
     email: string;
+    roles: Array<{ id: number; name: string }>;
 };
 
 type PaginatedUsers = {
@@ -80,6 +82,11 @@ export default function UsersIndex({
                                 <p className="text-sm text-gray-500" data-testid={`user-email-${user.id}`}>
                                     {user.email}
                                 </p>
+                                <div className="flex items-center gap-2 mt-1">
+                                    <Badge variant="secondary">
+                                        {user.roles.length > 0 ? user.roles[0].name : 'No role'}
+                                    </Badge>
+                                </div>
                             </div>
                             <div className="flex gap-2 md:justify-end">
                                 <Button variant="outline" size="sm" asChild data-testid={`edit-user-btn-${user.id}`}>
@@ -93,6 +100,18 @@ export default function UsersIndex({
                                         <Eye className="h-4 w-4" />
                                         View
                                     </Link>
+                                </Button>
+                                <Button
+                                    variant="destructive"
+                                    size="sm"
+                                    onClick={() => {
+                                        if (confirm('Are you sure you want to delete this user? This action cannot be undone.')) {
+                                            router.delete(destroy(user.id).url);
+                                        }
+                                    }}
+                                    data-testid={`delete-user-btn-${user.id}`}
+                                >
+                                    <Trash2 className="h-4 w-4" />
                                 </Button>
                             </div>
                         </div>

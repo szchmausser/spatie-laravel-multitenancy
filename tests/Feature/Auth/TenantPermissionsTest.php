@@ -218,7 +218,17 @@ test('TenantPermissionsSeeder grants change-plan to the tenant-admin role', func
 
         expect($role)->not->toBeNull();
         expect($role->hasPermissionTo('change-plan'))->toBeTrue();
-        expect($role->getPermissionNames()->all())->toBe(['change-plan']);
+        expect($role->getPermissionNames()->all())->toBe([
+            'users-list',
+            'users-show',
+            'users-create',
+            'users-update',
+            'users-delete',
+            'users-manage-roles',
+            'roles-list',
+            'roles-show',
+            'change-plan',
+        ]);
     } finally {
         restoreDefaultConnection($previousDefault);
         DB::purge('tenant');
@@ -239,8 +249,8 @@ test('TenantPermissionsSeeder is idempotent on double run', function () {
         expect(Role::on('tenant')->where('name', 'tenant-admin')->count())->toBe(1);
         expect(Permission::on('tenant')->where('name', 'change-plan')->count())->toBe(1);
 
-        // The role-to-permission mapping is a single row in role_has_permissions.
-        expect(DB::connection('tenant')->table('role_has_permissions')->count())->toBe(1);
+        // owner (9) + tenant-admin (9) + member (0) = 18 rows total.
+        expect(DB::connection('tenant')->table('role_has_permissions')->count())->toBe(18);
     } finally {
         restoreDefaultConnection($previousDefault);
         DB::purge('tenant');
@@ -724,7 +734,7 @@ function restoreDefaultConnection(string $previous): void
  * Run the TenantPermissionsSeeder on the active tenant connection.
  * Caller MUST have set the default connection to `tenant` first
  * (use {@see setDefaultConnectionToTenant()}).
- * 
+ *
  * Uses `runForCurrentConnection()` to avoid iterating over all landlord
  * tenants (which in tests includes fake tenants with non-existent DBs).
  */

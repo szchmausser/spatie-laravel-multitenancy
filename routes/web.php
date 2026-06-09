@@ -3,6 +3,7 @@
 use App\Http\Controllers\Billing\PlanChangeController;
 use App\Http\Controllers\Premium\AnalyticsController;
 use App\Http\Controllers\Resource\ResourceController;
+use App\Http\Controllers\Tenant\RoleController;
 use App\Http\Controllers\Tenant\UserController;
 use App\Models\Tenant;
 use Illuminate\Support\Facades\Route;
@@ -90,6 +91,14 @@ Route::middleware(['tenant', 'auth', 'verified'])->group(function () {
 
     // User management — tenant-scoped CRUD for team members.
     Route::resource('users', UserController::class);
+
+    // User role management — assign and remove roles.
+    Route::post('users/{user}/roles', [UserController::class, 'assignRole'])->name('users.assignRole');
+    Route::delete('users/{user}/roles/{role}', [UserController::class, 'removeRole'])->name('users.removeRole');
+
+    // Role catalog — read-only views of tenant roles.
+    Route::get('roles', [RoleController::class, 'index'])->name('roles.index');
+    Route::get('roles/{role}', [RoleController::class, 'show'])->name('roles.show');
 
     // Billing — self-service plan change (1.5G-buy-plan).
     //

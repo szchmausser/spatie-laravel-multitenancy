@@ -57,6 +57,10 @@ export function AppSidebar() {
     const isFreeTier = tenant?.is_free_tier ?? true;
     const hasFreeResources = tenant?.has_free_resources ?? false;
     const hasPremiumZone = tenant?.has_premium_zone ?? false;
+    const userRoles = auth?.user?.roles ?? [];
+    const canManageUsers = userRoles.some((role: string) => role === 'owner' || role === 'tenant-admin');
+    const canListUsers = canManageUsers; // owner and tenant-admin have users-list
+    const canListRoles = canManageUsers; // owner and tenant-admin have roles-list
 
     // The "Resources" link is shown when the tenant is on a paid
     // plan (full catalog) OR when the tenant is free but the
@@ -88,7 +92,16 @@ export function AppSidebar() {
                         },
                     ]
                   : []),
-              { title: 'Users', href: '/users', icon: Users },
+              ...(canListUsers
+                  ? [
+                        { title: 'Users', href: '/users', icon: Users },
+                    ]
+                  : []),
+              ...(canListRoles
+                  ? [
+                        { title: 'Roles', href: '/roles', icon: Shield },
+                    ]
+                  : []),
               ...(showAnalytics
                   ? [
                         {

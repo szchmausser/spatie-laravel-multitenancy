@@ -29,15 +29,15 @@ use Illuminate\Support\Facades\Hash;
  * Idempotent: updateOrCreate on email, so re-running the seeder
  * just refreshes the password and re-applies the role assignment.
  *
- * Authorization: the first (and currently only) user created for
- * a tenant is granted the `tenant-admin` role via `syncRoles`.
+ * Authorization: every user gets at least the `member` role.
+ * The first user per tenant is granted `owner` instead.
  * `syncRoles` replaces whatever roles the user has with the
  * supplied list, which is the safe idempotent form: a re-run
- * leaves the user with exactly one role, never duplicates.
+ * leaves the user with exactly the assigned role(s), never duplicates.
  *
  * Ordering: this seeder MUST run AFTER `TenantPermissionsSeeder`
  * (wired in `DatabaseSeeder`), otherwise `syncRoles` will throw
- * "Role `tenant-admin` does not exist" because the role row has
+ * "Role `owner` does not exist" because the role row has
  * not been inserted into the tenant's `roles` table yet.
  */
 class TenantUsersSeeder extends Seeder
@@ -65,32 +65,28 @@ class TenantUsersSeeder extends Seeder
                 ],
             );
 
-            $this->assignFirstUserRole($user);
+            $this->assignUserRole($user);
         } finally {
             Tenant::forgetConnection();
         }
     }
 
     /**
-     * Grant the tenant-admin role to the user.
+     * Assign a role to the user based on whether they are the first
+     * user in the tenant.
+     *
+     * - First user → `owner`
+     * - All others → `member`
      *
      * `syncRoles` is the idempotent form: it replaces whatever
-     * roles the user has with the supplied list. The first user
-     * per tenant ends up with exactly one role (`tenant-admin`),
-     * and a re-run of the seeder never produces duplicates.
-     *
-     * The Spatie Role model used by the underlying `syncRoles`
-     * call is bound to the `tenant` connection (see
-     * {@see Role}), so flipping the global
-     * default is not required: the role-lookup query lands on
-     * the `tenant` connection automatically. Without that
-     * binding, `syncRoles` would query the landlord DB and fail
-     * with "no existe la relación «roles»" because the Spatie
-     * permission migration is gated to the `tenant` connection.
+     * roles the user has with the supplied list. A re-run never
+     * produces duplicates.
      */
-    protected function assignFirstUserRole(User $user): void
+    protected function assignUserRole(User $user): void
     {
-        $user->syncRoles(['tenant-admin']);
+        $isFirstUser = User::on('tenant')->count() <= 1;
+
+        $user->syncRoles([$isFirstUser ? 'owner' : 'member']);
     }
 
     /**

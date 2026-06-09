@@ -23,7 +23,8 @@ export default function Login({ status, canResetPassword, canRegister }: Props) 
             <Head title="Log in" />
 
             <Form
-                {...store.form()}
+                action={store.url()}
+                method="post"
                 resetOnSuccess={['password']}
                 className="flex flex-col gap-6"
             >

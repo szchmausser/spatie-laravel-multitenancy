@@ -119,7 +119,7 @@ test('destroy processes deletion for admin', function () {
     $tenant = Tenant::factory()->createQuietly();
 
     // DROP DATABASE cannot run inside a transaction, so mock it.
-    DB::partialMock()->shouldReceive('unprepared')->andReturn(true);
+    DB::partialMock()->shouldReceive('statement')->andReturn(true);
 
     $this->actingAs($admin)
         ->delete(route('landlord.tenants.destroy', $tenant))

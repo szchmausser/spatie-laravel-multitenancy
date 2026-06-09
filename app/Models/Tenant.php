@@ -252,20 +252,23 @@ class Tenant extends SpatieTenant implements IsTenant
         );
 
         if (empty($exists)) {
-            DB::unprepared('CREATE DATABASE "'.$this->sanitizeDatabaseName($this->database).'"');
+            // PostgreSQL does not allow CREATE DATABASE inside a transaction.
+            // DB::statement() executes outside a transaction; DB::unprepared()
+            // would wrap it and fail silently.
+            DB::statement('CREATE DATABASE "'.$this->sanitizeDatabaseName($this->database).'"');
         }
     }
 
     /**
      * Sanitize a database name for safe use in raw DDL statements.
      *
-     * PostgreSQL identifiers allow letters, digits, and underscores,
-     * starting with a letter or underscore. Max 63 bytes.
-     * Anything else is stripped to prevent SQL injection via DDL.
+     * PostgreSQL identifiers allow letters, digits, underscores, and
+     * hyphens, starting with a letter or underscore. Max 63 bytes.
+     * Only strip characters that are genuinely unsafe for DDL.
      */
     private function sanitizeDatabaseName(string $name): string
     {
-        $clean = preg_replace('/[^a-zA-Z0-9_]/', '', $name);
+        $clean = preg_replace('/[^a-zA-Z0-9_-]/', '', $name);
 
         return substr($clean, 0, 63);
     }

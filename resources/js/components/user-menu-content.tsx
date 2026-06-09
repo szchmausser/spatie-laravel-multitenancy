@@ -30,12 +30,12 @@ export function UserMenuContent({ user }: Props) {
             <DropdownMenuLabel className="p-0 font-normal">
                 <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
                     <UserInfo user={user} showEmail={true} />
-                    {user.roles?.includes('tenant-admin') && (
+                    {user.roles?.[0] && (
                         <span
                             data-testid="user-role-badge"
                             className="ml-auto inline-flex items-center rounded-md bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 ring-1 ring-inset ring-blue-700/10 dark:bg-blue-400/10 dark:text-blue-400 dark:ring-blue-400/30"
                         >
-                            Admin
+                            {user.roles[0] === 'owner' ? 'Owner' : user.roles[0] === 'tenant-admin' ? 'Admin' : 'Member'}
                         </span>
                     )}
                 </div>

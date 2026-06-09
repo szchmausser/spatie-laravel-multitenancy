@@ -13,9 +13,12 @@ use Spatie\Permission\PermissionRegistrar;
  * database.
  *
  * Per-tenant replication contract:
- *   - `change-plan` permission (verb, kebab-case; refactor to
- *     `billing.*` at 3+ billing perms)
- *   - `tenant-admin` role granted `change-plan` via `givePermissionTo`
+ *   - Granular permissions: users-list, users-show, users-create,
+ *     users-update, users-delete, users-manage-roles, roles-list,
+ *     roles-show, change-plan
+ *   - `owner` role granted ALL permissions
+ *   - `tenant-admin` role granted all permissions except roles-show/roles-list
+ *   - `member` role with no permissions
  *
  * Idempotency: this seeder is safe to run multiple times. The
  * `findOrCreate` calls return the existing row when one already
@@ -50,7 +53,7 @@ use Spatie\Permission\PermissionRegistrar;
  *
  * Wiring: this seeder is called from `DatabaseSeeder` BEFORE
  * `TenantUsersSeeder`, so the first user per tenant can be
- * assigned `tenant-admin` without "role does not exist" errors.
+ * assigned `owner` without "role does not exist" errors.
  *
  * Test note: when invoked from a feature test that uses
  * `createQuietly()` + manual tenant connection pointing, the seeder
@@ -68,6 +71,14 @@ class TenantPermissionsSeeder extends Seeder
      * @var array<int, string>
      */
     public const PERMISSIONS = [
+        'users-list',
+        'users-show',
+        'users-create',
+        'users-update',
+        'users-delete',
+        'users-manage-roles',
+        'roles-list',
+        'roles-show',
         'change-plan',
     ];
 
@@ -78,9 +89,29 @@ class TenantPermissionsSeeder extends Seeder
      * @var array<string, array<int, string>>
      */
     public const ROLES_WITH_PERMISSIONS = [
-        'tenant-admin' => [
+        'owner' => [
+            'users-list',
+            'users-show',
+            'users-create',
+            'users-update',
+            'users-delete',
+            'users-manage-roles',
+            'roles-list',
+            'roles-show',
             'change-plan',
         ],
+        'tenant-admin' => [
+            'users-list',
+            'users-show',
+            'users-create',
+            'users-update',
+            'users-delete',
+            'users-manage-roles',
+            'roles-list',
+            'roles-show',
+            'change-plan',
+        ],
+        'member' => [],
     ];
 
     public function run(): void

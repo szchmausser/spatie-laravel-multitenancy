@@ -60,13 +60,13 @@ class TenantController extends Controller
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'domain' => ['required', 'string', 'max:255', 'unique:tenants,domain'],
-            'database' => ['required', 'string', 'max:63', 'regex:/^[a-zA-Z_][a-zA-Z0-9_]*$/', 'unique:tenants,database'],
+            'database' => ['required', 'string', 'max:63', 'regex:/^[a-zA-Z_][a-zA-Z0-9_-]*$/', 'unique:tenants,database'],
         ]);
 
         try {
             Tenant::create($validated);
         } catch (\Exception $e) {
-            DB::unprepared('DROP DATABASE IF EXISTS "'.preg_replace('/[^a-zA-Z0-9_]/', '', $validated['database']).'"');
+            DB::statement('DROP DATABASE IF EXISTS "'.$validated['database'].'"');
             throw $e;
         }
 
@@ -125,7 +125,7 @@ class TenantController extends Controller
      */
     public function destroy(Tenant $tenant)
     {
-        DB::unprepared('DROP DATABASE IF EXISTS "'.preg_replace('/[^a-zA-Z0-9_]/', '', $tenant->database).'"');
+        DB::statement('DROP DATABASE IF EXISTS "'.$tenant->database.'"');
 
         $tenant->delete();
 

@@ -1,5 +1,6 @@
-import { Link } from '@inertiajs/react';
-import { ArrowLeft, Mail, Pencil, User } from 'lucide-react';
+import { Form, Link, router } from '@inertiajs/react';
+import { ArrowLeft, Mail, Pencil, Shield, Trash2, User } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
     Card,
@@ -9,7 +10,14 @@ import {
     CardTitle,
 } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
-import { edit, index } from '@/routes/users';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
+import { edit, index, assignRole, removeRole, destroy } from '@/routes/users';
 import type { BreadcrumbItem } from '@/types';
 
 const breadcrumbs: BreadcrumbItem[] = [
@@ -19,9 +27,28 @@ const breadcrumbs: BreadcrumbItem[] = [
 
 export default function UsersShow({
     user,
+    allRoles,
+    currentUser,
 }: {
-    user: { id: number; name: string; email: string };
+    user: { id: number; name: string; email: string; roles: Array<{ id: number; name: string }> };
+    allRoles: Array<{ id: number; name: string }>;
+    currentUser: { id: number; roles: Array<{ name: string }> };
 }) {
+    const currentRoleName = user.roles[0]?.name ?? null;
+    const isOwner = user.roles.some((r) => r.name === 'owner');
+    const isTenantAdmin = user.roles.some((r) => r.name === 'tenant-admin');
+    const isSelf = user.id === currentUser.id;
+    const currentUserIsTenantAdmin = currentUser.roles.some((r) => r.name === 'tenant-admin');
+
+    // Can this user's role be changed?
+    const canChangeRole = !isSelf
+        && !isOwner
+        && !(isTenantAdmin && currentUserIsTenantAdmin);
+
+    const handleAssignRole = (roleName: string) => {
+        router.post(assignRole(user.id).url, { role: roleName }, { preserveScroll: true });
+    };
+
     return (
         <div className="p-6 space-y-4">
             <div className="flex justify-between items-center mb-6">
@@ -38,6 +65,18 @@ export default function UsersShow({
                             <Pencil className="h-4 w-4" />
                             Edit
                         </Link>
+                    </Button>
+                    <Button
+                        variant="destructive"
+                        onClick={() => {
+                            if (confirm('Are you sure you want to delete this user? This action cannot be undone.')) {
+                                router.delete(destroy(user.id).url);
+                            }
+                        }}
+                        data-testid="delete-user-btn"
+                    >
+                        <Trash2 className="h-4 w-4" />
+                        Delete
                     </Button>
                 </div>
             </div>
@@ -73,6 +112,59 @@ export default function UsersShow({
                             {user.email}
                         </div>
                     </div>
+                </CardContent>
+            </Card>
+
+            {/* Roles Management */}
+            <Card>
+                <CardHeader>
+                    <CardTitle>Roles</CardTitle>
+                    <CardDescription>
+                        {canChangeRole
+                            ? 'Select a role to assign. This replaces the current role.'
+                            : isSelf
+                                ? 'You cannot change your own role.'
+                                : isOwner
+                                    ? 'Owner role is immutable.'
+                                    : 'You cannot change this role.'}
+                    </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                    {/* Current role badge */}
+                    {currentRoleName ? (
+                        <div className="flex items-center gap-2">
+                            <Label className="whitespace-nowrap">Current role:</Label>
+                            <Badge variant="default" className="gap-1">
+                                <Shield className="h-3 w-3" />
+                                {currentRoleName}
+                            </Badge>
+                        </div>
+                    ) : (
+                        <p className="text-muted-foreground">No role assigned.</p>
+                    )}
+
+                    {/* Role selector - only shown if role can be changed */}
+                    {canChangeRole && (
+                        <div className="flex items-center gap-2">
+                            <Label htmlFor="assign-role" className="whitespace-nowrap">
+                                Change role:
+                            </Label>
+                            <Select value={currentRoleName ?? ''} onValueChange={handleAssignRole}>
+                                <SelectTrigger className="w-[200px]" data-testid="assign-role-select">
+                                    <SelectValue placeholder="Select a role..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {allRoles
+                                        .filter((r) => r.name !== 'owner')
+                                        .map((role) => (
+                                            <SelectItem key={role.id} value={role.name}>
+                                                {role.name}
+                                            </SelectItem>
+                                        ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    )}
                 </CardContent>
             </Card>
         </div>

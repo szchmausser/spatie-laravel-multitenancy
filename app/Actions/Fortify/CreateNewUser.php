@@ -82,6 +82,9 @@ class CreateNewUser implements CreatesNewUsers
 
         if ($userCount === 1) {
             $user->assignRole('tenant-admin');
+        } else {
+            // All subsequent users get the member role by default
+            $user->assignRole('member');
         }
     }
 }
