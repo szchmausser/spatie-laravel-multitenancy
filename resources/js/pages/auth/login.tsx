@@ -9,13 +9,15 @@ import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
 import { store } from '@/routes/login';
 import { request } from '@/routes/password';
+import { store as registerStore } from '@/routes/register';
 
 type Props = {
     status?: string;
     canResetPassword: boolean;
+    canRegister: boolean;
 };
 
-export default function Login({ status, canResetPassword }: Props) {
+export default function Login({ status, canResetPassword, canRegister }: Props) {
     return (
         <>
             <Head title="Log in" />
@@ -89,10 +91,21 @@ export default function Login({ status, canResetPassword }: Props) {
                         </div>
 
                         <div className="text-center text-sm text-muted-foreground">
-                            Don&apos;t have an account?{' '}
-                            <span className="text-muted-foreground">
-                                Contact the administrator.
-                            </span>
+                            {canRegister ? (
+                                <>
+                                    Don&apos;t have an account?{' '}
+                                    <TextLink href={registerStore.url()}>
+                                        Register
+                                    </TextLink>
+                                </>
+                            ) : (
+                                <>
+                                    Don&apos;t have an account?{' '}
+                                    <span className="text-muted-foreground">
+                                        Contact the administrator.
+                                    </span>
+                                </>
+                            )}
                         </div>
                     </>
                 )}

@@ -5,6 +5,7 @@ namespace App\Providers;
 use App\Actions\Fortify\CreateNewUser;
 use App\Actions\Fortify\ResetUserPassword;
 use App\Http\Responses\RoleAwareAuthResponse;
+use App\Models\Tenant;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
@@ -62,6 +63,7 @@ class FortifyServiceProvider extends ServiceProvider
     {
         Fortify::loginView(fn (Request $request) => Inertia::render('auth/login', [
             'canResetPassword' => Features::enabled(Features::resetPasswords()),
+            'canRegister' => Tenant::current() !== null,
             'status' => $request->session()->get('status'),
         ]));
 
@@ -75,9 +77,17 @@ class FortifyServiceProvider extends ServiceProvider
             'status' => $request->session()->get('status'),
         ]));
 
-        Fortify::registerView(fn () => Inertia::render('auth/register', [
-            'passwordRules' => Password::defaults()->toPasswordRulesString(),
-        ]));
+        Fortify::registerView(function () {
+            // Registration is only available for tenants.
+            // Landlord users are created via seeder or admin panel.
+            if (Tenant::current() === null) {
+                abort(404);
+            }
+
+            return Inertia::render('auth/register', [
+                'passwordRules' => Password::defaults()->toPasswordRulesString(),
+            ]);
+        });
 
     }
 

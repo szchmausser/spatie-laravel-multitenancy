@@ -1,7 +1,12 @@
 import { Head, Link, router, usePage } from '@inertiajs/react';
 import { dashboard, login, logout } from '@/routes';
+import { store as registerStore } from '@/routes/register';
 
-export default function Welcome() {
+type Props = {
+    canRegister: boolean;
+};
+
+export default function Welcome({ canRegister }: Props) {
     const { auth } = usePage().props;
 
     return (
@@ -35,6 +40,14 @@ export default function Welcome() {
                                 >
                                     Log in
                                 </Link>
+                                {canRegister && (
+                                    <Link
+                                        href={registerStore.url()}
+                                        className="inline-block rounded-sm border border-[#19140035] px-5 py-1.5 text-sm leading-normal text-[#1b1b18] hover:border-[#1915014a] dark:border-[#3E3E3A] dark:text-[#EDEDEC] dark:hover:border-[#62605b]"
+                                    >
+                                        Register
+                                    </Link>
+                                )}
                             </>
                         )}
                     </nav>

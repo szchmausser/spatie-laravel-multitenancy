@@ -143,10 +143,9 @@ return [
     */
 
     'features' => [
-        // Registration disabled — landlord users are created via
-        // seeder or the admin panel. Tenant users register through
-        // the tenant domain where this feature can be re-enabled.
-        // Features::registration(),
+        // Landlord registration is blocked in CreateNewUser (abort 403).
+        // Tenant users can register through their domain.
+        Features::registration(),
         Features::resetPasswords(),
     ],
 

@@ -3,6 +3,7 @@
 use App\Http\Controllers\Billing\PlanChangeController;
 use App\Http\Controllers\Premium\AnalyticsController;
 use App\Http\Controllers\Resource\ResourceController;
+use App\Models\Tenant;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -15,7 +16,11 @@ use Illuminate\Support\Facades\Route;
 | NOTA: login, register, password reset, 2FA, etc. los maneja Fortify
 | automáticamente, no se definen acá.
 */
-Route::inertia('/', 'welcome')->name('home');
+Route::get('/', function () {
+    return inertia('welcome', [
+        'canRegister' => Tenant::current() !== null,
+    ]);
+})->name('home');
 
 /*
 |--------------------------------------------------------------------------
