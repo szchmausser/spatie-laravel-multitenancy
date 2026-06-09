@@ -3,6 +3,7 @@
 use App\Http\Controllers\Billing\PlanChangeController;
 use App\Http\Controllers\Premium\AnalyticsController;
 use App\Http\Controllers\Resource\ResourceController;
+use App\Http\Controllers\Tenant\UserController;
 use App\Models\Tenant;
 use Illuminate\Support\Facades\Route;
 
@@ -86,6 +87,9 @@ Route::middleware(['tenant', 'auth', 'verified'])->group(function () {
         Route::post('{slug}/request', [ResourceController::class, 'request'])->name('request');
         Route::get('{slug}/download', [ResourceController::class, 'download'])->name('download');
     });
+
+    // User management — tenant-scoped CRUD for team members.
+    Route::resource('users', UserController::class);
 
     // Billing — self-service plan change (1.5G-buy-plan).
     //

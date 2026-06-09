@@ -7,6 +7,7 @@ import {
     FolderGit2,
     LayoutGrid,
     Shield,
+    Users,
 } from 'lucide-react';
 import AppLogo from '@/components/app-logo';
 import { NavFooter } from '@/components/nav-footer';
@@ -87,6 +88,7 @@ export function AppSidebar() {
                         },
                     ]
                   : []),
+              { title: 'Users', href: '/users', icon: Users },
               ...(showAnalytics
                   ? [
                         {
