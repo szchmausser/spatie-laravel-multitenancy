@@ -132,3 +132,39 @@ test('subscription hasFeature delegates to plan', function () {
     expect($subscription->hasFeature('premium-content'))->toBeFalse();
     expect($subscription->hasFeature('non-existent-feature'))->toBeFalse();
 });
+
+test('subscription isCurrentlyValid returns true for active with future ends_at', function () {
+    $subscription = Subscription::factory()->createQuietly([
+        'status' => SubscriptionStatus::Active,
+        'ends_at' => now()->addMonth(),
+    ]);
+
+    expect($subscription->isCurrentlyValid())->toBeTrue();
+});
+
+test('subscription isCurrentlyValid returns false for active with past ends_at', function () {
+    $subscription = Subscription::factory()->createQuietly([
+        'status' => SubscriptionStatus::Active,
+        'ends_at' => now()->subDay(),
+    ]);
+
+    expect($subscription->isCurrentlyValid())->toBeFalse();
+});
+
+test('subscription isCurrentlyValid returns true for active with null ends_at', function () {
+    $subscription = Subscription::factory()->createQuietly([
+        'status' => SubscriptionStatus::Active,
+        'ends_at' => null,
+    ]);
+
+    expect($subscription->isCurrentlyValid())->toBeTrue();
+});
+
+test('subscription isCurrentlyValid returns false for expired status regardless of ends_at', function () {
+    $subscription = Subscription::factory()->createQuietly([
+        'status' => SubscriptionStatus::Expired,
+        'ends_at' => now()->addMonth(),
+    ]);
+
+    expect($subscription->isCurrentlyValid())->toBeFalse();
+});

@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Billing\PlanChangeController;
+use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\Premium\AnalyticsController;
 use App\Http\Controllers\Resource\ResourceController;
 use App\Http\Controllers\Tenant\RoleController;
@@ -115,6 +116,11 @@ Route::middleware(['tenant', 'auth', 'verified'])->group(function () {
         Route::get('change-plan', [PlanChangeController::class, 'show'])->name('change-plan.show');
         Route::post('change-plan', [PlanChangeController::class, 'update'])->name('change-plan.update');
     });
+
+    // Notifications — in-app notification center.
+    Route::get('notifications', [NotificationController::class, 'index'])->name('notifications.index');
+    Route::put('notifications/read-all', [NotificationController::class, 'markAllRead'])->name('notifications.markAllRead');
+    Route::put('notifications/{notification}', [NotificationController::class, 'update'])->name('notifications.update');
 });
 
 /*

@@ -31,6 +31,18 @@ class Subscription extends Model
     }
 
     /**
+     * Check if the subscription is currently valid.
+     *
+     * Returns true when status is Active AND (ends_at is null OR ends_at is in the future).
+     * Subscriptions with Active status but past ends_at are considered invalid.
+     */
+    public function isCurrentlyValid(): bool
+    {
+        return $this->status === SubscriptionStatus::Active
+            && ($this->ends_at === null || $this->ends_at->isFuture());
+    }
+
+    /**
      * Check if the subscription is active.
      */
     public function isActive(): bool

@@ -85,7 +85,7 @@ class ResourceController extends Controller
             'file_size_bytes' => $file->getSize(),
             'mime_type' => $file->getMimeType(),
             'is_premium' => $validated['is_premium'],
-            'price_cents' => $validated['price_cents'],
+            'price_cents' => $validated['price_cents'] ?? 0,
             'is_active' => $validated['is_active'],
         ]);
 
@@ -121,7 +121,7 @@ class ResourceController extends Controller
             'slug' => $validated['slug'],
             'description' => $validated['description'] ?? null,
             'is_premium' => $validated['is_premium'],
-            'price_cents' => $validated['price_cents'],
+            'price_cents' => $validated['price_cents'] ?? 0,
             'is_active' => $validated['is_active'],
         ];
 
@@ -178,7 +178,7 @@ class ResourceController extends Controller
             'description' => ['nullable', 'string'],
             'file' => ['required', 'file', 'max:102400'],
             'is_premium' => ['required', 'boolean'],
-            'price_cents' => ['required', 'integer', 'min:0'],
+            'price_cents' => ['required_if:is_premium,1', 'integer', 'min:0'],
             'is_active' => ['required', 'boolean'],
         ];
     }
@@ -197,7 +197,7 @@ class ResourceController extends Controller
             'description' => ['nullable', 'string'],
             'file' => ['nullable', 'file', 'max:102400'],
             'is_premium' => ['required', 'boolean'],
-            'price_cents' => ['required', 'integer', 'min:0'],
+            'price_cents' => ['required_if:is_premium,1', 'integer', 'min:0'],
             'is_active' => ['required', 'boolean'],
         ];
     }

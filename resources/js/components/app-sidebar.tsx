@@ -1,6 +1,7 @@
 import { Link, usePage } from '@inertiajs/react';
 import {
     BarChart3,
+    Bell,
     BookOpen,
     Building2,
     Download,
@@ -17,11 +18,14 @@ import {
     Sidebar,
     SidebarContent,
     SidebarFooter,
+    SidebarGroup,
+    SidebarGroupLabel,
     SidebarHeader,
     SidebarMenu,
     SidebarMenuButton,
     SidebarMenuItem,
 } from '@/components/ui/sidebar';
+import { useCurrentUrl } from '@/hooks/use-current-url';
 import { dashboard } from '@/routes';
 import type { NavItem } from '@/types';
 
@@ -53,6 +57,7 @@ const footerNavItems: NavItem[] = [
 
 export function AppSidebar() {
     const { auth, tenant } = usePage().props;
+    const { isCurrentUrl } = useCurrentUrl();
     const isAdmin = auth?.is_admin ?? false;
     const isFreeTier = tenant?.is_free_tier ?? true;
     const hasFreeResources = tenant?.has_free_resources ?? false;
@@ -113,6 +118,8 @@ export function AppSidebar() {
                   : []),
           ];
 
+    const unreadCount = auth?.unread_notifications_count ?? 0;
+
     return (
         <Sidebar collapsible="icon" variant="inset">
             <SidebarHeader>
@@ -132,6 +139,30 @@ export function AppSidebar() {
 
             <SidebarContent>
                 <NavMain items={mainNavItems} />
+                {!isAdmin && (
+                    <SidebarGroup className="px-2 py-0">
+                        <SidebarGroupLabel>Account</SidebarGroupLabel>
+                        <SidebarMenu>
+                            <SidebarMenuItem>
+                                <SidebarMenuButton
+                                    asChild
+                                    isActive={isCurrentUrl('/notifications')}
+                                    tooltip={{ children: 'Notificaciones' }}
+                                >
+                                    <Link href="/notifications" prefetch>
+                                        <Bell />
+                                        <span>Notificaciones</span>
+                                        {unreadCount > 0 && (
+                                            <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 text-[10px] font-medium text-white">
+                                                {unreadCount > 99 ? '99+' : unreadCount}
+                                            </span>
+                                        )}
+                                    </Link>
+                                </SidebarMenuButton>
+                            </SidebarMenuItem>
+                        </SidebarMenu>
+                    </SidebarGroup>
+                )}
                 {isAdmin && <NavMain items={adminNavItems} label="Admin" />}
             </SidebarContent>
 

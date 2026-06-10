@@ -121,7 +121,7 @@ class Tenant extends SpatieTenant implements IsTenant
 
         if (! $plan) {
             throw new \RuntimeException(
-                "Tenant '{$this->domain}' could not be assigned a default subscription: " .
+                "Tenant '{$this->domain}' could not be assigned a default subscription: ".
                 "plan with slug '{$slug}' not found. Run PlansSeeder first."
             );
         }
@@ -159,25 +159,32 @@ class Tenant extends SpatieTenant implements IsTenant
 
     /**
      * Get the active subscription for this tenant.
+     *
+     * Returns the subscription only if it is currently valid
+     * (status = Active AND ends_at is null or in the future).
      */
     public function activeSubscription(): ?Subscription
     {
-        return $this->subscription?->status === SubscriptionStatus::Active
-            ? $this->subscription
-            : null;
+        $subscription = $this->subscription;
+
+        if (! $subscription || ! $subscription->isCurrentlyValid()) {
+            return null;
+        }
+
+        return $subscription;
     }
 
     /**
      * Check if the tenant has a specific feature enabled.
      *
-     * Returns true only if the tenant has an active subscription
+     * Returns true only if the tenant has a currently valid subscription
      * and the plan includes the specified feature.
      */
     public function hasFeature(string $feature): bool
     {
         $subscription = $this->subscription;
 
-        if (! $subscription || ! $subscription->isActive()) {
+        if (! $subscription || ! $subscription->isCurrentlyValid()) {
             return false;
         }
 

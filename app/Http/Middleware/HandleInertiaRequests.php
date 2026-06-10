@@ -49,6 +49,7 @@ class HandleInertiaRequests extends Middleware
             'auth' => [
                 'user' => $this->resolveUserProp($user),
                 'is_admin' => $user instanceof Landlord,
+                'unread_notifications_count' => $this->resolveUnreadNotificationsCount($user),
             ],
             // Tenant-scoped data is only meaningful when a request lands on
             // a tenant subdomain. On landlord routes (the SaaS admin panel)
@@ -222,6 +223,37 @@ class HandleInertiaRequests extends Middleware
             return $user->roles?->pluck('name')->toArray() ?? [];
         } catch (\Throwable) {
             return [];
+        }
+    }
+
+    /**
+     * Resolve the unread notifications count for the authenticated user.
+     *
+     * The notifications table may not exist in test contexts where the
+     * database migration has not been run. Returns 0 silently.
+     */
+    private function resolveUnreadNotificationsCount(?Authenticatable $user): int
+    {
+        if (! $user instanceof User) {
+            return 0;
+        }
+
+        $connection = method_exists($user, 'getConnectionName')
+            ? ($user->getConnectionName() ?? config('database.default'))
+            : config('database.default');
+
+        try {
+            if (! Schema::connection($connection)->hasTable('notifications')) {
+                return 0;
+            }
+        } catch (\Throwable) {
+            return 0;
+        }
+
+        try {
+            return $user->unreadNotifications()->count();
+        } catch (\Throwable) {
+            return 0;
         }
     }
 }

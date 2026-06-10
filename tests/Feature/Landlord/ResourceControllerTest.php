@@ -131,12 +131,31 @@ test('admin can publish a premium resource with a non-zero price', function () {
     expect($resource->mime_type)->toBe('application/zip');
 });
 
+test('admin can publish a free resource without sending price_cents', function () {
+    $admin = Landlord::factory()->create();
+    $this->actingAs($admin);
+
+    $this->post(route('landlord.resources.store'), [
+        'name' => 'Free Guide',
+        'slug' => 'free-guide',
+        'file' => UploadedFile::fake()->create('free.pdf', 10, 'application/pdf'),
+        'is_premium' => false,
+        'is_active' => true,
+    ])->assertRedirect(route('landlord.resources.index'));
+
+    $resource = Resource::query()->where('slug', 'free-guide')->first();
+
+    expect($resource)->not->toBeNull();
+    expect($resource->is_premium)->toBeFalse();
+    expect($resource->price_cents)->toBe(0);
+});
+
 test('store validates required fields', function () {
     $admin = Landlord::factory()->create();
     $this->actingAs($admin);
 
     $this->post(route('landlord.resources.store'), [])
-        ->assertSessionHasErrors(['name', 'slug', 'file', 'is_premium', 'price_cents', 'is_active']);
+        ->assertSessionHasErrors(['name', 'slug', 'file', 'is_premium', 'is_active']);
 
     expect(Resource::query()->count())->toBe(0);
 });

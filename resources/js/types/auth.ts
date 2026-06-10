@@ -13,6 +13,7 @@ export type User = {
 export type Auth = {
     user: User;
     is_admin: boolean;
+    unread_notifications_count: number;
 };
 
 /* @chisel-passkeys */

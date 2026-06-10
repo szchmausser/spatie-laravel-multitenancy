@@ -5139,4 +5139,195 @@ rm tests/Browser/Billing/ChangePlanFlowTest.php
 | `tests/Browser/Billing/ChangePlanFlowTest.php` | NEW: 2 browser tests (tenant flow + landlord flow) |
 | `tests/Feature/Auth/TenantPermissionsTest.php` | Modificado: 1 test nuevo (Requirement 8 — downgrade regression) |
 
+---
 
+## 25. Notificaciones (1.5H-expire)
+
+### 25.1 Arquitectura del sistema de notificaciones
+
+**Cada tenant tiene su propia tabla `notifications`** en su base de datos física, creada por la migración `database/migrations/2026_06_10_100001_create_tenant_notifications_table.php`:
+
+```php
+Schema::connection('tenant')->create('notifications', function (Blueprint $table) {
+    $table->uuid('id')->primary();
+    $table->string('type');
+    $table->morphs('notifiable');
+    $table->text('data');
+    $table->timestamp('read_at')->nullable();
+    $table->timestamps();
+});
+```
+
+> **Punto clave:** La migración usa `Schema::connection('tenant')` y tiene un guard `hasTable` para idempotencia — `migrate:fresh` solo dropea tablas de la conexión default, la tabla `notifications` del tenant persiste entre corridas.
+
+**Canales de envío:**
+
+| Notificación | Database | Email | Trigger |
+|---|---|---|---|
+| `SubscriptionExpiringWarning` | ✅ | ✅ | Automático: 7 días antes del vencimiento |
+| `SubscriptionExpired` | ✅ | ✅ | Automático: el día del vencimiento |
+| `ManualNotification` | ✅ | ✅ | Manual: command `notification:send` |
+
+**Las notificaciones automáticas** se disparan desde `app/Console/Commands/ExpireSubscriptions.php` (command `subscriptions:expire`), que se ejecuta diariamente via scheduler (`routes/console.php`):
+
+```php
+Schedule::command('subscriptions:expire')->daily();
+```
+
+El command itera todos los tenants, usa `$tenant->makeCurrent()` para activar cada contexto, y envía a los usuarios con roles `owner` y `tenant-admin`. Cuando una suscripción expira, el command **resetea `plan_id` a free** — el tenant pierde acceso a features premium y su plan visible pasa a "Free".
+
+> **Decisión:** al expirar, el plan se rebaja a free (no se mantiene la referencia al plan anterior). El historial de planes se implementará en una tabla separada en una fase futura.
+
+### 25.2 Command de notificaciones manuales
+
+**`app/Console/Commands/SendManualNotification.php`** — command `notification:send`:
+
+```bash
+# ── tenants específicos + roles default (owner, tenant-admin) ──
+php artisan notification:send "Mensaje" --tenants=1,3,5
+
+# ── todos los tenants + roles default ──
+php artisan notification:send "Mensaje" --all
+
+# ── tenants específicos + solo owners ──
+php artisan notification:send "Mensaje" --tenants=1,3,5 --roles=owner
+
+# ── todos los tenants + solo owners ──
+php artisan notification:send "Mensaje" --all --roles=owner
+
+# ── tenants específicos + owner + tenant-admin (explícito) ──
+php artisan notification:send "Mensaje" --tenants=1,3,5 --roles=owner,tenant-admin
+
+# ── todos los tenants + owner + tenant-admin (explícito) ──
+php artisan notification:send "Mensaje" --all --roles=owner,tenant-admin
+
+# ── dry run (preview sin enviar, aplica a cualquier combinación) ──
+php artisan notification:send "Mensaje" --all --dry-run
+php artisan notification:send "Mensaje" --tenants=2 --roles=owner --dry-run
+```
+
+**Lógica de combinación:** `--tenants` o `--all` define el **alcance de tenants**. `--roles` define **quiénes dentro de cada tenant** reciben la notificación. Si no se pasa `--roles`, se usa el default `owner,tenant-admin`. `--dry-run` se puede agregar a cualquier combinación para previsualizar destinatarios sin enviar.
+
+**Parámetros:**
+
+| Parámetro | Descripción | Default |
+|---|---|---|
+| `message` (argumento) | Mensaje de la notificación | requerido |
+| `--title=` | Título opcional (aparece en negrita en la UI) | null |
+| `--tenants=` | IDs de tenants separados por coma | — |
+| `--all` | Enviar a todos los tenants | — |
+| `--roles=` | Roles a notificar (separados por coma) | `owner,tenant-admin` |
+| `--dry-run` | Previsualizar destinatarios sin enviar | false |
+
+**Flujo interno:** Para cada tenant seleccionado, el command llama a `$tenant->makeCurrent()` (activa la conexión `tenant`), busca usuarios con los roles especificados via Spatie Permission, y envía la notificación usando `Notification::send()`. La notificación se almacena en la tabla `notifications` del tenant y se envía por email (configurado en `.env` con `MAIL_MAILER=log` en dev).
+
+### 25.3 Frontend: página de notificaciones
+
+**Ruta:** `GET /notifications` (dentro del grupo `tenant` + `auth` + `verified`)
+
+**Controller:** `app/Http/Controllers/NotificationController.php`
+
+- `index()` — renderiza la página con notificaciones unread/read separadas
+- `update()` — marca una notificación como read (usa `$request->user()->notifications()` para resolver la conexión correcta)
+- `markAllRead()` — marca todas como read
+
+**Página:** `resources/js/pages/notifications/index.tsx`
+
+- Secciones "No leídas" y "Leídas"
+- Botón "Mark read" por notificación individual
+- Botón "Marcar todo como leído"
+- Indicador visual: amarillo (ExpiringWarning), rojo (Expired), azul (Manual)
+- Título en negrita cuando la notificación tiene `title`
+
+**Badge en sidebar:** `resources/js/components/app-sidebar.tsx` muestra un link "Notificaciones" con badge del conteo de notificaciones sin leer. El conteo viene del shared prop `auth.unread_notifications_count` (resiliente a tenants sin tabla de notificaciones).
+
+> **Gotcha de route model binding:** `DatabaseNotification` resuelve contra la conexión default (landlord), pero las notificaciones viven en la conexión `tenant`. El controller usa `$request->user()->notifications()` en vez de route model binding para evitar 404s.
+
+> **Gotcha de Inertia responses:** Los endpoints PUT deben retornar `redirect()->back()`, no `response()->json()`. Inertia no acepta respuestas JSON planas para requests PUT.
+
+### 25.4 Scheduler
+
+El command `subscriptions:expire` está programado para ejecutarse diariamente en `routes/console.php`:
+
+```php
+Schedule::command('subscriptions:expire')->daily();
+```
+
+En producción, el scheduler se ejecuta via cron job cada minuto:
+
+```cron
+* * * * * cd /path-to-project && php artisan schedule:run >> /dev/null 2>&1
+```
+
+En Laravel Herd local se ejecuta automáticamente.
+
+### 25.5 Pruebas manuales
+
+El flujo es: **tinker (setear condición) → artisan subscriptions:expire (ejecutar) → tinker (verificar)**.
+
+#### Escenario A — Suscripción vencida (cambia status a Expired + notificación roja)
+
+**Paso 1** — Simular condición:
+
+```bash
+php artisan tinker
+```
+
+```php
+App\Models\Subscription::where("tenant_id", 1)->update(["ends_at" => now()->subDay(), "status" => "active"])
+```
+
+**Paso 2** — Ejecutar el command:
+
+```bash
+php artisan subscriptions:expire
+```
+
+**Paso 3** — Verificar:
+
+```bash
+php artisan tinker
+```
+
+```php
+App\Models\Subscription::where("tenant_id", 1)->first(["id","status","ends_at"])
+```
+
+El status debe ser `expired` y `ends_at` debe ser la fecha que seteaste (ayer).
+
+#### Escenario B — Suscripción por vencer (warning amarillo, status sigue Active)
+
+**Paso 1** — Simular condición:
+
+```bash
+php artisan tinker
+```
+
+```php
+App\Models\Subscription::where("tenant_id", 1)->update(["ends_at" => now()->addDays(2), "status" > "active"])
+```
+
+**Paso 2** — Ejecutar el command:
+
+```bash
+php artisan subscriptions:expire
+```
+
+**Paso 3** — Verificar notificación:
+
+```bash
+php artisan tinker
+```
+
+```php
+App\Models\Tenant::find(1)->makeCurrent()
+DB::connection("tenant")->table("notifications")->orderByDesc("created_at")->limit(3)->get(["id","type","created_at"])
+```
+
+Debe aparecer una notificación de tipo `SubscriptionExpiringWarning` y el status de la suscripción sigue `active`.
+
+#### Verificar en la UI
+
+Entrá a la app con el usuario admin del tenant (owner o tenant-admin) y revisá:
+- El badge de notificaciones en el sidebar muestra el conteo
+- La página `/notifications` muestra la notificación con el tipo correcto (amarillo para ExpiringWarning, rojo para Expired)
