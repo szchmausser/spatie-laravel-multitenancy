@@ -43,10 +43,12 @@ class PlanChangeController extends Controller
 
         $tenant = Tenant::current();
         $currentPlan = $tenant?->subscription?->plan;
+        $subscription = $tenant?->subscription;
 
         return Inertia::render('billing/change-plan', [
             'plans' => Plan::query()->active()->orderBy('price_cents')->get(),
             'currentPlan' => $currentPlan,
+            'subscription' => $subscription,
         ]);
     }
 

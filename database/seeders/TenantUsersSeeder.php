@@ -44,6 +44,17 @@ class TenantUsersSeeder extends Seeder
 {
     public function run(): void
     {
+        // When run via `tenants:artisan "db:seed"`, Spatie already set
+        // the current tenant. Seed ONLY that tenant — do not iterate
+        // all of them, or every tenant DB ends up with all users.
+        $current = Tenant::current();
+
+        if ($current) {
+            $this->forTenant($current);
+
+            return;
+        }
+
         foreach (Tenant::query()->orderBy('id')->get() as $tenant) {
             $this->forTenant($tenant);
         }

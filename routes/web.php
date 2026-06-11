@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Billing\PlanChangeController;
+use App\Http\Controllers\Billing\SubscriptionHistoryController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\Premium\AnalyticsController;
 use App\Http\Controllers\Resource\ResourceController;
@@ -115,6 +116,7 @@ Route::middleware(['tenant', 'auth', 'verified'])->group(function () {
     Route::prefix('billing')->name('billing.')->group(function () {
         Route::get('change-plan', [PlanChangeController::class, 'show'])->name('change-plan.show');
         Route::post('change-plan', [PlanChangeController::class, 'update'])->name('change-plan.update');
+        Route::get('history', [SubscriptionHistoryController::class, 'index'])->name('history');
     });
 
     // Notifications — in-app notification center.

@@ -1,5 +1,14 @@
-import { Head } from '@inertiajs/react';
-import { ArrowRightCircle, CircleCheck, Package } from 'lucide-react';
+import { Head, Link } from '@inertiajs/react';
+import {
+    ArrowRightCircle,
+    Calendar,
+    Check,
+    CircleCheck,
+    Clock,
+    ExternalLink,
+    Package,
+    Sparkles,
+} from 'lucide-react';
 import { useState } from 'react';
 import { ChangePlanDialog } from '@/components/billing/change-plan-dialog';
 import { Badge } from '@/components/ui/badge';
@@ -12,12 +21,51 @@ import {
     CardHeader,
     CardTitle,
 } from '@/components/ui/card';
-import type { Plan } from '@/types/billing';
+import type { Plan, Subscription } from '@/types/billing';
 
 type ChangePlanProps = {
     plans: Plan[];
     currentPlan: Plan | null;
+    subscription: Subscription | null;
 };
+
+/**
+ * Returns the Badge variant for a subscription status string.
+ */
+function statusBadgeVariant(
+    status: string,
+): 'default' | 'secondary' | 'destructive' | 'outline' {
+    switch (status) {
+        case 'active':
+            return 'default';
+        case 'trialing':
+            return 'secondary';
+        case 'cancelled':
+            return 'destructive';
+        case 'expired':
+            return 'destructive';
+        default:
+            return 'outline';
+    }
+}
+
+/**
+ * Returns a human-readable label for a subscription status.
+ */
+function statusLabel(status: string): string {
+    switch (status) {
+        case 'active':
+            return 'Active';
+        case 'trialing':
+            return 'Trialing';
+        case 'cancelled':
+            return 'Cancelled';
+        case 'expired':
+            return 'Expired';
+        default:
+            return status;
+    }
+}
 
 /**
  * Phase 1.5G — the self-service plan change page.
@@ -25,22 +73,27 @@ type ChangePlanProps = {
  * Lists every active plan (server already excludes the tenant's
  * current plan via the controller's `availablePlans` query, but
  * the client filters defensively in case the prop drifts), shows
- * the current plan as a highlighted "Current plan" card, and
+ * the current plan as a highlighted "Current plan" card with
+ * subscription status, feature chips, and renewal date, and
  * renders one `<ChangePlanDialog>` per available plan using the
  * "Change to {plan.name}" trigger pattern.
- *
- * Mirrors the `ResourcesIndex` page style: one card per item with
- * a primary action button that opens a confirmation dialog. On
- * confirm, the server POSTs the new `plan_id`, the dialog closes
- * on `wasSuccessful`, and Inertia re-renders this page with the
- * new `currentPlan` automatically.
  */
-export default function ChangePlan({ plans, currentPlan }: ChangePlanProps) {
+export default function ChangePlan({
+    plans,
+    currentPlan,
+    subscription,
+}: ChangePlanProps) {
     const [selectedPlan, setSelectedPlan] = useState<Plan | null>(null);
 
     const availablePlans = plans.filter(
         (plan) => plan.id !== currentPlan?.id,
     );
+
+    const enabledFeatures = currentPlan?.features
+        ? Object.entries(currentPlan.features)
+              .filter(([, v]) => v === true)
+              .map(([k]) => k)
+        : [];
 
     return (
         <>
@@ -76,16 +129,124 @@ export default function ChangePlan({ plans, currentPlan }: ChangePlanProps) {
                                     <CircleCheck className="h-4 w-4 text-green-600" />
                                     {currentPlan.name}
                                 </CardTitle>
-                                <Badge variant="outline">
-                                    ${formatPrice(currentPlan.price_cents)}{' '}
-                                    / month
-                                </Badge>
+                                <div className="flex items-center gap-2">
+                                    {subscription && (
+                                        <Badge
+                                            variant={statusBadgeVariant(
+                                                subscription.status,
+                                            )}
+                                            data-testid="subscription-status-badge"
+                                        >
+                                            {statusLabel(subscription.status)}
+                                        </Badge>
+                                    )}
+                                    <Badge variant="outline">
+                                        ${formatPrice(currentPlan.price_cents)}{' '}
+                                        / month
+                                    </Badge>
+                                </div>
                             </div>
                             {currentPlan.description && (
                                 <CardDescription>
                                     {currentPlan.description}
                                 </CardDescription>
                             )}
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            {/* Feature chips */}
+                            {enabledFeatures.length > 0 && (
+                                <div className="flex flex-wrap gap-1.5">
+                                    {enabledFeatures.map((f) => (
+                                        <span
+                                            key={f}
+                                            className="inline-flex items-center gap-0.5 rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary"
+                                        >
+                                            <Check className="h-2.5 w-2.5" />
+                                            {f
+                                                .replace(/-/g, ' ')
+                                                .replace(
+                                                    /\b\w/g,
+                                                    (c) => c.toUpperCase(),
+                                                )}
+                                        </span>
+                                    ))}
+                                </div>
+                            )}
+
+                            {/* Subscription details */}
+                            {subscription && (
+                                <div className="space-y-2 text-sm text-muted-foreground">
+                                    {subscription.ends_at && (
+                                        <div
+                                            className="flex items-center gap-1.5"
+                                            data-testid="renewal-date"
+                                        >
+                                            <Calendar className="h-3.5 w-3.5" />
+                                            Renews{' '}
+                                            {new Date(
+                                                subscription.ends_at,
+                                            ).toLocaleDateString('en-US', {
+                                                month: 'long',
+                                                day: 'numeric',
+                                                year: 'numeric',
+                                            })}
+                                        </div>
+                                    )}
+                                    {!subscription.ends_at && (
+                                        <div
+                                            className="flex items-center gap-1.5"
+                                            data-testid="no-renewal-date"
+                                        >
+                                            <Calendar className="h-3.5 w-3.5" />
+                                            No renewal date
+                                        </div>
+                                    )}
+                                    {subscription.trial_ends_at && (
+                                        <div
+                                            className="flex items-center gap-1.5"
+                                            data-testid="trial-end-date"
+                                        >
+                                            <Clock className="h-3.5 w-3.5" />
+                                            Trial ends{' '}
+                                            {new Date(
+                                                subscription.trial_ends_at,
+                                            ).toLocaleDateString('en-US', {
+                                                month: 'long',
+                                                day: 'numeric',
+                                                year: 'numeric',
+                                            })}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* View history link */}
+                            <div className="pt-2 border-t">
+                                <Link
+                                    href="/billing/history"
+                                    className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+                                    data-testid="view-history-link"
+                                >
+                                    <ExternalLink className="h-3.5 w-3.5" />
+                                    View subscription history
+                                </Link>
+                            </div>
+                        </CardContent>
+                    </Card>
+                )}
+
+                {/* Free tier state — no subscription */}
+                {!currentPlan && !subscription && (
+                    <Card data-testid="no-active-subscription">
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2">
+                                <Package className="h-4 w-4 text-muted-foreground" />
+                                No active subscription
+                            </CardTitle>
+                            <CardDescription>
+                                You are on the free tier. Choose a plan below
+                                to get started.
+                            </CardDescription>
                         </CardHeader>
                     </Card>
                 )}

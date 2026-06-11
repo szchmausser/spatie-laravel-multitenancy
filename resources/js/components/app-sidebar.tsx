@@ -4,6 +4,7 @@ import {
     Bell,
     BookOpen,
     Building2,
+    CreditCard,
     Download,
     FolderGit2,
     LayoutGrid,
@@ -160,6 +161,20 @@ export function AppSidebar() {
                                     </Link>
                                 </SidebarMenuButton>
                             </SidebarMenuItem>
+                            {canManageUsers && (
+                                <SidebarMenuItem>
+                                    <SidebarMenuButton
+                                        asChild
+                                        isActive={isCurrentUrl('/billing')}
+                                        tooltip={{ children: 'Billing' }}
+                                    >
+                                        <Link href="/billing/change-plan" prefetch>
+                                            <CreditCard />
+                                            <span>Billing</span>
+                                        </Link>
+                                    </SidebarMenuButton>
+                                </SidebarMenuItem>
+                            )}
                         </SidebarMenu>
                     </SidebarGroup>
                 )}

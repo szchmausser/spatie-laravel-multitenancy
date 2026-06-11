@@ -306,6 +306,49 @@ test('POST /billing/change-plan history entry captures old and new plan snapshot
     expect($history->new_status)->toBe('active');
 });
 
+test('change-plan page includes subscription data with status, ends_at, and trial_ends_at', function () {
+    $plan = Plan::factory()->createQuietly(['name' => 'Basic', 'slug' => 'basic']);
+    $tenant = Tenant::factory()->createQuietly();
+    Subscription::factory()->createQuietly([
+        'tenant_id' => $tenant->id,
+        'plan_id' => $plan->id,
+        'status' => SubscriptionStatus::Active,
+        'ends_at' => '2026-07-15',
+        'trial_ends_at' => '2026-06-20',
+    ]);
+    $tenant->makeCurrent();
+
+    $user = makeChangePlanUser(canChangePlan: true);
+
+    $this->actingAs($user)
+        ->get(route('billing.change-plan.show'))
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->component('billing/change-plan')
+            ->has('subscription')
+            ->where('subscription.status', 'active')
+            ->has('subscription.ends_at')
+            ->has('subscription.trial_ends_at')
+        );
+});
+
+test('change-plan page handles null subscription for free tier', function () {
+    $plan = Plan::factory()->createQuietly(['name' => 'Free', 'slug' => 'free']);
+    $tenant = Tenant::factory()->createQuietly();
+    // No subscription created — tenant is on free tier
+    $tenant->makeCurrent();
+
+    $user = makeChangePlanUser(canChangePlan: true);
+
+    $this->actingAs($user)
+        ->get(route('billing.change-plan.show'))
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->component('billing/change-plan')
+            ->where('subscription', null)
+        );
+});
+
 /**
  * Build a minimal Authenticatable that authorises `change-plan`
  * (or not). Reused by the show / update tests.
