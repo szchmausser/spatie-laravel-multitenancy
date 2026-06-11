@@ -1,8 +1,10 @@
 <?php
 
+use App\Enums\SubscriptionEventType;
 use App\Enums\SubscriptionStatus;
 use App\Models\Plan;
 use App\Models\Subscription;
+use App\Models\SubscriptionHistory;
 use App\Models\Tenant;
 use App\Models\User;
 use App\Notifications\SubscriptionExpired;
@@ -239,4 +241,35 @@ test('command is idempotent for warning notifications', function () {
     // Second run — should not duplicate warning (command checks notifications table)
     $this->artisan('subscriptions:expire')->assertExitCode(0);
     Notification::assertSentTo($user, SubscriptionExpiringWarning::class, 1);
+});
+
+test('command records subscription_expired history entry after expiry', function () {
+    Notification::fake();
+
+    $tenant = Tenant::factory()->createQuietly([
+        'database' => config('database.connections.landlord.database'),
+    ]);
+    $plan = Plan::factory()->createQuietly(['name' => 'Basic', 'price_cents' => 2900]);
+    Plan::factory()->createQuietly(['slug' => 'free']);
+
+    Subscription::factory()->createQuietly([
+        'tenant_id' => $tenant->id,
+        'plan_id' => $plan->id,
+        'status' => SubscriptionStatus::Active,
+        'ends_at' => now()->subDay(),
+    ]);
+
+    $this->artisan('subscriptions:expire')
+        ->assertExitCode(0);
+
+    $history = SubscriptionHistory::where('tenant_id', $tenant->id)->first();
+    expect($history)->not->toBeNull();
+    expect($history->event_type)->toBe(SubscriptionEventType::SubscriptionExpired);
+    expect($history->actor_id)->toBeNull();
+    expect($history->ip_address)->toBeNull();
+    expect($history->user_agent)->toBeNull();
+    expect($history->old_plan_name)->toBe('Basic');
+    expect($history->old_plan_price_cents)->toBe(2900);
+    expect($history->old_status)->toBe(SubscriptionStatus::Active->value);
+    expect($history->new_status)->toBe(SubscriptionStatus::Expired->value);
 });

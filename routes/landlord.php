@@ -5,6 +5,7 @@ use App\Http\Controllers\Landlord\PlanController;
 use App\Http\Controllers\Landlord\ResourceController;
 use App\Http\Controllers\Landlord\SubscriptionChangeController;
 use App\Http\Controllers\Landlord\SubscriptionController;
+use App\Http\Controllers\Landlord\SubscriptionHistoryController;
 use App\Http\Controllers\Landlord\TenantController;
 use App\Http\Middleware\EnsureUserIsAdmin;
 use Illuminate\Support\Facades\Route;
@@ -56,4 +57,8 @@ Route::middleware(['auth', 'verified', EnsureUserIsAdmin::class])->prefix('admin
     // (`plan_id`), matching the `assign` style.
     Route::post('tenants/{tenant}/subscription/change', [SubscriptionChangeController::class, 'update'])
         ->name('subscriptions.change');
+
+    // Subscription history
+    Route::get('tenants/{tenant}/subscription-history', [SubscriptionHistoryController::class, 'index'])
+        ->name('subscriptions.history');
 });

@@ -51,7 +51,7 @@ class SubscriptionChangeController extends Controller
         $plan = Plan::query()->findOrFail($validated['plan_id']);
         $subscription = $tenant->subscription()->firstOrFail();
 
-        $service->applyPlanChange($subscription, $plan);
+        $service->applyPlanChange($subscription, $plan, $request);
 
         return to_route('landlord.tenants.show', $tenant)
             ->with('success', "Plan changed to {$plan->name} for tenant {$tenant->name}.");

@@ -75,7 +75,7 @@ class PlanChangeController extends Controller
         $subscription = $tenant->subscription;
         $newPlan = Plan::query()->active()->findOrFail($validated['plan_id']);
 
-        $service->applyPlanChange($subscription, $newPlan);
+        $service->applyPlanChange($subscription, $newPlan, $request);
 
         return to_route('billing.change-plan.show')
             ->with('success', "Your plan has been changed to {$newPlan->name}.");

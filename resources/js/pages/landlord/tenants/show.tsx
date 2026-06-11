@@ -1,5 +1,5 @@
 import { router, Link } from '@inertiajs/react';
-import { Building, Globe, Database, Calendar, ArrowLeft, Pencil, Trash2, CreditCard, Check } from 'lucide-react';
+import { Building, Globe, Database, Calendar, ArrowLeft, Pencil, Trash2, CreditCard, Check, History } from 'lucide-react';
 import { useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -71,6 +71,12 @@ return;
                         <Link href={edit(tenant.id).url}>
                             <Pencil className="h-4 w-4" />
                             Edit
+                        </Link>
+                    </Button>
+                    <Button variant="outline" asChild>
+                        <Link href={`/admin/tenants/${tenant.id}/subscription-history`}>
+                            <History className="h-4 w-4" />
+                            History
                         </Link>
                     </Button>
                     <Dialog>

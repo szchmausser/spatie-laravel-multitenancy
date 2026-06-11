@@ -89,6 +89,8 @@ test('tenant user hitting the landlord change-plan route is rejected with 403', 
     // exercises the rejection path.
     $tenantUser = new class implements Authenticatable
     {
+        public int $id = 1;
+
         public function getAuthIdentifierName(): string
         {
             return 'id';

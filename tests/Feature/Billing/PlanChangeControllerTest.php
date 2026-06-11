@@ -1,9 +1,12 @@
 <?php
 
+use App\Enums\SubscriptionEventType;
 use App\Enums\SubscriptionStatus;
 use App\Http\Controllers\Billing\PlanChangeController;
+use App\Models\Landlord;
 use App\Models\Plan;
 use App\Models\Subscription;
+use App\Models\SubscriptionHistory;
 use App\Models\Tenant;
 use App\Services\Billing\ChangePlanService;
 use Illuminate\Auth\Middleware\Authenticate;
@@ -56,6 +59,8 @@ test('returns 403 for a user without the change-plan permission on GET /billing/
     // the gate, not 500 and not 302 to login.
     $user = new class implements Authenticatable
     {
+        public int $id = 1;
+
         public function getAuthIdentifierName(): string
         {
             return 'id';
@@ -239,15 +244,88 @@ test('POST /billing/change-plan only affects the current tenant', function () {
     expect($tenant2->subscription()->first()->plan_id)->toBe($tenant2OriginalPlan->id);
 });
 
+test('POST /billing/change-plan creates a subscription history entry with plan_changed event', function () {
+    $basic = Plan::factory()->createQuietly(['name' => 'Basic', 'slug' => 'basic', 'price_cents' => 2900]);
+    $premium = Plan::factory()->createQuietly(['name' => 'Premium', 'slug' => 'premium', 'price_cents' => 9900]);
+    $tenant = Tenant::factory()->createQuietly();
+    Subscription::factory()->createQuietly([
+        'tenant_id' => $tenant->id,
+        'plan_id' => $basic->id,
+        'status' => SubscriptionStatus::Active,
+        'ends_at' => null,
+    ]);
+    $tenant->makeCurrent();
+
+    $user = makeChangePlanUser(canChangePlan: true);
+
+    $this->actingAs($user)
+        ->post(route('billing.change-plan.update'), ['plan_id' => $premium->id])
+        ->assertRedirect(route('billing.change-plan.show'));
+
+    $history = SubscriptionHistory::where('tenant_id', $tenant->id)->first();
+    expect($history)->not->toBeNull();
+    expect($history->event_type)->toBe(SubscriptionEventType::PlanChanged);
+    expect($history->old_plan_name)->toBe('Basic');
+    expect($history->old_plan_price_cents)->toBe(2900);
+    expect($history->new_plan_name)->toBe('Premium');
+    expect($history->new_plan_price_cents)->toBe(9900);
+});
+
+test('POST /billing/change-plan history entry captures old and new plan snapshots', function () {
+    $basic = Plan::factory()->createQuietly([
+        'name' => 'Basic',
+        'slug' => 'basic',
+        'price_cents' => 2900,
+        'features' => ['email' => true],
+    ]);
+    $premium = Plan::factory()->createQuietly([
+        'name' => 'Premium',
+        'slug' => 'premium',
+        'price_cents' => 9900,
+        'features' => ['email' => true, 'reports' => true],
+    ]);
+    $tenant = Tenant::factory()->createQuietly();
+    Subscription::factory()->createQuietly([
+        'tenant_id' => $tenant->id,
+        'plan_id' => $basic->id,
+        'status' => SubscriptionStatus::Active,
+        'ends_at' => null,
+    ]);
+    $tenant->makeCurrent();
+
+    $user = makeChangePlanUser(canChangePlan: true);
+
+    $this->actingAs($user)
+        ->post(route('billing.change-plan.update'), ['plan_id' => $premium->id])
+        ->assertRedirect(route('billing.change-plan.show'));
+
+    $history = SubscriptionHistory::where('tenant_id', $tenant->id)->first();
+    expect($history->old_plan_features)->toBe(['email' => true]);
+    expect($history->old_status)->toBe('active');
+    expect($history->new_plan_features)->toBe(['email' => true, 'reports' => true]);
+    expect($history->new_status)->toBe('active');
+});
+
 /**
  * Build a minimal Authenticatable that authorises `change-plan`
  * (or not). Reused by the show / update tests.
+ *
+ * Creates a real Landlord user so the `actor_id` FK in
+ * `subscription_history` is satisfied. The anonymous class
+ * overrides `can()` to mock the permission check.
  */
 function makeChangePlanUser(bool $canChangePlan = true): Authenticatable
 {
-    return new class($canChangePlan) implements Authenticatable
+    $admin = Landlord::factory()->create();
+
+    return new class($canChangePlan, $admin->id) implements Authenticatable
     {
-        public function __construct(private readonly bool $canChangePlan) {}
+        public int $id;
+
+        public function __construct(private readonly bool $canChangePlan, int $id)
+        {
+            $this->id = $id;
+        }
 
         public function getAuthIdentifierName(): string
         {
@@ -256,7 +334,7 @@ function makeChangePlanUser(bool $canChangePlan = true): Authenticatable
 
         public function getAuthIdentifier(): mixed
         {
-            return 1;
+            return $this->id;
         }
 
         public function getAuthPasswordName(): string
@@ -283,7 +361,7 @@ function makeChangePlanUser(bool $canChangePlan = true): Authenticatable
 
         public function getKey(): int
         {
-            return 1;
+            return $this->id;
         }
 
         public function can(string $ability): bool
