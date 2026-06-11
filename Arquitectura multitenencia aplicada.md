@@ -950,7 +950,7 @@ class Tenant extends SpatieTenant implements IsTenant
             $tenant->assertTenantsTableExists();  // ← GUARD: falla temprano si falta la tabla
             $tenant->createDatabase();            // CREATE DATABASE si no existe
             $tenant->configureTenantConnection(); // apunta 'tenant' connection a esta BD
-            $tenant->runMigrations();             // migrate --database=tenant --force
+            $tenant->runMigrations();             // migrate --database=tenant
         });
 
         static::created(function (Tenant $tenant): void {
@@ -1018,7 +1018,6 @@ class Tenant extends SpatieTenant implements IsTenant
     {
         Artisan::call('migrate', [
             '--database' => 'tenant',
-            '--force' => true,
         ]);
     }
 }
@@ -1153,7 +1152,7 @@ class TenantController extends Controller
 php artisan tenants:artisan "migrate --database=tenant"
 ```
 
-> **Nota — automatización actual:** En el flujo de seeders, este paso es automático para tenants nuevos. El callback `creating` de `app/Models/Tenant.php` (método `runMigrations()`) corre `php artisan migrate --database=tenant --force` cada vez que se invoca `Tenant::create()`. El comando `tenants:artisan` de arriba sigue siendo necesario para **propagar migraciones nuevas a tenants existentes** que ya están corriendo (no fueron recién creados). Es el flujo de actualización de schema para clientes en producción.
+> **Nota — automatización actual:** En el flujo de seeders, este paso es automático para tenants nuevos. El callback `creating` de `app/Models/Tenant.php` (método `runMigrations()`) corre `php artisan migrate --database=tenant` cada vez que se invoca `Tenant::create()`. El comando `tenants:artisan` de arriba sigue siendo necesario para **propagar migraciones nuevas a tenants existentes** que ya están corriendo (no fueron recién creados). Es el flujo de actualización de schema para clientes en producción.
 
 ---
 
@@ -2016,26 +2015,58 @@ $env:PGPASSWORD = "postgres"
 # 2. Recrear landlord + testing
 & "C:\Program Files\PostgreSQL\18\bin\psql.exe" -U postgres -h 127.0.0.1 -d postgres -q -c 'CREATE DATABASE "spatie-laravel-multitenancy";' -c 'CREATE DATABASE "spatie-laravel-multitenancy-testing";'
 
-# 3. Migraciones
-php artisan migrate:fresh
-php artisan migrate --path=database/migrations/landlord --database=landlord --force
-php artisan config:clear
+# 3. Migraciones landlord (Spatie standard)
+#    3a. Tablas shared en landlord (users, sessions, cache, etc.)
+php artisan migrate
+#    3b. Tablas específicas de landlord (tenants, plans, subscriptions, etc.)
+php artisan migrate --path=database/migrations/landlord --database=landlord
 
-# 4. Seed completo (los tenants se crean con sus BDs via Tenant::creating callback)
+# 4. Seed landlord (admin, plans, tenants + crea BDs físicas)
 php artisan db:seed
+
+# 5. Migrar y seedear cada tenant (Spatie standard)
+php artisan tenants:artisan "migrate --database=tenant --seed"
+
+# 6. Limpiar caché
+php artisan config:clear
 ```
 
-**¿Qué hace cada seeder en orden?**
+#### Flujo de migraciones (Spatie standard)
 
-| Seeder | Qué crea | Dónde |
-|--------|----------|-------|
-| `LandlordUserSeeder` | Usuario admin (`admin@example.test` / `password`) | BD landlord |
-| `PlansSeeder` | 3 planes (free, basic, premium) | BD landlord |
-| `TenantsSeeder` | 10 tenants (tenant1..tenant10) | BD landlord + crea BDs físicas |
-| `TenantPermissionsSeeder` | 9 permisos + 3 roles (owner, tenant-admin, member) | Cada BD tenant |
-| `TenantUsersSeeder` | 1 usuario owner por tenant (`tenant{N}@...` / `password`) | Cada BD tenant |
+Este proyecto sigue el flujo estándar de [Spatie Laravel Multitenancy](https://spatie.be/docs/laravel-multitenancy/v4/installation/using-multiple-databases):
 
-> **Nota sobre `Tenant::creating`:** El callback crea la BD física, configura la conexión, y corre migraciones. PostgreSQL no permite `CREATE DATABASE` dentro de una transacción, por eso se usa `DB::statement()` (no `DB::unprepared()` que envuelve en transacción). Los nombres de BD con guiones son válidos en PostgreSQL.
+| Tipo | Ubicación | Comando |
+|------|-----------|---------|
+| Landlord (shared) | `database/migrations/` | `php artisan migrate` (conexión default = landlord) |
+| Landlord (específico) | `database/migrations/landlord/` | `php artisan migrate --path=database/migrations/landlord --database=landlord` |
+| Tenant | `database/migrations/` | `php artisan tenants:artisan "migrate --database=tenant"` |
+
+**¿Por qué landlord necesita dos pasos de migración?**
+
+Landlord es una app Laravel completa que necesita tablas shared (users, sessions, cache, jobs, notifications, etc.) Y tablas específicas de multitenancy (tenants, plans, subscriptions, etc.). El flujo de Spatie separa estas:
+
+1. `php artisan migrate` — corre todas las migraciones de `database/migrations/` en la conexión default (`pgsql` = landlord). Crea las tablas shared.
+2. `php artisan migrate --path=.../landlord` — corre las migraciones de `database/migrations/landlord/` en la conexión landlord. Crea las tablas específicas de multitenancy.
+
+Para tenants, `tenants:artisan "migrate --database=tenant --seed"` corre las migraciones de `database/migrations/` en cada BD de tenant, y luego ejecuta el seeder (que detecta el contexto tenant y seedea permisos + usuarios).
+
+> **Flujo en producción:**
+> - Migración nueva de landlord → `database/migrations/landlord/` → `php artisan migrate --path=database/migrations/landlord --database=landlord`
+> - Migración nueva de tenants → `database/migrations/` → `php artisan tenants:artisan "migrate --database=tenant"`
+> - Si la migración es shared (users, etc.) → `database/migrations/` → `php artisan migrate` (landlord) + `php artisan tenants:artisan "migrate --database=tenant"` (tenants)
+
+**¿Qué hace cada paso en orden?**
+
+| Paso | Qué hace | Dónde |
+|------|----------|-------|
+| `php artisan migrate` | Tablas shared (users, sessions, cache, notifications, etc.) | BD landlord |
+| `php artisan migrate --path=.../landlord` | Tablas landlord (tenants, plans, subscriptions, etc.) | BD landlord |
+| `php artisan db:seed` | Admin + plans + 10 tenants + crea BDs físicas | BD landlord + BDs tenants |
+| `tenants:artisan "migrate --seed"` | Migra cada tenant + seedea permisos y usuarios | Cada BD tenant |
+
+> **Nota sobre `Tenant::creating`:** El callback crea la BD física y configura la conexión. PostgreSQL no permite `CREATE DATABASE` dentro de una transacción, por eso se usa `DB::statement()` (no `DB::unprepared()` que envuelve en transacción). Los nombres de BD con guiones son válidos en PostgreSQL. Las migraciones se ejecutan aparte via `tenants:artisan`.
+
+> **Nota sobre `DatabaseSeeder`:** El seeder detecta el contexto via `Tenant::checkCurrent()`. En landlord ejecuta LandlordUserSeeder, PlansSeeder, TenantsSeeder. En tenant ejecuta TenantPermissionsSeeder, TenantUsersSeeder.
 
 **Credenciales resultantes:**
 
@@ -4416,12 +4447,12 @@ database/migrations/
 
 **Síntoma de fallo:** `QueryException SQLSTATE[42P01]: Undefined table: 7 ERROR: no existe la relación «resources»` (o `plans`, `subscriptions`, `entitlements`) cuando se navega a una ruta que toca un modelo con `UsesLandlordConnection`.
 
-**Por qué pasa en prod/dev pero no en tests:** el trait `tests/Support/RefreshLandlordDatabase.php` invoca `php artisan migrate --path=database/migrations/landlord --database=landlord --force` explícitamente en `refreshDatabase()`. Fuera de los tests, ese paso se omite y las tablas del landlord nunca se crean.
+**Por qué pasa en prod/dev pero no en tests:** el trait `tests/Support/RefreshLandlordDatabase.php` invoca `php artisan migrate --path=database/migrations/landlord --database=landlord` explícitamente en `refreshDatabase()`. Fuera de los tests, ese paso se omite y las tablas del landlord nunca se crean.
 
 **Solución de un solo comando (operativa):**
 
 ```bash
-php artisan migrate --path=database/migrations/landlord --database=landlord --force
+php artisan migrate --path=database/migrations/landlord --database=landlord
 ```
 
 **Solución automatizada (en el flujo de setup del proyecto):** el script `composer setup` (definido en `composer.json`) ya invoca las migraciones del landlord justo después de las default:
@@ -4432,7 +4463,7 @@ php artisan migrate --path=database/migrations/landlord --database=landlord --fo
     "@php -r \"file_exists('.env') || copy('.env.example', '.env');\"",
     "@php artisan key:generate",
     "@php artisan migrate --force",
-    "@php artisan migrate --path=database/migrations/landlord --database=landlord --force",
+    "@php artisan migrate --path=database/migrations/landlord --database=landlord",
     "npm install",
     "npm run build"
 ]
@@ -4442,7 +4473,7 @@ php artisan migrate --path=database/migrations/landlord --database=landlord --fo
 
 ```bash
 php artisan migrate:fresh
-php artisan migrate --path=database/migrations/landlord --database=landlord --force
+php artisan migrate --path=database/migrations/landlord --database=landlord
 php artisan db:seed
 ```
 

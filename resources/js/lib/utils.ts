@@ -14,3 +14,23 @@ export function toUrl(url: NonNullable<InertiaLinkProps['href']>): string {
 export function formatPrice(cents: number): string {
     return `$${(cents / 100).toFixed(2)}`;
 }
+
+export function formatDate(date: string): string {
+    const d = new Date(date);
+    return d.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+    });
+}
+
+export function formatDateTime(date: string): string {
+    const d = new Date(date);
+    return d.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+    });
+}

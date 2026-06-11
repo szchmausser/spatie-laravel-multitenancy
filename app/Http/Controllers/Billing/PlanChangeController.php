@@ -70,6 +70,7 @@ class PlanChangeController extends Controller
 
         $validated = $request->validate([
             'plan_id' => 'required|exists:plans,id',
+            'reason' => 'nullable|string|max:500',
         ]);
 
         $subscription = $tenant->subscription;

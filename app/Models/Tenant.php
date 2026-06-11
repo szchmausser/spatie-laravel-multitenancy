@@ -26,7 +26,10 @@ use Spatie\Permission\PermissionRegistrar;
  * 0. assertTenantsTableExists() - Validates the landlords table exists
  * 1. createDatabase() - Creates the physical PostgreSQL database
  * 2. configureTenantConnection() - Points the 'tenant' connection to the new DB
- * 3. runMigrations() - Runs Laravel migrations on the new tenant database
+ *
+ * Migrations are NOT run in the callback. Per the Spatie multitenancy
+ * standard, tenant migrations are executed separately via:
+ *   php artisan tenants:artisan "migrate --database=tenant"
  *
  * After the INSERT, the `created` listener ensures every tenant has a
  * subscription: if the seeder (or any caller) set `assignPlanSlug` to a
@@ -67,11 +70,13 @@ class Tenant extends SpatieTenant implements IsTenant
      * Register lifecycle callbacks for automatic provisioning and
      * default-plan assignment.
      *
-     * The `creating` callback does the irreversible DB work (create
-     * database, configure connection, run migrations). The `created`
-     * callback runs after the INSERT succeeds and ensures every tenant
-     * has exactly one subscription row, using either the slug set on
-     * the model or the system default.
+     * The `creating` callback creates the physical database and points
+     * the tenant connection at it. Migrations are NOT run here — per
+     * the Spatie multitenancy standard, tenant migrations are executed
+     * separately via `php artisan tenants:artisan "migrate --database=tenant"`.
+     *
+     * The `created` callback runs after the INSERT succeeds and ensures
+     * every tenant has exactly one subscription row.
      */
     protected static function booted(): void
     {
@@ -79,12 +84,10 @@ class Tenant extends SpatieTenant implements IsTenant
             $tenant->assertTenantsTableExists();
             $tenant->createDatabase();
             $tenant->configureTenantConnection();
-            $tenant->runMigrations();
         });
 
         static::created(function (Tenant $tenant): void {
             $tenant->ensureDefaultSubscription();
-            $tenant->seedPermissions();
         });
     }
 
@@ -137,10 +140,11 @@ class Tenant extends SpatieTenant implements IsTenant
      * Seed the Spatie permission catalog for this tenant.
      *
      * Creates the `change-plan` permission and the `tenant-admin` role
-     * (granted `change-plan`) in the tenant's database. Called by the
-     * `created` callback after `ensureDefaultSubscription()`, so every
-     * new tenant has the permission catalog ready before any user
-     * registers.
+     * (granted `change-plan`) in the tenant's database.
+     *
+     * NOTE: This method is no longer called automatically from the
+     * `created` callback. Per the Spatie multitenancy standard, seeding
+     * is done separately via `tenants:artisan` after migrations.
      *
      * Uses the custom {@see Role} and {@see Permission} models that
      * are bound to the `tenant` connection, so the queries land in the
@@ -314,6 +318,11 @@ class Tenant extends SpatieTenant implements IsTenant
 
     /**
      * Run all pending Laravel migrations on this tenant's database.
+     *
+     * NOTE: This method is no longer called automatically from the
+     * `creating` callback. Per the Spatie multitenancy standard,
+     * tenant migrations are executed separately via:
+     *   php artisan tenants:artisan "migrate --database=tenant"
      *
      * Uses --database=tenant to target the tenant connection, and --force
      * to bypass the production safety check (required for programmatic calls).

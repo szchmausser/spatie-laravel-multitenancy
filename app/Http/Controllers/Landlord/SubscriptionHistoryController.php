@@ -20,7 +20,6 @@ class SubscriptionHistoryController extends Controller
     {
         $history = SubscriptionHistory::where('tenant_id', $tenant->id)
             ->orderByDesc('created_at')
-            ->with('actor')
             ->paginate(20);
 
         return Inertia::render('landlord/subscriptions/history', [

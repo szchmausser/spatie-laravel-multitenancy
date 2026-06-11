@@ -55,7 +55,7 @@ test('users can not authenticate with invalid password', function () {
 });
 
 test('users can logout', function () {
-    $user = User::factory()->create();
+    $user = Landlord::factory()->create();
 
     $response = $this->actingAs($user)->post(route('logout'));
 

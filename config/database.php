@@ -125,13 +125,18 @@ return [
         /** Conexión dinámica (tenant).
          * Spatie inyecta aquí el nombre de la BD del tenant activo
          * en tiempo de ejecución. database DEBE ser null.
+         *
+         * ⚠️ CUIDADO: PostgreSQL trata null como la DB por defecto
+         * ("postgres"). Si se usa un modelo con UsesTenantConnection
+         * sin un tenant activo, leerá/escribirá en la DB "postgres".
+         * Nunca usar User::class desde el landlord — usar Landlord::class.
          */
         'tenant' => [
             'driver' => 'pgsql',
             'url' => env('DB_URL'),
             'host' => env('DB_HOST', '127.0.0.1'),
             'port' => env('DB_PORT', '5432'),
-            'database' => null, // OBLIGATORIO: Spatie inyectará el nombre de la BD aquí. Se establecerá dinámicamente en tiempo de ejecución
+            'database' => null, // OBLIGATORIO: Spatie inyectará el nombre de la BD aquí en runtime.
             'username' => env('DB_USERNAME', 'root'), // Mismo usuario con permisos para leer/manipular la base de datos del inquilino
             'password' => env('DB_PASSWORD', ''),
             'charset' => env('DB_CHARSET', 'utf8'),

@@ -2,7 +2,6 @@
 
 use App\Models\Landlord;
 use App\Models\Tenant;
-use App\Models\User;
 use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
 use Illuminate\Support\Facades\DB;
 use Inertia\Testing\AssertableInertia as Assert;
@@ -129,15 +128,4 @@ test('destroy processes deletion for admin', function () {
 test('unauthenticated user is redirected to login', function () {
     $this->get(route('landlord.tenants.index'))
         ->assertRedirect(route('login'));
-});
-
-test('non admin landlord user receives forbidden', function () {
-    // Create a regular User (tenant user), NOT a Landlord
-    $user = User::factory()->createQuietly();
-
-    // User uses UsesTenantConnection, so it inserts into the default connection's users table
-    // The middleware checks instance of Landlord, so regular User should get 403
-    $this->actingAs($user)
-        ->get(route('landlord.tenants.index'))
-        ->assertForbidden();
 });

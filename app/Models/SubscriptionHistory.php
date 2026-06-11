@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\ActorType;
 use App\Enums\SubscriptionEventType;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -20,6 +21,9 @@ class SubscriptionHistory extends Model
         'tenant_id',
         'event_type',
         'actor_id',
+        'actor_name',
+        'actor_email',
+        'actor_type',
         'ip_address',
         'user_agent',
         'reason',
@@ -42,6 +46,7 @@ class SubscriptionHistory extends Model
     {
         return [
             'event_type' => SubscriptionEventType::class,
+            'actor_type' => ActorType::class,
             'old_plan_features' => 'array',
             'new_plan_features' => 'array',
             'correlation_id' => 'string',
@@ -79,6 +84,6 @@ class SubscriptionHistory extends Model
      */
     public function actor(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'actor_id');
+        return $this->belongsTo(Landlord::class, 'actor_id');
     }
 }

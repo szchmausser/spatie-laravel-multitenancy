@@ -20,6 +20,8 @@ import {
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { update } from '@/routes/billing/change-plan';
 import type { Plan } from '@/types/billing';
@@ -53,7 +55,7 @@ export function ChangePlanDialog({
 }: ChangePlanDialogProps) {
     const { data, setData, processing, open, setOpen, isControlled, handleSubmit } = useDialogForm(
         { url: update().url, controlledOpen, onOpenChange, onSuccess },
-        { plan_id: 0 },
+        { plan_id: 0, reason: '' },
     );
 
     if (!plan) {
@@ -134,6 +136,19 @@ export function ChangePlanDialog({
                                 </div>
                             )}
                             <Separator />
+                            <div className="space-y-2">
+                                <Label htmlFor="reason" className="text-xs text-muted-foreground">
+                                    Reason (optional)
+                                </Label>
+                                <Input
+                                    id="reason"
+                                    placeholder="Why are you changing plans?"
+                                    value={data.reason}
+                                    onChange={(e) => setData('reason', e.target.value)}
+                                    maxLength={500}
+                                    data-testid="change-plan-reason-input"
+                                />
+                            </div>
                             <div className="flex items-start gap-2 rounded-md border border-dashed bg-muted/30 p-3 text-xs text-muted-foreground">
                                 <Info className="mt-0.5 h-4 w-4 shrink-0" />
                                 <p>

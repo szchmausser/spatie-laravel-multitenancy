@@ -16,9 +16,12 @@ use Illuminate\Database\Seeder;
  *     the `free` plan as the system-wide default
  *
  * Every Tenant::create() call triggers the provisioning lifecycle
- * (createDatabase, configureTenantConnection, runMigrations) defined
- * in the Tenant model, so each iteration also creates and migrates a
- * dedicated physical database.
+ * (createDatabase, configureTenantConnection) defined in the Tenant model,
+ * so each iteration creates a dedicated physical database.
+ *
+ * NOTE: Migrations are NOT run here. Per the Spatie multitenancy standard,
+ * run `php artisan tenants:artisan "migrate --database=tenant"` after this
+ * seeder to migrate all tenant databases.
  */
 class TenantsSeeder extends Seeder
 {

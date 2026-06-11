@@ -46,6 +46,7 @@ class SubscriptionChangeController extends Controller
     ): RedirectResponse {
         $validated = $request->validate([
             'plan_id' => 'required|exists:plans,id',
+            'reason' => 'nullable|string|max:500',
         ]);
 
         $plan = Plan::query()->findOrFail($validated['plan_id']);

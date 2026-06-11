@@ -84,6 +84,43 @@ test('command expires past-due active subscriptions and resets plan to free', fu
     expect($subscription->plan_id)->toBe($freePlan->id);
 });
 
+test('command records system actor in history snapshot', function () {
+    Notification::fake();
+
+    $tenant = Tenant::factory()->createQuietly([
+        'database' => config('database.connections.landlord.database'),
+    ]);
+    $plan = Plan::factory()->createQuietly();
+    $freePlan = Plan::factory()->createQuietly(['slug' => 'free']);
+
+    $subscription = Subscription::factory()->createQuietly([
+        'tenant_id' => $tenant->id,
+        'plan_id' => $plan->id,
+        'status' => SubscriptionStatus::Active,
+        'ends_at' => now()->subDay(),
+    ]);
+
+    $this->artisan('subscriptions:expire')
+        ->assertExitCode(0);
+
+    $history = SubscriptionHistory::where('tenant_id', $tenant->id)
+        ->where('event_type', SubscriptionEventType::SubscriptionExpired)
+        ->first();
+
+    expect($history)->not->toBeNull();
+    expect($history->actor_type->value)->toBe('system');
+    expect($history->actor_name)->toBe('System');
+    expect($history->actor_id)->toBeNull();
+    expect($history->actor_email)->toBeNull();
+    expect($history->old_plan_name)->toBe($plan->name);
+    expect($history->old_status)->toBe(SubscriptionStatus::Active->value);
+    expect($history->new_status)->toBe(SubscriptionStatus::Expired->value);
+    expect($history->new_plan_name)->toBe($freePlan->name);
+    expect($history->amount_cents)->toBe(0);
+    expect($history->currency)->toBe('USD');
+    expect($history->correlation_id)->not->toBeNull();
+});
+
 test('command skips already expired subscriptions', function () {
     Notification::fake();
 

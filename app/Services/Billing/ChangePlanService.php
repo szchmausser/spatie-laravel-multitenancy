@@ -2,12 +2,15 @@
 
 namespace App\Services\Billing;
 
+use App\Enums\ActorType;
 use App\Enums\SubscriptionEventType;
+use App\Models\Landlord;
 use App\Models\Plan;
 use App\Models\Subscription;
 use App\Models\SubscriptionHistory;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 /**
  * Shared mutation that backs the two write surfaces for plan change:
@@ -64,9 +67,13 @@ class ChangePlanService
                 'subscription_id' => $subscription->id,
                 'tenant_id' => $subscription->tenant_id,
                 'event_type' => SubscriptionEventType::PlanChanged,
-                'actor_id' => $request?->user()?->id,
+                'actor_id' => $this->resolveActorId($request),
+                'actor_name' => $this->resolveActorName($request),
+                'actor_email' => $this->resolveActorEmail($request),
+                'actor_type' => $this->resolveActorType($request),
                 'ip_address' => $request?->ip(),
                 'user_agent' => $request?->userAgent(),
+                'reason' => $request?->input('reason'),
                 'old_plan_name' => $oldPlan->name,
                 'old_plan_price_cents' => $oldPlan->price_cents,
                 'old_plan_features' => $oldPlan->features,
@@ -75,11 +82,86 @@ class ChangePlanService
                 'new_plan_price_cents' => $newPlan->price_cents,
                 'new_plan_features' => $newPlan->features,
                 'new_status' => $subscription->status->value,
+                'amount_cents' => $newPlan->price_cents,
+                'currency' => 'USD',
                 'billing_period_start' => now(),
                 'billing_period_end' => now()->addMonth(),
+                'correlation_id' => Str::uuid(),
             ]);
         } catch (\Throwable $e) {
             Log::warning('Failed to record subscription history', ['error' => $e->getMessage()]);
         }
+    }
+
+    /**
+     * Resolve the actor's ID. Only set for landlord users (same DB).
+     * Tenant users live in a different DB, so actor_id is null.
+     */
+    private function resolveActorId(?Request $request): ?int
+    {
+        $user = $request?->user();
+
+        if ($user instanceof Landlord) {
+            return $user->getKey();
+        }
+
+        return null;
+    }
+
+    /**
+     * Resolve the actor's display name from the snapshot.
+     */
+    private function resolveActorName(?Request $request): ?string
+    {
+        $user = $request?->user();
+
+        if ($user instanceof Landlord) {
+            return $user->name;
+        }
+
+        // Tenant user (User model in tenant DB)
+        if ($user !== null && method_exists($user, 'getAttribute')) {
+            return $user->getAttribute('name');
+        }
+
+        // System (no request or no user)
+        return 'System';
+    }
+
+    /**
+     * Resolve the actor's email from the snapshot.
+     */
+    private function resolveActorEmail(?Request $request): ?string
+    {
+        $user = $request?->user();
+
+        if ($user instanceof Landlord) {
+            return $user->email;
+        }
+
+        // Tenant user (User model in tenant DB)
+        if ($user !== null && method_exists($user, 'getAttribute')) {
+            return $user->getAttribute('email');
+        }
+
+        return null;
+    }
+
+    /**
+     * Resolve the actor type based on the authenticated user.
+     */
+    private function resolveActorType(?Request $request): ActorType
+    {
+        $user = $request?->user();
+
+        if ($user instanceof Landlord) {
+            return ActorType::Landlord;
+        }
+
+        if ($user !== null) {
+            return ActorType::Tenant;
+        }
+
+        return ActorType::System;
     }
 }

@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Enums\ActorType;
 use App\Enums\SubscriptionEventType;
 use App\Enums\SubscriptionStatus;
 use App\Models\Plan;
@@ -16,6 +17,7 @@ use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Str;
 
 class ExpireSubscriptions extends Command
 {
@@ -64,17 +66,25 @@ class ExpireSubscriptions extends Command
                 'plan_id' => $freePlan?->id,
             ]);
 
-            // Record expiry in history (no actor — CLI command)
+            // Record expiry in history (system actor — CLI command)
             try {
                 SubscriptionHistory::record([
                     'subscription_id' => $subscription->id,
                     'tenant_id' => $subscription->tenant_id,
                     'event_type' => SubscriptionEventType::SubscriptionExpired,
+                    'actor_type' => ActorType::System,
+                    'actor_name' => 'System',
                     'old_plan_name' => $oldPlan?->name,
                     'old_plan_price_cents' => $oldPlan?->price_cents,
                     'old_plan_features' => $oldPlan?->features,
                     'old_status' => SubscriptionStatus::Active->value,
+                    'new_plan_name' => $freePlan?->name,
+                    'new_plan_price_cents' => $freePlan?->price_cents,
+                    'new_plan_features' => $freePlan?->features,
                     'new_status' => SubscriptionStatus::Expired->value,
+                    'amount_cents' => 0,
+                    'currency' => 'USD',
+                    'correlation_id' => Str::uuid(),
                 ]);
             } catch (\Throwable $e) {
                 Log::warning('Failed to record subscription history', ['error' => $e->getMessage()]);
