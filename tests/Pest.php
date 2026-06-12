@@ -17,6 +17,7 @@ use Tests\TestCase;
 pest()->extend(TestCase::class)->in('Feature');
 pest()->extend(BrowserTestCase::class)->in('Browser');
 pest()->extend(TestCase::class)->in('Unit/Services');
+pest()->extend(TestCase::class)->in('Unit/Models');
 
 /*
 |--------------------------------------------------------------------------

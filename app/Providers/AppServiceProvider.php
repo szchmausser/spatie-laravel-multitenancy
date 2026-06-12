@@ -2,6 +2,8 @@
 
 namespace App\Providers;
 
+use App\Services\Payment\PagoMovilGateway;
+use App\Services\Payment\PaymentGatewayInterface;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Date;
@@ -16,7 +18,7 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        $this->app->bind(PaymentGatewayInterface::class, PagoMovilGateway::class);
     }
 
     /**

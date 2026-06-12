@@ -8,7 +8,7 @@ use Spatie\Permission\Models\Permission as SpatiePermission;
  * Spatie Permission `Permission` model bound to the `tenant`
  * connection.
  *
- * See {@see \App\Models\Auth\Role} for the full rationale. The
+ * See {@see Role} for the full rationale. The
  * same argument applies: the permission table is gated to the
  * `tenant` connection, so the model that queries it must be
  * bound to that connection too. The default Spatie model would

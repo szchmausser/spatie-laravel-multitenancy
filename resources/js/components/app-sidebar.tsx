@@ -9,6 +9,7 @@ import {
     FolderGit2,
     LayoutGrid,
     Shield,
+    ShoppingCart,
     Users,
 } from 'lucide-react';
 import AppLogo from '@/components/app-logo';
@@ -40,6 +41,16 @@ const adminNavItems: NavItem[] = [
         title: 'Resources',
         href: '/admin/resources',
         icon: Download,
+    },
+    {
+        title: 'Orders',
+        href: '/admin/orders',
+        icon: ShoppingCart,
+    },
+    {
+        title: 'Payments',
+        href: '/admin/payments',
+        icon: CreditCard,
     },
 ];
 
@@ -171,6 +182,20 @@ export function AppSidebar() {
                                         <Link href="/billing/change-plan" prefetch>
                                             <CreditCard />
                                             <span>Billing</span>
+                                        </Link>
+                                    </SidebarMenuButton>
+                                </SidebarMenuItem>
+                            )}
+                            {canManageUsers && (
+                                <SidebarMenuItem>
+                                    <SidebarMenuButton
+                                        asChild
+                                        isActive={isCurrentUrl('/billing/orders')}
+                                        tooltip={{ children: 'Orders' }}
+                                    >
+                                        <Link href="/billing/orders" prefetch>
+                                            <CreditCard />
+                                            <span>Orders</span>
                                         </Link>
                                     </SidebarMenuButton>
                                 </SidebarMenuItem>

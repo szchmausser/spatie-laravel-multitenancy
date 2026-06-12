@@ -47,31 +47,28 @@ abstract class TestCase extends BaseTestCase
      */
     protected function refreshDatabase(): void
     {
-        
+
         if (! RefreshDatabaseState::$migrated) {
             $args = $this->migrateFreshUsing();
-            
+
             $this->artisan('migrate:fresh', $args);
-            
 
             // Landlord migrations are in a separate path on the same database.
             // Re-run them after migrate:fresh wipes everything.
-            
+
             $this->artisan('migrate', [
                 '--path' => 'database/migrations/landlord',
                 '--database' => 'landlord',
                 '--force' => true,
             ]);
-            
 
             $this->app[Kernel::class]->setArtisan(null);
 
             RefreshDatabaseState::$migrated = true;
         }
 
-        
         $this->beginDatabaseTransaction();
-        
+
     }
 
     /**

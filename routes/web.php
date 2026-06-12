@@ -1,10 +1,12 @@
 <?php
 
+use App\Http\Controllers\Billing\PaymentController as BillingPaymentController;
 use App\Http\Controllers\Billing\PlanChangeController;
 use App\Http\Controllers\Billing\SubscriptionHistoryController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\Premium\AnalyticsController;
 use App\Http\Controllers\Resource\ResourceController;
+use App\Http\Controllers\Tenant\PaymentController as TenantPaymentController;
 use App\Http\Controllers\Tenant\RoleController;
 use App\Http\Controllers\Tenant\UserController;
 use App\Models\Tenant;
@@ -117,6 +119,16 @@ Route::middleware(['tenant', 'auth', 'verified'])->group(function () {
         Route::get('change-plan', [PlanChangeController::class, 'show'])->name('change-plan.show');
         Route::post('change-plan', [PlanChangeController::class, 'update'])->name('change-plan.update');
         Route::get('history', [SubscriptionHistoryController::class, 'index'])->name('history');
+
+        // Orders & Payments — Pago Móvil payment flow
+        Route::get('orders', [TenantPaymentController::class, 'index'])->name('orders.index');
+        Route::get('orders/{order}', [TenantPaymentController::class, 'show'])->name('orders.show');
+        Route::post('orders/{order}/payments', [TenantPaymentController::class, 'store'])->name('orders.payments.store');
+
+        // Payment initiation
+        Route::get('payment/create/{plan}', [BillingPaymentController::class, 'create'])->name('payment.create');
+        Route::post('payment', [BillingPaymentController::class, 'store'])->name('payment.store');
+        Route::get('payment/{payment}', [BillingPaymentController::class, 'show'])->name('payment.show');
     });
 
     // Notifications — in-app notification center.

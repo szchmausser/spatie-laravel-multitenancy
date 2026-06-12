@@ -1,6 +1,8 @@
 <?php
 
 use App\Http\Controllers\Landlord\AdminPanelController;
+use App\Http\Controllers\Landlord\OrderController;
+use App\Http\Controllers\Landlord\PaymentController;
 use App\Http\Controllers\Landlord\PlanController;
 use App\Http\Controllers\Landlord\ResourceController;
 use App\Http\Controllers\Landlord\SubscriptionChangeController;
@@ -61,4 +63,14 @@ Route::middleware(['auth', 'verified', EnsureUserIsAdmin::class])->prefix('admin
     // Subscription history
     Route::get('tenants/{tenant}/subscription-history', [SubscriptionHistoryController::class, 'index'])
         ->name('subscriptions.history');
+
+    // Order management — visibility into tenant purchase requests
+    Route::get('orders', [OrderController::class, 'index'])->name('orders.index');
+    Route::get('orders/{order}', [OrderController::class, 'show'])->name('orders.show');
+
+    // Payment management (Pago Móvil verification)
+    Route::get('payments', [PaymentController::class, 'index'])->name('payments.index');
+    Route::get('payments/{payment}', [PaymentController::class, 'show'])->name('payments.show');
+    Route::post('payments/{payment}/verify', [PaymentController::class, 'verify'])->name('payments.verify');
+    Route::post('payments/{payment}/cancel', [PaymentController::class, 'cancel'])->name('payments.cancel');
 });

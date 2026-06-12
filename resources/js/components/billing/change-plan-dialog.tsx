@@ -23,8 +23,8 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
-import { update } from '@/routes/billing/change-plan';
 import type { Plan } from '@/types/billing';
+import { router } from '@inertiajs/react';
 
 type ChangePlanDialogProps = {
     plan: Plan | null;
@@ -53,8 +53,8 @@ export function ChangePlanDialog({
     onOpenChange,
     onSuccess,
 }: ChangePlanDialogProps) {
-    const { data, setData, processing, open, setOpen, isControlled, handleSubmit } = useDialogForm(
-        { url: update().url, controlledOpen, onOpenChange, onSuccess },
+    const { data, setData, processing, open, setOpen, isControlled } = useDialogForm(
+        { url: '#', controlledOpen, onOpenChange, onSuccess },
         { plan_id: 0, reason: '' },
     );
 
@@ -75,11 +75,12 @@ export function ChangePlanDialog({
         .map(([k]) => k);
 
     function onSubmit(event: React.FormEvent<HTMLFormElement>) {
+        event.preventDefault();
         if (!plan) {
             return;
         }
-        setData('plan_id', plan.id);
-        handleSubmit(event);
+        // Redirect to payment flow instead of directly changing plan
+        router.visit(`/billing/payment/create/${plan.id}`);
     }
 
     return (
@@ -99,9 +100,8 @@ export function ChangePlanDialog({
                             Change to &ldquo;{plan.name}&rdquo;
                         </DialogTitle>
                         <DialogDescription>
-                            Review the new plan and confirm the change. The
-                            change takes effect immediately and resets your
-                            renewal date to one month from today.
+                            You will be redirected to the payment page to complete
+                            the plan change via Pago Móvil.
                         </DialogDescription>
                     </DialogHeader>
 
@@ -152,9 +152,9 @@ export function ChangePlanDialog({
                             <div className="flex items-start gap-2 rounded-md border border-dashed bg-muted/30 p-3 text-xs text-muted-foreground">
                                 <Info className="mt-0.5 h-4 w-4 shrink-0" />
                                 <p>
-                                    No payment is taken in this phase. Phase 2
-                                    will route this through a payment gateway
-                                    and add proration.
+                                    You will be redirected to complete the payment
+                                    via Pago Móvil. The plan change will be applied
+                                    after admin verification.
                                 </p>
                             </div>
                         </CardContent>
@@ -177,7 +177,7 @@ export function ChangePlanDialog({
                             data-testid={`change-plan-confirm-btn-${slug}`}
                         >
                             <ArrowRightCircle className="h-4 w-4" />
-                            {processing ? 'Changing…' : 'Change plan'}
+                            {processing ? 'Redirecting…' : 'Proceed to Payment'}
                         </Button>
                     </DialogFooter>
                 </form>

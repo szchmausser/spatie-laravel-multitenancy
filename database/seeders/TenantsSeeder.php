@@ -10,10 +10,9 @@ use Illuminate\Database\Seeder;
  * `*.spatie-laravel-multitenancy.test` domain pattern.
  *
  * Distribution:
- *   - 4 tenants assigned to plan `basic`  (tenant1..tenant4)
- *   - 4 tenants assigned to plan `premium` (tenant5..tenant8)
- *   - 2 tenants with no explicit plan — Tenant::created() auto-assigns
- *     the `free` plan as the system-wide default
+ *   - 3 tenants assigned to plan `free`     (tenant1..tenant3)
+ *   - 6 tenants assigned to plan `basic`    (tenant4..tenant9)
+ *   - 1 tenant  assigned to plan `premium`  (tenant10)
  *
  * Every Tenant::create() call triggers the provisioning lifecycle
  * (createDatabase, configureTenantConnection) defined in the Tenant model,
@@ -27,18 +26,20 @@ class TenantsSeeder extends Seeder
 {
     public function run(): void
     {
-        $explicit = [
-            'tenant1' => 'basic',
-            'tenant2' => 'basic',
-            'tenant3' => 'basic',
+        $planDistribution = [
+            'tenant1' => 'free',
+            'tenant2' => 'free',
+            'tenant3' => 'free',
             'tenant4' => 'basic',
-            'tenant5' => 'premium',
-            'tenant6' => 'premium',
-            'tenant7' => 'premium',
-            'tenant8' => 'premium',
+            'tenant5' => 'basic',
+            'tenant6' => 'basic',
+            'tenant7' => 'basic',
+            'tenant8' => 'basic',
+            'tenant9' => 'basic',
+            'tenant10' => 'premium',
         ];
 
-        foreach ($explicit as $slug => $planSlug) {
+        foreach ($planDistribution as $slug => $planSlug) {
             $tenant = new Tenant([
                 'name' => ucfirst($slug),
                 'domain' => "{$slug}.spatie-laravel-multitenancy.test",
@@ -46,16 +47,6 @@ class TenantsSeeder extends Seeder
             ]);
             $tenant->assignPlanSlug = $planSlug;
             $tenant->save();
-        }
-
-        // 2 tenants without an explicit plan: the Tenant::created listener
-        // will look up the 'free' plan and create the subscription.
-        foreach (['tenant9', 'tenant10'] as $slug) {
-            Tenant::create([
-                'name' => ucfirst($slug),
-                'domain' => "{$slug}.spatie-laravel-multitenancy.test",
-                'database' => "{$slug}-spatie-laravel-multitenancy",
-            ]);
         }
     }
 }
