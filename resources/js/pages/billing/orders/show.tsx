@@ -1,5 +1,5 @@
-import { Head, router } from '@inertiajs/react';
-import { useState } from 'react';
+import { Head, router, usePage } from '@inertiajs/react';
+import { useEffect, useRef, useState } from 'react';
 import { PaymentStatusBadge } from '@/components/payment-status-badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -54,8 +54,17 @@ const breadcrumbs: BreadcrumbItem[] = [
 ];
 
 export default function OrderShow({ order, paymentConfig }: OrderShowProps) {
+    const { url } = usePage();
+    const hasReloaded = useRef(false);
     const [reference, setReference] = useState('');
     const [submitting, setSubmitting] = useState(false);
+
+    useEffect(() => {
+        if (!hasReloaded.current && url.includes('refresh=1')) {
+            hasReloaded.current = true;
+            router.reload({ only: ['order'] });
+        }
+    }, [url]);
     const buyableName = order.plan?.name ?? order.resource?.name ?? 'Unknown';
     const paidCents = order.payments
         .filter((p) => p.status === 'verified')

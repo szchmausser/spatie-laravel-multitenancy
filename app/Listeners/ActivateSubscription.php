@@ -15,7 +15,9 @@ use App\Models\Subscription;
 use App\Models\SubscriptionHistory;
 use App\Models\Tenant;
 use App\Models\User;
+use App\Notifications\PaymentVerified as PaymentVerifiedNotification;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Str;
 
 class ActivateSubscription
@@ -46,6 +48,9 @@ class ActivateSubscription
         }
 
         $order->update(['status' => OrderStatus::Paid]);
+
+        // Notify tenant users that payment was verified
+        $this->notifyPaymentVerified($order);
 
         // For resource orders: grant entitlement to all tenant users
         if ($order->resource_id !== null) {
@@ -150,6 +155,40 @@ class ActivateSubscription
                     'expires_at' => null,
                 ],
             );
+        }
+    }
+
+    /**
+     * Notify tenant admin users that their payment was verified.
+     *
+     * Switches to the tenant connection and sends the notification
+     * to users with owner or tenant-admin roles.
+     */
+    private function notifyPaymentVerified(Order $order): void
+    {
+        try {
+            $tenant = Tenant::on('landlord')->find($order->tenant_id);
+
+            if (! $tenant) {
+                return;
+            }
+
+            $tenant->makeCurrent();
+
+            $adminUsers = User::query()
+                ->whereHas('roles', fn ($q) => $q->whereIn('name', ['owner', 'tenant-admin']))
+                ->get();
+
+            if ($adminUsers->isEmpty()) {
+                return;
+            }
+
+            Notification::send($adminUsers, new PaymentVerifiedNotification($order));
+        } catch (\Throwable $e) {
+            Log::warning('Failed to notify tenant about verified payment', [
+                'tenant_id' => $order->tenant_id,
+                'error' => $e->getMessage(),
+            ]);
         }
     }
 }

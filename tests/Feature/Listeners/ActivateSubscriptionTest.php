@@ -5,6 +5,7 @@ use App\Enums\PaymentStatus;
 use App\Enums\SubscriptionStatus;
 use App\Events\PaymentVerified;
 use App\Listeners\ActivateSubscription;
+use App\Models\Auth\Role;
 use App\Models\Entitlement;
 use App\Models\Order;
 use App\Models\Payment;
@@ -12,8 +13,11 @@ use App\Models\Plan;
 use App\Models\Subscription;
 use App\Models\Tenant;
 use App\Models\User;
+use App\Notifications\PaymentVerified as PaymentVerifiedNotification;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Facades\Schema;
 
 test('payment verified + order fully paid creates subscription', function () {
     Event::fake([PaymentVerified::class]);
@@ -128,6 +132,8 @@ test('payment verified + already has active subscription updates it', function (
 });
 
 test('payment verified for resource order grants entitlement to all tenant users', function () {
+    Notification::fake();
+
     // Point tenant connection to landlord DB so makeCurrent() works in tests
     $testDatabase = config('database.connections.landlord.database');
     config(['database.connections.tenant.database' => $testDatabase]);
@@ -137,6 +143,25 @@ test('payment verified for resource order grants entitlement to all tenant users
     // Override random factory database so makeCurrent() points to the shared test DB
     $tenant->updateQuietly(['database' => $testDatabase]);
 
+    // Create minimal permission schema on the tenant connection for role assignment
+    Schema::connection('tenant')->create('roles', function ($table) {
+        $table->id();
+        $table->string('name');
+        $table->string('guard_name');
+        $table->timestamps();
+        $table->unique(['name', 'guard_name']);
+    });
+    Schema::connection('tenant')->create('model_has_roles', function ($table) {
+        $table->unsignedBigInteger('role_id');
+        $table->string('model_type');
+        $table->unsignedBigInteger('model_id');
+        $table->primary(['role_id', 'model_type', 'model_id']);
+        $table->foreign('role_id')->references('id')->on('roles')->cascadeOnDelete();
+    });
+
+    // Seed the owner role for notification targeting
+    Role::create(['name' => 'owner', 'guard_name' => 'web']);
+
     $resource = App\Models\Resource::factory()->createQuietly();
 
     // Create a user on the tenant connection
@@ -145,6 +170,9 @@ test('payment verified for resource order grants entitlement to all tenant users
         'email' => "user-{$tenant->id}@test.com",
         'password' => 'password',
     ]);
+
+    // Assign owner role so the notification is dispatched to them
+    $tenantUser->assignRole('owner');
 
     $order = Order::factory()->forResource()->createQuietly([
         'tenant_id' => $tenant->id,
@@ -184,4 +212,10 @@ test('payment verified for resource order grants entitlement to all tenant users
     expect($entitlement)->not->toBeNull();
     expect($entitlement->granted_via->value)->toBe('purchase');
     expect($entitlement->expires_at)->toBeNull();
+
+    // Should send PaymentVerified notification to tenant admin users
+    Notification::assertSentTo(
+        [$tenantUser],
+        PaymentVerifiedNotification::class,
+    );
 });

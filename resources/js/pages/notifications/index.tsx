@@ -13,6 +13,7 @@ type Notification = {
     data: {
         title?: string;
         message: string;
+        url?: string;
         plan_name?: string;
         ends_at?: string;
         days_remaining?: number;
@@ -27,19 +28,33 @@ type Props = {
 };
 
 function NotificationItem({ notification }: { notification: Notification }) {
-    const handleMarkRead = () => {
-        router.put(`/notifications/${notification.id}`, {}, {
-            preserveScroll: true,
-        });
+    const handleClick = () => {
+        if (!notification.read_at) {
+            fetch(`/notifications/${notification.id}`, {
+                method: 'PUT',
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'X-XSRF-TOKEN': decodeURIComponent(
+                        document.cookie.match(/XSRF-TOKEN=([^;]+)/)?.[1] ?? ''
+                    ),
+                },
+            });
+        }
+
+        if (notification.data.url) {
+            router.visit(`${notification.data.url}?refresh=1`);
+        }
     };
 
     return (
-        <div
-            className={`flex items-start gap-4 border-b px-6 py-4 last:border-b-0 ${
-                !notification.read_at ? 'bg-muted/30' : ''
-            }`}
+        <button
+            type="button"
+            className={`w-full text-left flex items-center gap-4 border-b px-6 py-4 last:border-b-0 transition-colors ${
+                notification.data.url ? 'cursor-pointer hover:bg-accent' : ''
+            } ${!notification.read_at ? 'bg-muted/30' : ''}`}
+            onClick={handleClick}
         >
-            <div className="mt-1">
+            <div className="shrink-0">
                 {notification.type.includes('ExpiringWarning') ? (
                     <div className="h-2.5 w-2.5 rounded-full bg-yellow-500" />
                 ) : notification.type.includes('Expired') ? (
@@ -62,17 +77,17 @@ function NotificationItem({ notification }: { notification: Notification }) {
                     {new Date(notification.created_at).toLocaleDateString()}
                 </p>
             </div>
-            {!notification.read_at && (
-                <Button
-                    variant="ghost"
-                    size="sm"
-                    className="text-xs shrink-0"
-                    onClick={handleMarkRead}
-                >
-                    Mark read
-                </Button>
-            )}
-        </div>
+            <div className="flex items-center gap-2 shrink-0">
+                {!notification.read_at && (
+                    <span className="h-2 w-2 rounded-full bg-blue-500" />
+                )}
+                {notification.data.url && (
+                    <span className="text-xs font-medium text-primary whitespace-nowrap">
+                        Ver orden →
+                    </span>
+                )}
+            </div>
+        </button>
     );
 }
 

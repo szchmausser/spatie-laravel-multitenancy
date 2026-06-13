@@ -5,9 +5,12 @@ namespace App\Services\Payment;
 use App\Enums\OrderStatus;
 use App\Enums\PaymentStatus;
 use App\Events\PaymentVerified;
+use App\Models\Landlord;
 use App\Models\Order;
 use App\Models\Payment;
+use App\Notifications\PendingPaymentCreated;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Notification;
 
 class PaymentService
 {
@@ -78,9 +81,14 @@ class PaymentService
             return $existingPayment;
         }
 
-        return $this->gateway->recordPayment($order, [
+        $payment = $this->gateway->recordPayment($order, [
             'amount_cents' => $amountCents,
         ]);
+
+        // Notify landlord admins that a new payment needs verification
+        $this->notifyLandlordAdmins($payment);
+
+        return $payment;
     }
 
     /**
@@ -150,6 +158,27 @@ class PaymentService
 
         if (! $order->isFullyPaid() && $order->status === OrderStatus::Paid) {
             $order->update(['status' => OrderStatus::Pending]);
+        }
+    }
+
+    /**
+     * Notify landlord admin users that a new payment requires verification.
+     *
+     * Queries the landlord connection for all admin users (Landlord model)
+     * and sends the PendingPaymentCreated notification.
+     */
+    private function notifyLandlordAdmins(Payment $payment): void
+    {
+        try {
+            $admins = Landlord::all();
+
+            if ($admins->isEmpty()) {
+                return;
+            }
+
+            Notification::send($admins, new PendingPaymentCreated($payment));
+        } catch (\Throwable) {
+            // Notification failure should not break payment recording
         }
     }
 }

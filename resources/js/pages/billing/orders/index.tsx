@@ -1,4 +1,5 @@
-import { Link, Head } from '@inertiajs/react';
+import { Link, Head, router, usePage } from '@inertiajs/react';
+import { useEffect, useRef } from 'react';
 import { Eye, Clock, Package, FileText } from 'lucide-react';
 import { PaymentStatusBadge } from '@/components/payment-status-badge';
 import { Button } from '@/components/ui/button';
@@ -29,6 +30,16 @@ const breadcrumbs: BreadcrumbItem[] = [
 ];
 
 export default function OrdersIndex({ orders }: { orders: Order[] }) {
+    const { url } = usePage();
+    const hasReloaded = useRef(false);
+
+    useEffect(() => {
+        if (!hasReloaded.current && url.includes('refresh=1')) {
+            hasReloaded.current = true;
+            router.reload({ only: ['orders'] });
+        }
+    }, [url]);
+
     return (
         <>
             <Head title="Orders" />
