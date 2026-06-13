@@ -60,7 +60,7 @@ class PagoMovilGateway implements PaymentGatewayInterface
                 ['label' => 'Banco', 'value' => $detail->bank],
                 ['label' => 'RIF', 'value' => $detail->rif],
             ],
-            'amount' => $payment->amount_cents / 100,
+            'amount' => $payment->amount_cents,
         ];
     }
 }

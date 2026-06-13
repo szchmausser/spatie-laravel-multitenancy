@@ -103,7 +103,7 @@ export default function PaymentShowPage({ payment }: PaymentShowPageProps) {
                             </div>
                             <div className="flex items-center justify-between">
                                 <span className="text-sm text-muted-foreground">Monto</span>
-                                <span className="font-medium">{formatPrice(payment.amount_cents / 100)}</span>
+                                <span className="font-medium">{formatPrice(payment.amount_cents)}</span>
                             </div>
                             <div className="flex items-center justify-between">
                                 <span className="text-sm text-muted-foreground">Tenant</span>

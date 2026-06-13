@@ -73,19 +73,24 @@ export default function PaymentPage({ order, payment, instructions }: PaymentPag
 
     const alreadySubmitted = payment.transaction_id !== null;
 
+    const isVerified = payment.status === 'verified';
+    const isCancelled = payment.status === 'cancelled';
+
     return (
         <>
-            <Head title={alreadySubmitted ? 'Pago Recibido' : 'Completar Pago'} />
+            <Head title={isVerified ? 'Pago Verificado' : alreadySubmitted ? 'Pago Recibido' : 'Completar Pago'} />
 
             <div className="p-6 space-y-6">
                 <div>
                     <h1 className="text-2xl font-bold">
-                        {alreadySubmitted ? 'Pago Recibido' : 'Completar Pago'}
+                        {isVerified ? 'Pago Verificado' : alreadySubmitted ? 'Pago Recibido' : 'Completar Pago'}
                     </h1>
                     <p className="mt-1 text-sm text-muted-foreground">
-                        {alreadySubmitted
-                            ? 'Registramos tu pago. El administrador lo verificará y activará el cambio de plan.'
-                            : 'Sigue las instrucciones para realizar tu pago'}
+                        {isVerified
+                            ? 'Tu pago fue verificado y el servicio está activo.'
+                            : alreadySubmitted
+                                ? 'Registramos tu pago. El administrador lo verificará y activará el cambio de plan.'
+                                : 'Sigue las instrucciones para realizar tu pago'}
                     </p>
                 </div>
 
@@ -135,13 +140,15 @@ export default function PaymentPage({ order, payment, instructions }: PaymentPag
                     <Card>
                         <CardHeader>
                             <CardTitle className="flex items-center gap-2">
-                                <Clock className="h-5 w-5" />
-                                {alreadySubmitted ? 'Estado del Pago' : 'Referencia de Pago'}
+                                {isVerified ? <Check className="h-5 w-5" /> : <Clock className="h-5 w-5" />}
+                                {isVerified ? 'Pago Verificado' : alreadySubmitted ? 'Estado del Pago' : 'Referencia de Pago'}
                             </CardTitle>
                             <CardDescription>
-                                {alreadySubmitted
-                                    ? 'Tu pago está pendiente de verificación'
-                                    : 'Ingresa la referencia de tu transferencia'}
+                                {isVerified
+                                    ? 'Tu pago fue procesado exitosamente'
+                                    : alreadySubmitted
+                                        ? 'Tu pago está pendiente de verificación'
+                                        : 'Ingresa la referencia de tu transferencia'}
                             </CardDescription>
                         </CardHeader>
                         <CardContent>
@@ -168,6 +175,30 @@ export default function PaymentPage({ order, payment, instructions }: PaymentPag
                                         {submitting ? 'Enviando...' : 'Enviar Referencia'}
                                     </Button>
                                 </form>
+                            ) : payment.status === 'verified' ? (
+                                <div className="space-y-4">
+                                    <div className="rounded-lg border border-green-200 bg-green-50 p-4 text-sm text-green-800">
+                                        <p className="font-medium">✅ Pago confirmado</p>
+                                        <p className="mt-1">
+                                            Tu transferencia fue verificada correctamente. El servicio ya está activo en tu cuenta.
+                                        </p>
+                                    </div>
+
+                                    <div className="rounded-lg bg-muted p-4 space-y-3">
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-sm text-muted-foreground">Estado</span>
+                                            <PaymentStatusBadge status={payment.status} />
+                                        </div>
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-sm text-muted-foreground">Monto</span>
+                                            <span className="font-medium">{formatPrice(payment.amount_cents)}</span>
+                                        </div>
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-sm text-muted-foreground">Referencia</span>
+                                            <span className="font-mono text-sm">{payment.transaction_id}</span>
+                                        </div>
+                                    </div>
+                                </div>
                             ) : payment.status === 'cancelled' ? (
                                 <div className="space-y-4">
                                     <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">
@@ -190,7 +221,7 @@ export default function PaymentPage({ order, payment, instructions }: PaymentPag
                                         </div>
                                         <div className="flex items-center justify-between">
                                             <span className="text-sm text-muted-foreground">Monto</span>
-                                            <span className="font-medium">{formatPrice(payment.amount_cents / 100)}</span>
+                                            <span className="font-medium">{formatPrice(payment.amount_cents)}</span>
                                         </div>
                                         {payment.transaction_id && (
                                             <div className="flex items-center justify-between">
@@ -217,7 +248,7 @@ export default function PaymentPage({ order, payment, instructions }: PaymentPag
                                         </div>
                                         <div className="flex items-center justify-between">
                                             <span className="text-sm text-muted-foreground">Monto</span>
-                                            <span className="font-medium">{formatPrice(payment.amount_cents / 100)}</span>
+                                            <span className="font-medium">{formatPrice(payment.amount_cents)}</span>
                                         </div>
                                         <div className="flex items-center justify-between">
                                             <span className="text-sm text-muted-foreground">Referencia</span>

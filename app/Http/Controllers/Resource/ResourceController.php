@@ -2,11 +2,11 @@
 
 namespace App\Http\Controllers\Resource;
 
-use App\Enums\EntitlementGrantVia;
 use App\Http\Controllers\Controller;
 use App\Models\Entitlement;
 use App\Models\Resource;
 use App\Models\Tenant;
+use App\Services\Payment\PaymentService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -45,6 +45,10 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  */
 class ResourceController extends Controller
 {
+    public function __construct(
+        private readonly PaymentService $paymentService,
+    ) {}
+
     /**
      * Display the catalog of active resources.
      *
@@ -129,20 +133,15 @@ class ResourceController extends Controller
             abort(403, 'Tenant and authenticated user are required.');
         }
 
-        Entitlement::query()->updateOrCreate(
-            [
-                'tenant_id' => $tenant->id,
-                'user_id' => $user->getKey(),
-                'resource_id' => $resource->id,
-            ],
-            [
-                'granted_via' => EntitlementGrantVia::Purchase,
-                'granted_at' => now(),
-                'expires_at' => null,
-            ],
+        $result = $this->paymentService->createOrder(
+            tenantId: $tenant->id,
+            buyableType: 'resource',
+            buyableId: $resource->id,
+            totalCents: $resource->price_cents,
+            paymentData: ['amount_cents' => $resource->price_cents],
         );
 
-        return back()->with('success', "Access granted to {$resource->name}.");
+        return redirect()->route('billing.orders.show', $result['order']);
     }
 
     /**

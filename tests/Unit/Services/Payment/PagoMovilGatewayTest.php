@@ -71,7 +71,7 @@ test('gateway returns correct instructions', function () {
 
     expect($instructions['type'])->toBe('pago_movil');
     expect($instructions['title'])->toBe('Pago Móvil');
-    expect($instructions['amount'])->toBe(25);
+    expect($instructions['amount'])->toBe(2500);
     expect($instructions['fields'])->toHaveCount(3);
     expect($instructions['fields'][0]['label'])->toBe('Teléfono');
     expect($instructions['fields'][0]['value'])->toBe(config('payment.pago_movil.phone'));

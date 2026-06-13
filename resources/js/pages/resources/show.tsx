@@ -145,16 +145,7 @@ export default function ResourceShow({ resource }: { resource: Resource }) {
                         </Button>
                     )}
 
-                    {resource.is_premium && !resource.can_download && (
-                        <p
-                            className="text-center text-xs text-muted-foreground"
-                            data-testid={`resource-show-hint-${resource.slug}`}
-                        >
-                            This is a simulated purchase. Phase 2 will add
-                            payment method selection and real charge flow
-                            here.
-                        </p>
-                    )}
+
                 </CardContent>
             </Card>
 

@@ -117,7 +117,7 @@ export default function PaymentsPage({ payments }: PaymentsPageProps) {
                                             </div>
                                             <div className="text-xs text-muted-foreground">
                                                 {payment.order.plan?.name || payment.order.resource?.name} ·{' '}
-                                                {formatPrice(payment.amount_cents / 100)}
+                                                {formatPrice(payment.amount_cents)}
                                             </div>
                                         </div>
                                         <div className="flex items-center gap-2">

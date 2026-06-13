@@ -1,4 +1,4 @@
-import { FileText, Info, ShoppingCart, Sparkles } from 'lucide-react';
+import { FileText, ShoppingCart, Sparkles } from 'lucide-react';
 import type {ReactNode} from 'react';
 import { Badge } from '@/components/ui/badge';
 import { formatPrice } from '@/lib/utils';
@@ -41,11 +41,10 @@ type BuyResourceDialogProps = {
 /**
  * Phase 1.5F — the "Buy" confirmation dialog.
  *
- * Wraps the simulated purchase flow: opens a shadcn Dialog showing
- * the resource details, a price summary, and an explicit note that
- * the purchase is simulated. On "Confirm Purchase" it POSTs to
- * `resources.request` and Inertia auto-refreshes the page props so
- * the button flips to "Download" (can_download becomes true).
+ * Wraps the resource purchase flow: opens a shadcn Dialog showing
+ * the resource details and a price summary. On "Proceed to Payment"
+ * it POSTs to `resources.request` which creates an Order and
+ * redirects to the billing order page.
  *
  * Designed to be extended by Phase 2 (real payment gateway) without
  * major refactoring: the `onSubmit` handler carries a clear marker
@@ -96,8 +95,8 @@ export function BuyResourceDialog({
                             Buy &ldquo;{resource.name}&rdquo;
                         </DialogTitle>
                         <DialogDescription>
-                            Review the resource details and confirm the
-                            simulated purchase.
+                            Review the resource details and proceed to
+                            payment.
                         </DialogDescription>
                     </DialogHeader>
 
@@ -157,14 +156,7 @@ export function BuyResourceDialog({
                                 )}
                             </dl>
                             <Separator />
-                            <div className="flex items-start gap-2 rounded-md border border-dashed bg-muted/30 p-3 text-xs text-muted-foreground">
-                                <Info className="mt-0.5 h-4 w-4 shrink-0" />
-                                <p>
-                                    This is a simulated purchase. Phase 2
-                                    will add payment method selection and
-                                    real charge flow here.
-                                </p>
-                            </div>
+
                         </CardContent>
                     </Card>
 
@@ -185,7 +177,7 @@ export function BuyResourceDialog({
                             data-testid={`buy-confirm-btn-${slug}`}
                         >
                             <ShoppingCart className="h-4 w-4" />
-                            {processing ? 'Processing…' : 'Confirm Purchase'}
+                            {processing ? 'Creating order…' : 'Proceed to Payment'}
                         </Button>
                     </DialogFooter>
                 </form>

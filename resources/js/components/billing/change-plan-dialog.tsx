@@ -1,4 +1,4 @@
-import { ArrowRightCircle, CircleCheck, Info } from 'lucide-react';
+import { AlertTriangle, ArrowRightCircle, CircleCheck, Info } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -79,9 +79,22 @@ export function ChangePlanDialog({
         if (!plan) {
             return;
         }
-        // Redirect to payment flow instead of directly changing plan
+
+        // Free plan: apply directly without payment
+        if (plan.price_cents === 0) {
+            setOpen(false);
+            router.post('/billing/change-plan', {
+                plan_id: plan.id,
+                reason: data.reason,
+            });
+            return;
+        }
+
+        // Paid plan: redirect to payment flow
         router.visit(`/billing/payment/create/${plan.id}`);
     }
+
+    const isFreePlan = plan?.price_cents === 0;
 
     return (
         <Dialog
@@ -96,12 +109,17 @@ export function ChangePlanDialog({
                             className="flex items-center gap-2"
                             data-testid={`change-plan-dialog-title-${slug}`}
                         >
-                            <ArrowRightCircle className="h-5 w-5" />
-                            Change to &ldquo;{plan.name}&rdquo;
+                            {isFreePlan ? (
+                                <AlertTriangle className="h-5 w-5 text-amber-500" />
+                            ) : (
+                                <ArrowRightCircle className="h-5 w-5" />
+                            )}
+                            {isFreePlan ? 'Switch to Free plan' : `Change to "${plan.name}"`}
                         </DialogTitle>
                         <DialogDescription>
-                            You will be redirected to the payment page to complete
-                            the plan change via Pago Móvil.
+                            {isFreePlan
+                                ? 'You are about to downgrade to the free plan.'
+                                : 'You will be redirected to the payment page to complete the plan change via Pago Móvil.'}
                         </DialogDescription>
                     </DialogHeader>
 
@@ -149,14 +167,27 @@ export function ChangePlanDialog({
                                     data-testid="change-plan-reason-input"
                                 />
                             </div>
-                            <div className="flex items-start gap-2 rounded-md border border-dashed bg-muted/30 p-3 text-xs text-muted-foreground">
-                                <Info className="mt-0.5 h-4 w-4 shrink-0" />
-                                <p>
-                                    You will be redirected to complete the payment
-                                    via Pago Móvil. The plan change will be applied
-                                    after admin verification.
-                                </p>
-                            </div>
+                            {isFreePlan ? (
+                                <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                                    <div>
+                                        <p className="font-medium">This action takes effect immediately.</p>
+                                        <p className="mt-1">
+                                            You will lose access to premium features and any remaining
+                                            days on your current plan will not be refunded.
+                                        </p>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="flex items-start gap-2 rounded-md border border-dashed bg-muted/30 p-3 text-xs text-muted-foreground">
+                                    <Info className="mt-0.5 h-4 w-4 shrink-0" />
+                                    <p>
+                                        You will be redirected to complete the payment
+                                        via Pago Móvil. The plan change will be applied
+                                        after admin verification.
+                                    </p>
+                                </div>
+                            )}
                         </CardContent>
                     </Card>
 
@@ -174,10 +205,20 @@ export function ChangePlanDialog({
                         <Button
                             type="submit"
                             disabled={processing}
+                            variant={isFreePlan ? 'destructive' : 'default'}
                             data-testid={`change-plan-confirm-btn-${slug}`}
                         >
-                            <ArrowRightCircle className="h-4 w-4" />
-                            {processing ? 'Redirecting…' : 'Proceed to Payment'}
+                            {isFreePlan ? (
+                                <>
+                                    <AlertTriangle className="h-4 w-4" />
+                                    {processing ? 'Switching…' : 'Switch to Free'}
+                                </>
+                            ) : (
+                                <>
+                                    <ArrowRightCircle className="h-4 w-4" />
+                                    {processing ? 'Redirecting…' : 'Proceed to Payment'}
+                                </>
+                            )}
                         </Button>
                     </DialogFooter>
                 </form>

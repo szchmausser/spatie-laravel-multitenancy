@@ -3,6 +3,8 @@
 use App\Enums\EntitlementGrantVia;
 use App\Enums\SubscriptionStatus;
 use App\Models\Entitlement;
+use App\Models\Order;
+use App\Models\Payment;
 use App\Models\Plan;
 use App\Models\Resource;
 use App\Models\Subscription;
@@ -156,28 +158,28 @@ test('show renders the resource page when the resource is active', function () {
 
 // ---------- request (auto-approve) ----------
 
-test('request creates a purchase entitlement for the current user', function () {
+test('request creates an order for the resource', function () {
     $resource = Resource::factory()->premium()->create();
 
     $tenant = makePaidTenant('basic');
     $user = makeUserFor($tenant);
     switchToTenant($tenant);
 
-    expect(Entitlement::query()->count())->toBe(0);
+    expect(Order::query()->count())->toBe(0);
 
     $this->actingAs($user)
         ->post(route('resources.request', $resource->slug))
-        ->assertRedirect();
+        ->assertRedirect(route('billing.orders.show', Order::query()->first()));
 
-    expect(Entitlement::query()->count())->toBe(1);
-    $row = Entitlement::query()->first();
-    expect($row->granted_via)->toBe(EntitlementGrantVia::Purchase)
-        ->and($row->tenant_id)->toBe($tenant->id)
-        ->and($row->user_id)->toBe($user->getKey())
-        ->and($row->resource_id)->toBe($resource->id);
+    expect(Order::query()->count())->toBe(1);
+    $order = Order::query()->first();
+    expect($order->tenant_id)->toBe($tenant->id)
+        ->and($order->resource_id)->toBe($resource->id)
+        ->and($order->plan_id)->toBeNull()
+        ->and($order->total_cents)->toBe($resource->price_cents);
 });
 
-test('request is idempotent: a second click does not create a duplicate row', function () {
+test('request creates an order: second click creates a second order for resources', function () {
     $resource = Resource::factory()->premium()->create();
 
     $tenant = makePaidTenant('basic');
@@ -192,7 +194,8 @@ test('request is idempotent: a second click does not create a duplicate row', fu
         ->post(route('resources.request', $resource->slug))
         ->assertRedirect();
 
-    expect(Entitlement::query()->count())->toBe(1);
+    // Resource orders allow multiple pending orders (unlike plan orders)
+    expect(Order::query()->count())->toBe(2);
 });
 
 // ---------- download ----------
@@ -576,30 +579,28 @@ test('free-tier tenant can view a free resource show page', function () {
 
 // ---------- request: free tier CAN buy premium (simulated purchase) ----------
 
-test('free-tier tenant can "buy" a premium resource and an entitlement is created', function () {
+test('free-tier tenant can "buy" a premium resource and an order is created', function () {
     $premium = Resource::factory()->premium()->create();
 
     $tenant = makeFreeTenant();
     $user = makeUserFor($tenant);
     switchToTenant($tenant);
 
-    expect(Entitlement::query()->count())->toBe(0);
+    expect(Order::query()->count())->toBe(0);
 
     // R3: free tenants are no longer blocked from the request endpoint.
-    // The "Buy" dialog posts here and the controller creates a
-    // purchase entitlement. Phase 2 will replace this with a real
-    // payment step before the updateOrCreate.
+    // The "Buy" dialog posts here and the controller creates an Order
+    // that redirects to the billing orders page for payment.
     $this->actingAs($user)
         ->post(route('resources.request', $premium->slug))
         ->assertRedirect();
 
-    expect(Entitlement::query()->count())->toBe(1);
-    $row = Entitlement::query()->first();
-    expect($row->granted_via)->toBe(EntitlementGrantVia::Purchase)
-        ->and($row->tenant_id)->toBe($tenant->id)
-        ->and($row->user_id)->toBe($user->getKey())
-        ->and($row->resource_id)->toBe($premium->id)
-        ->and($row->expires_at)->toBeNull();
+    expect(Order::query()->count())->toBe(1);
+    $order = Order::query()->first();
+    expect($order->tenant_id)->toBe($tenant->id)
+        ->and($order->resource_id)->toBe($premium->id)
+        ->and($order->plan_id)->toBeNull()
+        ->and($order->total_cents)->toBe($premium->price_cents);
 });
 
 // ---------- download: free tier can download free, cannot download premium without entitlement ----------
@@ -643,19 +644,34 @@ test('free-tier tenant gets 403 trying to download a premium resource they have 
         ->assertForbidden();
 });
 
-test('free-tier tenant CAN download a premium resource after buying it', function () {
+test('free-tier tenant CAN download a premium resource after full payment flow', function () {
     $resource = Resource::factory()->withFile('resources/purchased-by-free.pdf', 'application/pdf', 0)->premium()->create();
 
     $tenant = makeFreeTenant();
     $user = makeUserFor($tenant);
     switchToTenant($tenant);
 
-    // Simulate the buy: free tenant hits request() and gets an
-    // entitlement. Then the download should succeed (R3 + R6).
+    // Step 1: Create order via the request endpoint
     $this->actingAs($user)
         ->post(route('resources.request', $resource->slug))
         ->assertRedirect();
 
+    $order = Order::query()->where('resource_id', $resource->id)->first();
+    expect($order)->not->toBeNull();
+
+    // Step 2: Grant entitlement directly (simulates what the listener does
+    // after payment verification — the listener uses User::on('tenant')
+    // which requires a real tenant DB, not available in this test env)
+    Entitlement::query()->create([
+        'tenant_id' => $tenant->id,
+        'user_id' => $user->getKey(),
+        'resource_id' => $resource->id,
+        'granted_via' => EntitlementGrantVia::Purchase,
+        'granted_at' => now(),
+        'expires_at' => null,
+    ]);
+
+    // Step 3: Download should now succeed
     $body = 'premium content unlocked by purchase';
     Storage::disk('local')->put('resources/purchased-by-free.pdf', $body);
     $resource->update(['file_size_bytes' => strlen($body)]);

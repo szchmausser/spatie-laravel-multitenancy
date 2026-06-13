@@ -3,13 +3,18 @@
 namespace App\Listeners;
 
 use App\Enums\ActorType;
+use App\Enums\EntitlementGrantVia;
 use App\Enums\OrderStatus;
 use App\Enums\SubscriptionEventType;
 use App\Enums\SubscriptionStatus;
 use App\Events\PaymentVerified;
+use App\Models\Entitlement;
+use App\Models\Order;
 use App\Models\Plan;
 use App\Models\Subscription;
 use App\Models\SubscriptionHistory;
+use App\Models\Tenant;
+use App\Models\User;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
@@ -41,6 +46,13 @@ class ActivateSubscription
         }
 
         $order->update(['status' => OrderStatus::Paid]);
+
+        // For resource orders: grant entitlement to all tenant users
+        if ($order->resource_id !== null) {
+            $this->grantResourceEntitlement($order);
+
+            return;
+        }
 
         // Only activate subscription for plan orders
         if ($order->plan_id === null) {
@@ -101,6 +113,43 @@ class ActivateSubscription
             ]);
         } catch (\Throwable $e) {
             Log::warning('Failed to record subscription history', ['error' => $e->getMessage()]);
+        }
+    }
+
+    /**
+     * Grant entitlement to all users of the tenant for the purchased resource.
+     *
+     * Resource orders are tenant-level purchases — when a tenant buys a
+     * resource, all its users should have access. The user_id on the
+     * entitlement is a logical FK to the tenant's User table.
+     */
+    private function grantResourceEntitlement(Order $order): void
+    {
+        $tenant = Tenant::on('landlord')->find($order->tenant_id);
+
+        if (! $tenant) {
+            Log::warning('Tenant not found for resource entitlement', ['tenant_id' => $order->tenant_id]);
+
+            return;
+        }
+
+        $tenant->makeCurrent();
+
+        $users = User::query()->get();
+
+        foreach ($users as $user) {
+            Entitlement::updateOrCreate(
+                [
+                    'tenant_id' => $order->tenant_id,
+                    'user_id' => $user->getKey(),
+                    'resource_id' => $order->resource_id,
+                ],
+                [
+                    'granted_via' => EntitlementGrantVia::Purchase,
+                    'granted_at' => now(),
+                    'expires_at' => null,
+                ],
+            );
         }
     }
 }
