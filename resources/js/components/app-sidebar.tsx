@@ -2,14 +2,9 @@ import { Link, usePage } from '@inertiajs/react';
 import {
     BarChart3,
     Bell,
-    BookOpen,
-    Building2,
-    CreditCard,
-    Download,
-    FolderGit2,
     LayoutGrid,
     Shield,
-    ShoppingCart,
+    ShoppingBag,
     Users,
 } from 'lucide-react';
 import AppLogo from '@/components/app-logo';
@@ -31,61 +26,18 @@ import { useCurrentUrl } from '@/hooks/use-current-url';
 import { dashboard } from '@/routes';
 import type { NavItem } from '@/types';
 
-const adminNavItems: NavItem[] = [
-    {
-        title: 'Tenants',
-        href: '/admin/tenants',
-        icon: Building2,
-    },
-    {
-        title: 'Resources',
-        href: '/admin/resources',
-        icon: Download,
-    },
-    {
-        title: 'Orders',
-        href: '/admin/orders',
-        icon: ShoppingCart,
-    },
-    {
-        title: 'Payments',
-        href: '/admin/payments',
-        icon: CreditCard,
-    },
-];
-
-const footerNavItems: NavItem[] = [
-    {
-        title: 'Repository',
-        href: 'https://github.com/laravel/react-starter-kit',
-        icon: FolderGit2,
-    },
-    {
-        title: 'Documentation',
-        href: 'https://laravel.com/docs/starter-kits#react',
-        icon: BookOpen,
-    },
-];
+const footerNavItems: NavItem[] = [];
 
 export function AppSidebar() {
     const { auth, tenant } = usePage().props;
     const { isCurrentUrl } = useCurrentUrl();
     const isAdmin = auth?.is_admin ?? false;
     const isFreeTier = tenant?.is_free_tier ?? true;
-    const hasFreeResources = tenant?.has_free_resources ?? false;
     const hasPremiumZone = tenant?.has_premium_zone ?? false;
     const userRoles = auth?.user?.roles ?? [];
     const canManageUsers = userRoles.some((role: string) => role === 'owner' || role === 'tenant-admin');
     const canListUsers = canManageUsers; // owner and tenant-admin have users-list
     const canListRoles = canManageUsers; // owner and tenant-admin have roles-list
-
-    // The "Resources" link is shown when the tenant is on a paid
-    // plan (full catalog) OR when the tenant is free but the
-    // catalog has at least one free resource worth browsing. Without
-    // the `has_free_resources` check, free tenants with an empty free
-    // catalog would see a link that leads to an empty page. Admins
-    // don't see tenant-scoped links at all.
-    const showResources = !isFreeTier || hasFreeResources;
 
     // The "Analytics" link is shown only when the tenant's plan
     // includes the `premium-zone` feature. Currently only the
@@ -100,15 +52,6 @@ export function AppSidebar() {
         ? [{ title: 'Panel', href: '/admin', icon: Shield }]
         : [
               { title: 'Dashboard', href: dashboard(), icon: LayoutGrid },
-              ...(showResources
-                  ? [
-                        {
-                            title: 'Resources',
-                            href: '/resources',
-                            icon: Download,
-                        },
-                    ]
-                  : []),
               ...(canListUsers
                   ? [
                         { title: 'Users', href: '/users', icon: Users },
@@ -150,7 +93,7 @@ export function AppSidebar() {
             </SidebarHeader>
 
             <SidebarContent>
-                <NavMain items={mainNavItems} />
+                <NavMain items={mainNavItems} label={isAdmin ? 'Admin' : 'Platform'} />
                 {!isAdmin && (
                     <SidebarGroup className="px-2 py-0">
                         <SidebarGroupLabel>Account</SidebarGroupLabel>
@@ -172,38 +115,21 @@ export function AppSidebar() {
                                     </Link>
                                 </SidebarMenuButton>
                             </SidebarMenuItem>
-                            {canManageUsers && (
-                                <SidebarMenuItem>
-                                    <SidebarMenuButton
-                                        asChild
-                                        isActive={isCurrentUrl('/billing')}
-                                        tooltip={{ children: 'Billing' }}
-                                    >
-                                        <Link href="/billing/change-plan" prefetch>
-                                            <CreditCard />
-                                            <span>Billing</span>
-                                        </Link>
-                                    </SidebarMenuButton>
-                                </SidebarMenuItem>
-                            )}
-                            {canManageUsers && (
-                                <SidebarMenuItem>
-                                    <SidebarMenuButton
-                                        asChild
-                                        isActive={isCurrentUrl('/billing/orders')}
-                                        tooltip={{ children: 'Orders' }}
-                                    >
-                                        <Link href="/billing/orders" prefetch>
-                                            <CreditCard />
-                                            <span>Orders</span>
-                                        </Link>
-                                    </SidebarMenuButton>
-                                </SidebarMenuItem>
-                            )}
+                            <SidebarMenuItem>
+                                <SidebarMenuButton
+                                    asChild
+                                    isActive={isCurrentUrl('/shop')}
+                                    tooltip={{ children: 'Shop' }}
+                                >
+                                    <Link href="/shop" prefetch>
+                                        <ShoppingBag />
+                                        <span>Shop</span>
+                                    </Link>
+                                </SidebarMenuButton>
+                            </SidebarMenuItem>
                         </SidebarMenu>
                     </SidebarGroup>
                 )}
-                {isAdmin && <NavMain items={adminNavItems} label="Admin" />}
             </SidebarContent>
 
             <SidebarFooter>

@@ -14,7 +14,9 @@ class OrderController extends Controller
      */
     public function index(Request $request)
     {
-        $query = Order::with(['tenant', 'plan', 'resource', 'payments']);
+        $query = Order::with(['tenant', 'plan', 'resource', 'payments' => function ($q) {
+            $q->orderByDesc('created_at');
+        }]);
 
         if ($request->filled('status')) {
             $query->where('status', $request->input('status'));
@@ -26,7 +28,7 @@ class OrderController extends Controller
             });
         }
 
-        $orders = $query->latest()->get();
+        $orders = $query->oldest()->get();
 
         return Inertia::render('admin/orders/index', [
             'orders' => $orders,
@@ -38,7 +40,9 @@ class OrderController extends Controller
      */
     public function show(Order $order)
     {
-        $order->load(['tenant', 'plan', 'resource', 'payments.pagoMovilDetail']);
+        $order->load(['tenant', 'plan', 'resource', 'payments' => function ($q) {
+            $q->orderByDesc('created_at');
+        }, 'payments.pagoMovilDetail', 'payments.bankTransferDetail']);
 
         return Inertia::render('admin/orders/show', [
             'order' => $order,

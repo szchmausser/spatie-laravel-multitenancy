@@ -11,6 +11,7 @@ import {
     CardTitle,
 } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { formatDateTime } from '@/lib/utils';
 import { index, show } from '@/routes/landlord/subscriptions';
 import { statusVariant } from '@/lib/subscription-utils';
 import type {BreadcrumbItem, Subscription} from '@/types';
@@ -98,7 +99,7 @@ export default function SubscriptionsIndex({ subscriptions }: { subscriptions: S
                                             </span>
                                             <span className="flex items-center gap-1">
                                                 <Calendar className="h-3 w-3" />
-                                                {sub.created_at}
+                                                {formatDateTime(sub.created_at)}
                                             </span>
                                         </div>
                                     </div>

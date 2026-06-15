@@ -2,6 +2,7 @@ import { Plus, Pencil, Eye, Building, Globe, Database, CreditCard, Calendar } fr
 import { Link } from '@inertiajs/react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { formatDate } from '@/lib/utils';
 import { create, show, edit } from '@/routes/landlord/tenants';
 import { statusVariant } from '@/lib/subscription-utils';
 import type {BreadcrumbItem, Plan, Subscription} from '@/types';
@@ -18,18 +19,6 @@ type TenantRow = {
     database: string;
     subscription?: Subscription;
 };
-
-function formatDate(dateString: string | null): string {
-    if (! dateString) {
-return 'No expiry';
-}
-
-    return new Date(dateString).toLocaleDateString(undefined, {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
-    });
-}
 
 export default function TenantIndex({ tenants }: { tenants: TenantRow[] }) {
     return (
@@ -99,7 +88,7 @@ export default function TenantIndex({ tenants }: { tenants: TenantRow[] }) {
                                         data-testid={`tenant-sub-ends-${tenant.id}`}
                                     >
                                         <Calendar className="h-3 w-3" />
-                                        {formatDate(sub?.ends_at ?? null)}
+                                        {sub?.ends_at ? formatDate(sub.ends_at) : 'Sin expiración'}
                                     </span>
                                 </div>
 

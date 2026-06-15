@@ -20,6 +20,7 @@ class Payment extends Model
         'amount_cents',
         'currency',
         'payment_method',
+        'payment_method_config_id',
         'transaction_id',
         'status',
         'verified_by',
@@ -61,18 +62,29 @@ class Payment extends Model
         return $this->belongsTo(Tenant::class);
     }
 
+    public function paymentMethodConfig(): BelongsTo
+    {
+        return $this->belongsTo(PaymentMethodConfig::class);
+    }
+
     public function pagoMovilDetail(): HasOne
     {
         return $this->hasOne(PagoMovilDetail::class);
     }
 
+    public function bankTransferDetail(): HasOne
+    {
+        return $this->hasOne(BankTransferDetail::class);
+    }
+
     /**
      * Get the payment-specific details based on the payment method.
      */
-    public function getDetailsAttribute(): ?PagoMovilDetail
+    public function getDetailsAttribute(): PagoMovilDetail|BankTransferDetail|null
     {
         return match ($this->payment_method) {
             'pago_movil' => $this->pagoMovilDetail,
+            'bank_transfer' => $this->bankTransferDetail,
             default => null,
         };
     }

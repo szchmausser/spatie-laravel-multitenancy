@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\Entitlement;
 use App\Models\Landlord;
 use App\Models\Resource;
 use App\Models\Tenant;
@@ -109,6 +110,10 @@ class HandleInertiaRequests extends Middleware
             'has_free_resources' => Resource::query()
                 ->active()
                 ->where('is_premium', false)
+                ->exists(),
+            'has_entitlements' => Entitlement::query()
+                ->where('tenant_id', $current->id)
+                ->where('user_id', auth()->id())
                 ->exists(),
             'has_premium_zone' => $current->hasFeature('premium-zone'),
         ];

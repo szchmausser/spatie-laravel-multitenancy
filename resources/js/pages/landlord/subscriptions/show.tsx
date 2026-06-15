@@ -1,6 +1,6 @@
 import { Link } from '@inertiajs/react';
 import { ArrowLeft, Receipt, Building, Package, Calendar, Clock, CheckCircle2, XCircle } from 'lucide-react';
-import { formatPrice } from '@/lib/utils';
+import { formatPrice, formatDateTime, formatDate } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -67,7 +67,7 @@ export default function SubscriptionShow({ subscription }: { subscription: Subsc
                                 className="flex h-9 w-full items-center rounded-md border border-input bg-muted/30 px-3 text-sm"
                                 data-testid="subscription-created"
                             >
-                                {subscription.created_at}
+                                {formatDateTime(subscription.created_at)}
                             </div>
                         </div>
                         {subscription.trial_ends_at && (
@@ -77,7 +77,7 @@ export default function SubscriptionShow({ subscription }: { subscription: Subsc
                                     Trial ends
                                 </Label>
                                 <div className="flex h-9 w-full items-center rounded-md border border-input bg-muted/30 px-3 text-sm">
-                                    {subscription.trial_ends_at}
+                                    {formatDate(subscription.trial_ends_at)}
                                 </div>
                             </div>
                         )}
@@ -88,7 +88,7 @@ export default function SubscriptionShow({ subscription }: { subscription: Subsc
                                     Ends
                                 </Label>
                                 <div className="flex h-9 w-full items-center rounded-md border border-input bg-muted/30 px-3 text-sm">
-                                    {subscription.ends_at}
+                                    {formatDate(subscription.ends_at)}
                                 </div>
                             </div>
                         )}

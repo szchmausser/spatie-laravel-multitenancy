@@ -20,6 +20,7 @@ import {
     DialogTrigger,
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
+import { formatDateTime } from '@/lib/utils';
 import { assign } from '@/routes/landlord/subscriptions';
 import { destroy, edit, index } from '@/routes/landlord/tenants';
 import type {BreadcrumbItem, Plan, Subscription} from '@/types';
@@ -162,7 +163,7 @@ return;
                             id="created_at"
                             className="flex h-9 w-full min-w-0 items-center rounded-md border border-input bg-muted/30 px-3 py-1 text-base md:text-sm shadow-xs"
                         >
-                            {tenant.created_at}
+                            {formatDateTime(tenant.created_at)}
                         </div>
                     </div>
                 </CardContent>

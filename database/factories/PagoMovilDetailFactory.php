@@ -32,6 +32,18 @@ class PagoMovilDetailFactory extends Factory
                 'Banco Caroní',
             ]),
             'rif' => fake()->numerify('J-########-#'),
+            'sender_bank' => fake()->randomElement([
+                'Banco de Venezuela',
+                'Banco Mercantil',
+                'Banco Provincial',
+                'Banesco',
+                'Banco Nacional de Crédito',
+                'Bancamiga',
+                'Banco Plaza',
+                'Banco Caroní',
+            ]),
+            'sender_phone' => fake()->numerify('04##-#######'),
+            'payment_date' => fake()->dateTimeThisMonth(),
         ];
     }
 }

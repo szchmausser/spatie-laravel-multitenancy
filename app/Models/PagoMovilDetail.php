@@ -45,7 +45,19 @@ class PagoMovilDetail extends Model
         'phone',
         'bank',
         'rif',
+        'sender_bank',
+        'sender_phone',
+        'sender_id',
+        'payment_date',
+        'concept',
     ];
+
+    protected function casts(): array
+    {
+        return [
+            'payment_date' => 'date',
+        ];
+    }
 
     public function payment(): BelongsTo
     {

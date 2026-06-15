@@ -1,6 +1,7 @@
 <?php
 
 use App\Enums\PaymentStatus;
+use App\Models\BankTransferDetail;
 use App\Models\PagoMovilDetail;
 use App\Models\Payment;
 
@@ -61,4 +62,30 @@ test('payment details accessor returns null for unknown method', function () {
     ]);
 
     expect($payment->details)->toBeNull();
+});
+
+test('payment has one bank transfer detail', function () {
+    $payment = Payment::factory()->createQuietly([
+        'payment_method' => 'bank_transfer',
+    ]);
+
+    BankTransferDetail::factory()->createQuietly([
+        'payment_id' => $payment->id,
+    ]);
+
+    expect($payment->bankTransferDetail)->not->toBeNull();
+    expect($payment->bankTransferDetail)->toBeInstanceOf(BankTransferDetail::class);
+});
+
+test('payment details accessor returns bank transfer detail for bank_transfer method', function () {
+    $payment = Payment::factory()->createQuietly([
+        'payment_method' => 'bank_transfer',
+    ]);
+
+    BankTransferDetail::factory()->createQuietly([
+        'payment_id' => $payment->id,
+    ]);
+
+    expect($payment->details)->not->toBeNull();
+    expect($payment->details)->toBeInstanceOf(BankTransferDetail::class);
 });

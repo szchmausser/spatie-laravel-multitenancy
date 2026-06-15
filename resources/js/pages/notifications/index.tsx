@@ -1,6 +1,7 @@
 import { Head, Link, router } from '@inertiajs/react';
 import { Bell, CheckCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { formatDateTime } from '@/lib/utils';
 import type { BreadcrumbItem } from '@/types';
 
 const breadcrumbs: BreadcrumbItem[] = [
@@ -74,7 +75,7 @@ function NotificationItem({ notification }: { notification: Notification }) {
                     </p>
                 )}
                 <p className="mt-1 text-xs text-muted-foreground">
-                    {new Date(notification.created_at).toLocaleDateString()}
+                    {formatDateTime(notification.created_at)}
                 </p>
             </div>
             <div className="flex items-center gap-2 shrink-0">

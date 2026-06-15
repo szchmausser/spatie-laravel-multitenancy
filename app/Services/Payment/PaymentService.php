@@ -14,8 +14,11 @@ use Illuminate\Support\Facades\Notification;
 
 class PaymentService
 {
+    /**
+     * @param  array<string, PaymentGatewayInterface>  $gateways  Registry of payment gateways keyed by method name
+     */
     public function __construct(
-        private readonly PaymentGatewayInterface $gateway,
+        private readonly array $gateways,
     ) {}
 
     /**
@@ -64,31 +67,59 @@ class PaymentService
      *
      * Uses the gateway to create Payment + gateway-specific detail
      * (e.g. PagoMovilDetail) atomically. The business receiving account
-     * is read from config by the gateway.
+     * is looked up from PaymentMethodConfig by the gateway.
      *
-     * Idempotent: if a pending payment already exists for this order,
-     * returns it instead of creating a duplicate. Prevents double
-     * submission when the user accidentally submits the form twice.
+     * Idempotent: if a pending payment already exists for this order
+     * with the SAME method, returns it. If the method changed, cancels
+     * the old payment and creates a new one.
+     *
+     * @param  array<string, mixed>  $gatewayData  Gateway-specific payment data (e.g. sender fields for pago_movil)
      */
-    public function recordPayment(Order $order, int $amountCents): Payment
-    {
+    public function recordPayment(
+        Order $order,
+        int $amountCents,
+        string $method = 'pago_movil',
+        ?int $paymentMethodConfigId = null,
+        array $gatewayData = [],
+    ): Payment {
         // Check for existing pending payment — idempotency guard
         $existingPayment = $order->payments()
             ->where('status', PaymentStatus::Pending)
             ->first();
 
         if ($existingPayment) {
-            return $existingPayment;
+            if ($existingPayment->payment_method === $method) {
+                return $existingPayment;
+            }
+
+            // Method changed — cancel the old pending payment
+            $existingPayment->update([
+                'status' => PaymentStatus::Cancelled,
+                'cancellation_reason' => 'Payment method changed to '.$method,
+            ]);
         }
 
-        $payment = $this->gateway->recordPayment($order, [
+        $gateway = $this->resolveGateway($method);
+        $payment = $gateway->recordPayment($order, array_merge([
             'amount_cents' => $amountCents,
-        ]);
+            'payment_method_config_id' => $paymentMethodConfigId,
+        ], $gatewayData));
 
         // Notify landlord admins that a new payment needs verification
         $this->notifyLandlordAdmins($payment);
 
         return $payment;
+    }
+
+    /**
+     * Resolve a payment gateway by method name.
+     *
+     * @throws \InvalidArgumentException
+     */
+    public function resolveGateway(string $method): PaymentGatewayInterface
+    {
+        return $this->gateways[$method]
+            ?? throw new \InvalidArgumentException("Unknown payment method: {$method}");
     }
 
     /**

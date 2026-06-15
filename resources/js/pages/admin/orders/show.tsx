@@ -1,8 +1,15 @@
-import { Head, Link } from '@inertiajs/react';
-import { PaymentStatusBadge } from '@/components/payment-status-badge';
+import { Head, Link, router } from '@inertiajs/react';
+import { Check, X, AlertTriangle } from 'lucide-react';
+import { useState } from 'react';
+import { OrderDetailsCard } from '@/components/order-details-card';
+import { PaymentDetailsCard } from '@/components/payment-details-card';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { formatPrice, formatDateTime } from '@/lib/utils';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { formatPrice } from '@/lib/utils';
+import { verify, cancel } from '@/routes/landlord/payments';
 import type { BreadcrumbItem } from '@/types';
 
 const breadcrumbs: BreadcrumbItem[] = [
@@ -15,6 +22,25 @@ type PagoMovilDetail = {
     phone: string;
     bank: string;
     rif: string;
+    sender_bank: string | null;
+    sender_phone: string | null;
+    sender_id: string | null;
+    payment_date: string | null;
+    concept: string | null;
+};
+
+type BankTransferDetail = {
+    account_number: string;
+    bank_name: string;
+    account_holder: string;
+    holder_id: string;
+    sender_bank: string | null;
+    sender_name: string | null;
+    sender_id: string | null;
+    sender_account_number: string | null;
+    tenant_rif: string | null;
+    payment_date: string | null;
+    concept: string | null;
 };
 
 type Payment = {
@@ -27,6 +53,7 @@ type Payment = {
     cancellation_reason: string | null;
     created_at: string;
     pago_movil_detail: PagoMovilDetail | null;
+    bank_transfer_detail: BankTransferDetail | null;
 };
 
 type Tenant = {
@@ -66,131 +93,192 @@ export default function OrderShowPage({ order }: OrderShowProps) {
         .filter((p) => p.status === 'verified')
         .reduce((sum, p) => sum + p.amount_cents, 0);
 
+    const [processingActions, setProcessingActions] = useState<Record<number, boolean>>({});
+    const [copied, setCopied] = useState(false);
+    const [verifyModal, setVerifyModal] = useState<{ open: boolean; paymentId: number | null }>({ open: false, paymentId: null });
+    const [cancelModal, setCancelModal] = useState<{ open: boolean; paymentId: number | null }>({ open: false, paymentId: null });
+    const [cancelReason, setCancelReason] = useState('');
+
+    const handleVerify = (paymentId: number) => {
+        setProcessingActions((prev) => ({ ...prev, [paymentId]: true }));
+        router.post(verify.url(paymentId), {}, {
+            onFinish: () => {
+                setProcessingActions((prev) => ({ ...prev, [paymentId]: false }));
+                setVerifyModal({ open: false, paymentId: null });
+            },
+        });
+    };
+
+    const handleCancel = (paymentId: number) => {
+        if (!cancelReason.trim()) return;
+        setProcessingActions((prev) => ({ ...prev, [paymentId]: true }));
+        router.post(cancel.url(paymentId), { reason: cancelReason }, {
+            onFinish: () => {
+                setProcessingActions((prev) => ({ ...prev, [paymentId]: false }));
+                setCancelModal({ open: false, paymentId: null });
+                setCancelReason('');
+            },
+        });
+    };
+
+    const handleCopy = (text: string) => {
+        navigator.clipboard.writeText(text);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+    };
+
     return (
         <>
             <Head title={`Orden #${order.id}`} />
 
             <div className="p-6 space-y-6">
-                <div>
-                    <h1 className="text-2xl font-bold">Orden #{order.id}</h1>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                        {order.tenant.name} — {buyableName}
-                    </p>
+                <div className="flex items-center justify-between gap-4">
+                    <div>
+                        <h1 className="text-2xl font-bold">Orden #{order.id}</h1>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                            {order.tenant.name} — {buyableName}
+                        </p>
+                    </div>
+                    <div className="flex shrink-0 gap-2">
+                        <Link href="/admin/orders">
+                            <Button variant="outline">Volver a órdenes</Button>
+                        </Link>
+                        <Link href={`/admin/tenants/${order.tenant.id}`}>
+                            <Button variant="outline">Ver tenant</Button>
+                        </Link>
+                    </div>
                 </div>
 
-                {/* Order Details */}
-                <Card>
-                    <CardHeader>
-                        <CardTitle className="flex items-center justify-between">
-                            <span>Detalle de la Orden</span>
-                            <PaymentStatusBadge status={order.status} />
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-2 text-sm">
-                        <div className="flex justify-between">
-                            <span className="text-muted-foreground">Tenant</span>
-                            <span className="font-medium">{order.tenant.name}</span>
-                        </div>
-                        <div className="flex justify-between">
-                            <span className="text-muted-foreground">Item</span>
-                            <span>{buyableName}</span>
-                        </div>
-                        <div className="flex justify-between">
-                            <span className="text-muted-foreground">Total</span>
-                            <span>{formatPrice(order.total_cents)}</span>
-                        </div>
-                        <div className="flex justify-between">
-                            <span className="text-muted-foreground">Pagado</span>
-                            <span>{formatPrice(paidCents)}</span>
-                        </div>
-                        <div className="flex justify-between">
-                            <span className="text-muted-foreground">Creada</span>
-                            <span>{formatDateTime(order.created_at)}</span>
-                        </div>
-                        {order.expires_at && (
-                            <div className="flex justify-between">
-                                <span className="text-muted-foreground">Expira</span>
-                                <span>{formatDateTime(order.expires_at)}</span>
-                            </div>
-                        )}
-                    </CardContent>
-                </Card>
+                <OrderDetailsCard order={order} showTenant paidCents={paidCents} />
 
-                {/* Payments */}
-                <Card>
-                    <CardHeader>
-                        <CardTitle>Pagos</CardTitle>
-                        <CardDescription>
-                            {order.payments.length} pago(s) registrado(s) para esta orden
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        {order.payments.length === 0 ? (
-                            <p className="text-sm text-muted-foreground">
+                {/* Payments — one card per payment */}
+                {order.payments.length === 0 ? (
+                    <Card>
+                        <CardContent className="py-8">
+                            <p className="text-sm text-muted-foreground text-center">
                                 El tenant aún no ha reportado ningún pago.
                             </p>
-                        ) : (
-                            <div className="divide-y">
-                                {order.payments.map((payment) => (
-                                    <div
-                                        key={payment.id}
-                                        className="py-3 flex items-center justify-between"
-                                    >
-                                        <div className="space-y-1">
-                                            <div className="flex items-center gap-2">
-                                                <span className="font-medium">
-                                                    {formatPrice(payment.amount_cents)}
-                                                </span>
-                                                <PaymentStatusBadge status={payment.status} />
-                                                <span className="text-xs text-muted-foreground">
-                                                    {payment.payment_method}
-                                                </span>
-                                            </div>
-                                            {payment.transaction_id && (
-                                                <div className="text-xs text-muted-foreground">
-                                                    Ref: {payment.transaction_id}
-                                                </div>
-                                            )}
-                                            {payment.pago_movil_detail && (
-                                                <div className="text-xs text-muted-foreground">
-                                                    {payment.pago_movil_detail.bank} —{' '}
-                                                    {payment.pago_movil_detail.phone} —{' '}
-                                                    RIF: {payment.pago_movil_detail.rif}
-                                                </div>
-                                            )}
-                                            {payment.cancellation_reason && (
-                                                <div className="text-xs text-destructive">
-                                                    Cancelado: {payment.cancellation_reason}
-                                                </div>
-                                            )}
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-xs text-muted-foreground">
-                                                {formatDateTime(payment.created_at)}
-                                            </span>
-                                            <Link href={`/admin/payments/${payment.id}`}>
-                                                <Button variant="outline" size="sm">
-                                                    Ver pago
-                                                </Button>
-                                            </Link>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                    </CardContent>
-                </Card>
+                        </CardContent>
+                    </Card>
+                ) : (
+                    order.payments.map((payment) => (
+                        <div key={payment.id} className="space-y-4">
+                            <PaymentDetailsCard payment={payment} />
 
-                {/* Actions */}
-                <div className="flex gap-4">
-                    <Link href="/admin/orders">
-                        <Button variant="outline">Volver a órdenes</Button>
-                    </Link>
-                    <Link href={`/admin/tenants/${order.tenant.id}`}>
-                        <Button variant="outline">Ver tenant</Button>
-                    </Link>
-                </div>
+                            {/* Actions — only for pending payments */}
+                            {payment.status === 'pending' && (
+                                <Card>
+                                    <CardHeader>
+                                        <CardTitle>Acciones</CardTitle>
+                                        <CardDescription>
+                                            Verifica o rechaza este pago
+                                        </CardDescription>
+                                    </CardHeader>
+                                    <CardContent>
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <Button
+                                                onClick={() => setVerifyModal({ open: true, paymentId: payment.id })}
+                                                disabled={processingActions[payment.id]}
+                                                className="flex items-center justify-center gap-2"
+                                            >
+                                                <Check className="h-4 w-4" />
+                                                {processingActions[payment.id] ? 'Procesando...' : 'Aprobar Pago'}
+                                            </Button>
+                                            <Button
+                                                variant="destructive"
+                                                onClick={() => {
+                                                    setCancelReason('');
+                                                    setCancelModal({ open: true, paymentId: payment.id });
+                                                }}
+                                                disabled={processingActions[payment.id]}
+                                                className="flex items-center justify-center gap-2"
+                                            >
+                                                <X className="h-4 w-4" />
+                                                {processingActions[payment.id] ? 'Procesando...' : 'Rechazar Pago'}
+                                            </Button>
+                                        </div>
+                                    </CardContent>
+                                </Card>
+                            )}
+                        </div>
+                    ))
+                )}
             </div>
+
+            {/* Verify Confirmation Modal */}
+            <Dialog open={verifyModal.open} onOpenChange={(open) => setVerifyModal({ open, paymentId: open ? verifyModal.paymentId : null })}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2">
+                            <Check className="h-5 w-5 text-green-600" />
+                            Confirmar Verificación
+                        </DialogTitle>
+                        <DialogDescription>
+                            ¿Estás seguro de que deseas aprobar este pago? Esta acción no se puede deshacer.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter>
+                        <Button
+                            variant="outline"
+                            onClick={() => setVerifyModal({ open: false, paymentId: null })}
+                        >
+                            Cancelar
+                        </Button>
+                        <Button
+                            onClick={() => verifyModal.paymentId && handleVerify(verifyModal.paymentId)}
+                            disabled={verifyModal.paymentId !== null && processingActions[verifyModal.paymentId]}
+                            className="flex items-center gap-2"
+                        >
+                            <Check className="h-4 w-4" />
+                            {verifyModal.paymentId !== null && processingActions[verifyModal.paymentId] ? 'Procesando...' : 'Aprobar'}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Cancel Confirmation Modal */}
+            <Dialog open={cancelModal.open} onOpenChange={(open) => setCancelModal({ open, paymentId: open ? cancelModal.paymentId : null })}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2">
+                            <AlertTriangle className="h-5 w-5 text-destructive" />
+                            Confirmar Rechazo
+                        </DialogTitle>
+                        <DialogDescription>
+                            Por favor, indica el motivo del rechazo antes de continuar.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-2">
+                        <Label htmlFor="cancel-reason">Motivo del rechazo *</Label>
+                        <Input
+                            id="cancel-reason"
+                            placeholder="Escribe el motivo de la cancelación..."
+                            value={cancelReason}
+                            onChange={(e) => setCancelReason(e.target.value)}
+                        />
+                    </div>
+                    <DialogFooter>
+                        <Button
+                            variant="outline"
+                            onClick={() => {
+                                setCancelModal({ open: false, paymentId: null });
+                                setCancelReason('');
+                            }}
+                        >
+                            Volver
+                        </Button>
+                        <Button
+                            variant="destructive"
+                            onClick={() => cancelModal.paymentId && handleCancel(cancelModal.paymentId)}
+                            disabled={!cancelReason.trim() || (cancelModal.paymentId !== null && processingActions[cancelModal.paymentId])}
+                            className="flex items-center gap-2"
+                        >
+                            <X className="h-4 w-4" />
+                            {cancelModal.paymentId !== null && processingActions[cancelModal.paymentId] ? 'Procesando...' : 'Rechazar'}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </>
     );
 }

@@ -14,27 +14,6 @@ beforeEach(function () {
     $this->actingAs($this->admin);
 });
 
-test('admin can access payments index', function () {
-    $response = $this->get(route('landlord.payments.index'));
-    $response->assertOk();
-});
-
-test('admin can view a payment', function () {
-    $tenant = Tenant::factory()->createQuietly();
-    $plan = Plan::factory()->createQuietly();
-    $order = Order::factory()->createQuietly([
-        'tenant_id' => $tenant->id,
-        'plan_id' => $plan->id,
-    ]);
-    $payment = Payment::factory()->createQuietly([
-        'order_id' => $order->id,
-        'tenant_id' => $tenant->id,
-    ]);
-
-    $response = $this->get(route('landlord.payments.show', $payment));
-    $response->assertOk();
-});
-
 test('admin can verify a pending payment', function () {
     $tenant = Tenant::factory()->createQuietly();
     $plan = Plan::factory()->createQuietly();
@@ -81,27 +60,4 @@ test('admin can cancel a verified payment with reason', function () {
     expect($payment->status)->toBe(PaymentStatus::Cancelled);
     expect($payment->cancellation_reason)->toBe('Suspected fraud');
     expect($payment->cancelled_by)->toBe($this->admin->id);
-});
-
-test('admin can filter payments by status', function () {
-    $tenant = Tenant::factory()->createQuietly();
-    $plan = Plan::factory()->createQuietly();
-    $order = Order::factory()->createQuietly([
-        'tenant_id' => $tenant->id,
-        'plan_id' => $plan->id,
-    ]);
-
-    Payment::factory()->createQuietly([
-        'order_id' => $order->id,
-        'tenant_id' => $tenant->id,
-        'status' => PaymentStatus::Pending,
-    ]);
-    Payment::factory()->createQuietly([
-        'order_id' => $order->id,
-        'tenant_id' => $tenant->id,
-        'status' => PaymentStatus::Verified,
-    ]);
-
-    $response = $this->get(route('landlord.payments.index', ['status' => 'pending']));
-    $response->assertOk();
 });

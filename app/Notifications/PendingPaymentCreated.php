@@ -61,7 +61,7 @@ class PendingPaymentCreated extends Notification
             ->subject('New payment requires verification')
             ->line('A new payment of $'.number_format($this->payment->amount_cents / 100, 2)." from {$tenantName} is pending verification.")
             ->line('Payment method: '.$this->payment->payment_method)
-            ->action('Verify Payment', url('/admin/payments'))
+            ->action('Verificar Pago', url('/admin/orders/'.$this->payment->order_id))
             ->line('Please review and verify this payment at your earliest convenience.');
     }
 }

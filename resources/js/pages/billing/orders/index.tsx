@@ -4,7 +4,7 @@ import { Eye, Clock, Package, FileText } from 'lucide-react';
 import { PaymentStatusBadge } from '@/components/payment-status-badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { formatPrice } from '@/lib/utils';
+import { formatPrice, formatDateTime } from '@/lib/utils';
 import type { BreadcrumbItem } from '@/types';
 
 type Order = {
@@ -90,14 +90,14 @@ export default function OrdersIndex({ orders }: { orders: Order[] }) {
                                                 </div>
                                                 <div className="text-sm text-muted-foreground flex items-center gap-3">
                                                     <span>Total: {formatPrice(order.total_cents)}</span>
-                                                    <span>Paid: {formatPrice(paidCents)}</span>
-                                                    <span>
-                                                        Remaining: {formatPrice(order.total_cents - paidCents)}
+                                                    <span className="flex items-center gap-1">
+                                                        <Clock className="h-3 w-3" />
+                                                        Creada: {formatDateTime(order.created_at)}
                                                     </span>
                                                     {order.expires_at && (
                                                         <span className="flex items-center gap-1">
                                                             <Clock className="h-3 w-3" />
-                                                            Expires {new Date(order.expires_at).toLocaleDateString()}
+                                                            Expira: {formatDateTime(order.expires_at)}
                                                         </span>
                                                     )}
                                                 </div>

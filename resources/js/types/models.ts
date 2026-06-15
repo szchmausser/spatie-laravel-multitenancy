@@ -22,6 +22,8 @@ export type Resource = {
     can_download?: boolean;
     /** Tenant-only: whether the user has an explicit entitlement. */
     has_explicit_entitlement?: boolean;
+    /** Tenant-only: whether the user has an active entitlement for this resource. */
+    has_entitlement?: boolean;
 };
 
 export type Plan = {

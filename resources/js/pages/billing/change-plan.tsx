@@ -5,14 +5,13 @@ import {
     Check,
     CircleCheck,
     Clock,
-    ExternalLink,
     Package,
     Sparkles,
 } from 'lucide-react';
 import { useState } from 'react';
 import { ChangePlanDialog } from '@/components/billing/change-plan-dialog';
 import { Badge } from '@/components/ui/badge';
-import { formatPrice } from '@/lib/utils';
+import { formatPrice, formatDate } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import {
     Card,
@@ -183,13 +182,7 @@ export default function ChangePlan({
                                         >
                                             <Calendar className="h-3.5 w-3.5" />
                                             Renews{' '}
-                                            {new Date(
-                                                subscription.ends_at,
-                                            ).toLocaleDateString('en-US', {
-                                                month: 'long',
-                                                day: 'numeric',
-                                                year: 'numeric',
-                                            })}
+                                            {formatDate(subscription.ends_at)}
                                         </div>
                                     )}
                                     {!subscription.ends_at && (
@@ -208,29 +201,11 @@ export default function ChangePlan({
                                         >
                                             <Clock className="h-3.5 w-3.5" />
                                             Trial ends{' '}
-                                            {new Date(
-                                                subscription.trial_ends_at,
-                                            ).toLocaleDateString('en-US', {
-                                                month: 'long',
-                                                day: 'numeric',
-                                                year: 'numeric',
-                                            })}
+                                            {formatDate(subscription.trial_ends_at)}
                                         </div>
                                     )}
                                 </div>
                             )}
-
-                            {/* View history link */}
-                            <div className="pt-2 border-t">
-                                <Link
-                                    href="/billing/history"
-                                    className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
-                                    data-testid="view-history-link"
-                                >
-                                    <ExternalLink className="h-3.5 w-3.5" />
-                                    View subscription history
-                                </Link>
-                            </div>
                         </CardContent>
                     </Card>
                 )}

@@ -24,6 +24,7 @@ declare module '@inertiajs/core' {
                 domain: string;
                 is_free_tier: boolean;
                 has_free_resources: boolean;
+                has_entitlements: boolean;
                 has_premium_zone: boolean;
             } | null;
             sidebarOpen: boolean;

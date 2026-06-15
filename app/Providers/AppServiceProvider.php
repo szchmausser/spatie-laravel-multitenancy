@@ -2,8 +2,10 @@
 
 namespace App\Providers;
 
+use App\Services\Payment\BankTransferGateway;
 use App\Services\Payment\PagoMovilGateway;
 use App\Services\Payment\PaymentGatewayInterface;
+use App\Services\Payment\PaymentService;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Date;
@@ -19,6 +21,15 @@ class AppServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->bind(PaymentGatewayInterface::class, PagoMovilGateway::class);
+
+        $this->app->bind('payment.gateways', fn () => [
+            'pago_movil' => app(PagoMovilGateway::class),
+            'bank_transfer' => app(BankTransferGateway::class),
+        ]);
+
+        $this->app->bind(PaymentService::class, fn () => new PaymentService(
+            gateways: $this->app->make('payment.gateways'),
+        ));
     }
 
     /**

@@ -1,5 +1,5 @@
 import { Head, Link } from '@inertiajs/react';
-import { Building, CreditCard, Download, Users } from 'lucide-react';
+import { Building, CreditCard, Download, ShoppingCart, Users } from 'lucide-react';
 import {
     Card,
     CardDescription,
@@ -43,6 +43,13 @@ const cards = [
         href: subscriptionsIndex().url,
         icon: Users,
         testId: 'admin-card-subscriptions',
+    },
+    {
+        title: 'Orders',
+        description: 'View and manage tenant purchase orders and payment verification.',
+        href: '/admin/orders',
+        icon: ShoppingCart,
+        testId: 'admin-card-orders',
     },
 ] as const;
 

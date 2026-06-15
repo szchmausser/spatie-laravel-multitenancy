@@ -48,6 +48,7 @@ class DatabaseSeeder extends Seeder
             LandlordUserSeeder::class,
             PlansSeeder::class,
             TenantsSeeder::class,
+            PaymentMethodConfigSeeder::class,
         ]);
     }
 

@@ -8,6 +8,7 @@ use App\Http\Controllers\Premium\AnalyticsController;
 use App\Http\Controllers\Resource\ResourceController;
 use App\Http\Controllers\Tenant\PaymentController as TenantPaymentController;
 use App\Http\Controllers\Tenant\RoleController;
+use App\Http\Controllers\Tenant\ShopController;
 use App\Http\Controllers\Tenant\UserController;
 use App\Models\Tenant;
 use Illuminate\Support\Facades\Route;
@@ -56,6 +57,9 @@ require __DIR__.'/settings.php';
 */
 Route::middleware(['tenant', 'auth', 'verified'])->group(function () {
     Route::inertia('dashboard', 'dashboard')->name('dashboard');
+
+    // Shop — unified page showing plans and resources.
+    Route::get('shop', [ShopController::class, 'index'])->name('shop.index');
 
     // Aquí van las rutas del producto SaaS para cada cliente.
 
@@ -125,10 +129,8 @@ Route::middleware(['tenant', 'auth', 'verified'])->group(function () {
         Route::get('orders/{order}', [TenantPaymentController::class, 'show'])->name('orders.show');
         Route::post('orders/{order}/payments', [TenantPaymentController::class, 'store'])->name('orders.payments.store');
 
-        // Payment initiation
+        // Payment initiation — creates pending order for a plan
         Route::get('payment/create/{plan}', [BillingPaymentController::class, 'create'])->name('payment.create');
-        Route::post('payment', [BillingPaymentController::class, 'store'])->name('payment.store');
-        Route::get('payment/{payment}', [BillingPaymentController::class, 'show'])->name('payment.show');
     });
 
     // Notifications — in-app notification center.

@@ -9,13 +9,14 @@ use App\Models\Payment;
 use App\Models\Plan;
 use App\Models\Resource;
 use App\Models\Tenant;
+use App\Services\Payment\BankTransferGateway;
 use App\Services\Payment\PagoMovilGateway;
 use App\Services\Payment\PaymentService;
 use Illuminate\Support\Facades\Event;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 
 beforeEach(function () {
-    $this->service = new PaymentService(new PagoMovilGateway);
+    $this->service = new PaymentService(['pago_movil' => new PagoMovilGateway]);
 });
 
 test('create order with plan cancels previous pending plan orders', function () {
@@ -229,4 +230,60 @@ test('cancel pending payment rejects and keeps order pending', function () {
     // Order should stay pending (it was never paid)
     $order->refresh();
     expect($order->status)->toBe(OrderStatus::Pending);
+});
+
+test('resolve gateway returns correct gateway for pago_movil', function () {
+    $service = new PaymentService([
+        'pago_movil' => new PagoMovilGateway,
+        'bank_transfer' => new BankTransferGateway,
+    ]);
+
+    $gateway = $service->resolveGateway('pago_movil');
+
+    expect($gateway)->toBeInstanceOf(PagoMovilGateway::class);
+});
+
+test('resolve gateway returns correct gateway for bank_transfer', function () {
+    $service = new PaymentService([
+        'pago_movil' => new PagoMovilGateway,
+        'bank_transfer' => new BankTransferGateway,
+    ]);
+
+    $gateway = $service->resolveGateway('bank_transfer');
+
+    expect($gateway)->toBeInstanceOf(BankTransferGateway::class);
+});
+
+test('resolve gateway throws exception for unknown method', function () {
+    $service = new PaymentService([
+        'pago_movil' => new PagoMovilGateway,
+    ]);
+
+    $this->expectException(InvalidArgumentException::class);
+    $this->expectExceptionMessage('Unknown payment method: paypal');
+
+    $service->resolveGateway('paypal');
+});
+
+test('record payment uses correct gateway based on order payment method', function () {
+    $tenant = Tenant::factory()->createQuietly();
+    $plan = Plan::factory()->createQuietly();
+    $order = Order::factory()->createQuietly([
+        'tenant_id' => $tenant->id,
+        'plan_id' => $plan->id,
+    ]);
+
+    $service = new PaymentService([
+        'pago_movil' => new PagoMovilGateway,
+        'bank_transfer' => new BankTransferGateway,
+    ]);
+
+    // Order has no payment_method set yet, defaults to pago_movil
+    $payment = $service->recordPayment($order, 5000, 'pago_movil', null, [
+        'sender_bank' => 'Banco de Venezuela',
+        'sender_phone' => '0412-7654321',
+        'payment_date' => '2026-06-13',
+    ]);
+
+    expect($payment->payment_method)->toBe('pago_movil');
 });

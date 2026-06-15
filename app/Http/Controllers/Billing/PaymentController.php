@@ -5,19 +5,14 @@ namespace App\Http\Controllers\Billing;
 use App\Enums\OrderStatus;
 use App\Http\Controllers\Controller;
 use App\Models\Order;
-use App\Models\Payment;
 use App\Models\Plan;
 use App\Models\Tenant;
-use App\Services\Payment\PaymentGatewayInterface;
 use App\Services\Payment\PaymentService;
-use Illuminate\Http\Request;
-use Inertia\Inertia;
 
 class PaymentController extends Controller
 {
     public function __construct(
         private readonly PaymentService $paymentService,
-        private readonly PaymentGatewayInterface $gateway,
     ) {}
 
     /**
@@ -53,51 +48,5 @@ class PaymentController extends Controller
         );
 
         return redirect()->route('billing.orders.show', $result['order']);
-    }
-
-    /**
-     * Store payment reference.
-     *
-     * Creates Payment + PagoMovilDetail via the gateway and saves
-     * the user's bank reference. Accepts either payment_id (for
-     * backwards compat with billing/payment form) or order_id.
-     * Redirects to the payment status page.
-     */
-    public function store(Request $request)
-    {
-        $validated = $request->validate([
-            'payment_id' => 'sometimes|exists:payments,id',
-            'order_id' => 'sometimes|exists:orders,id',
-            'reference' => 'required|string|digits_between:6,10',
-        ]);
-
-        if (isset($validated['payment_id'])) {
-            $payment = Payment::findOrFail($validated['payment_id']);
-            $payment->update(['transaction_id' => $validated['reference']]);
-
-            return redirect()->route('billing.payment.show', $payment);
-        }
-
-        $order = Order::findOrFail($validated['order_id']);
-        $payment = $this->paymentService->recordPayment($order, $order->total_cents);
-        $payment->update(['transaction_id' => $validated['reference']]);
-
-        return redirect()->route('billing.payment.show', $payment);
-    }
-
-    /**
-     * Show payment status.
-     */
-    public function show(Payment $payment)
-    {
-        $payment->load(['order', 'pagoMovilDetail']);
-
-        $instructions = $this->gateway->getInstructions($payment);
-
-        return Inertia::render('billing/payment', [
-            'order' => $payment->order,
-            'payment' => $payment,
-            'instructions' => $instructions,
-        ]);
     }
 }
