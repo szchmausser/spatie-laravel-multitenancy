@@ -52,7 +52,7 @@ class UserController extends Controller
             ->paginate(15)
             ->withQueryString();
 
-        return Inertia::render('users/index', [
+        return Inertia::render('settings/users/index', [
             'users' => $users,
         ]);
     }
@@ -64,7 +64,7 @@ class UserController extends Controller
     {
         Gate::authorize('users-create');
 
-        return Inertia::render('users/create');
+        return Inertia::render('settings/users/create');
     }
 
     /**
@@ -93,7 +93,7 @@ class UserController extends Controller
             return $user;
         });
 
-        return redirect()->route('users.show', $user);
+        return redirect()->route('settings.users.show', $user);
     }
 
     /**
@@ -119,7 +119,7 @@ class UserController extends Controller
         $currentUser = User::on('tenant')->find(auth()->id());
         $currentUser->load('roles');
 
-        return Inertia::render('users/show', [
+        return Inertia::render('settings/users/show', [
             'user' => $user,
             'allRoles' => $allRoles,
             'currentUser' => [
@@ -136,7 +136,7 @@ class UserController extends Controller
     {
         Gate::authorize('users-update');
 
-        return Inertia::render('users/edit', [
+        return Inertia::render('settings/users/edit', [
             'user' => $user,
         ]);
     }
@@ -161,7 +161,7 @@ class UserController extends Controller
             $user->update($validated);
         }
 
-        return redirect()->route('users.show', $user);
+        return redirect()->route('settings.users.show', $user);
     }
 
     /**
@@ -178,7 +178,7 @@ class UserController extends Controller
         // Skip Spatie HasRoles boot events (role detach) during delete.
         User::withoutEvents(fn () => $user->delete());
 
-        return redirect()->route('users.index');
+        return redirect()->route('settings.users.index');
     }
 
     /**
@@ -233,7 +233,7 @@ class UserController extends Controller
         $user->syncRoles([$roleName]);
         app(PermissionRegistrar::class)->forgetCachedPermissions();
 
-        return redirect()->route('users.show', $user);
+        return redirect()->route('settings.users.show', $user);
     }
 
     /**
@@ -269,6 +269,6 @@ class UserController extends Controller
         $user->removeRole($role);
         app(PermissionRegistrar::class)->forgetCachedPermissions();
 
-        return redirect()->route('users.show', $user);
+        return redirect()->route('settings.users.show', $user);
     }
 }

@@ -106,6 +106,7 @@ class HandleInertiaRequests extends Middleware
             'id' => $current->getKey(),
             'name' => $current->name,
             'domain' => $current->domain,
+            'plan_name' => $current->subscription?->plan?->name ?? 'Free',
             'is_free_tier' => $current->isOnFreeTier(),
             'has_free_resources' => Resource::query()
                 ->active()

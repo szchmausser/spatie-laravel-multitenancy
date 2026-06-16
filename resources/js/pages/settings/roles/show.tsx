@@ -8,11 +8,11 @@ import {
     CardHeader,
     CardTitle,
 } from '@/components/ui/card';
-import { index } from '@/routes/roles';
+import { index } from '@/routes/settings/roles';
 import type { BreadcrumbItem } from '@/types';
 
 const breadcrumbs: BreadcrumbItem[] = [
-    { title: 'Roles', href: '/roles' },
+    { title: 'Roles', href: '/settings/roles' },
     { title: 'Details', href: '#' },
 ];
 

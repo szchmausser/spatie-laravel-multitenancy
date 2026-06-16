@@ -22,6 +22,7 @@ declare module '@inertiajs/core' {
                 id: number;
                 name: string;
                 domain: string;
+                plan_name: string;
                 is_free_tier: boolean;
                 has_free_resources: boolean;
                 has_entitlements: boolean;

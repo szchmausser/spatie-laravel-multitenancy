@@ -97,16 +97,14 @@ Route::middleware(['tenant', 'auth', 'verified'])->group(function () {
         Route::get('{slug}/download', [ResourceController::class, 'download'])->name('download');
     });
 
-    // User management — tenant-scoped CRUD for team members.
-    Route::resource('users', UserController::class);
-
-    // User role management — assign and remove roles.
-    Route::post('users/{user}/roles', [UserController::class, 'assignRole'])->name('users.assignRole');
-    Route::delete('users/{user}/roles/{role}', [UserController::class, 'removeRole'])->name('users.removeRole');
-
-    // Role catalog — read-only views of tenant roles.
-    Route::get('roles', [RoleController::class, 'index'])->name('roles.index');
-    Route::get('roles/{role}', [RoleController::class, 'show'])->name('roles.show');
+    // Settings — tenant-scoped user & role management.
+    Route::prefix('settings')->name('settings.')->group(function () {
+        Route::resource('users', UserController::class);
+        Route::post('users/{user}/roles', [UserController::class, 'assignRole'])->name('users.assignRole');
+        Route::delete('users/{user}/roles/{role}', [UserController::class, 'removeRole'])->name('users.removeRole');
+        Route::get('roles', [RoleController::class, 'index'])->name('roles.index');
+        Route::get('roles/{role}', [RoleController::class, 'show'])->name('roles.show');
+    });
 
     // Billing — self-service plan change (1.5G-buy-plan).
     //

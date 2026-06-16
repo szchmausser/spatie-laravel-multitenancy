@@ -1,11 +1,11 @@
 import { Link } from '@inertiajs/react';
 import { Shield, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { index as rolesIndex, show } from '@/routes/roles';
+import { index as rolesIndex, show } from '@/routes/settings/roles';
 import type { BreadcrumbItem } from '@/types';
 
 const breadcrumbs: BreadcrumbItem[] = [
-    { title: 'Roles', href: '/roles' },
+    { title: 'Roles', href: '/settings/roles' },
 ];
 
 type RoleRow = {

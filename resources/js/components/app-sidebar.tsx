@@ -3,9 +3,9 @@ import {
     BarChart3,
     Bell,
     LayoutGrid,
+    Settings,
     Shield,
     ShoppingBag,
-    Users,
 } from 'lucide-react';
 import AppLogo from '@/components/app-logo';
 import { NavFooter } from '@/components/nav-footer';
@@ -34,10 +34,6 @@ export function AppSidebar() {
     const isAdmin = auth?.is_admin ?? false;
     const isFreeTier = tenant?.is_free_tier ?? true;
     const hasPremiumZone = tenant?.has_premium_zone ?? false;
-    const userRoles = auth?.user?.roles ?? [];
-    const canManageUsers = userRoles.some((role: string) => role === 'owner' || role === 'tenant-admin');
-    const canListUsers = canManageUsers; // owner and tenant-admin have users-list
-    const canListRoles = canManageUsers; // owner and tenant-admin have roles-list
 
     // The "Analytics" link is shown only when the tenant's plan
     // includes the `premium-zone` feature. Currently only the
@@ -52,16 +48,6 @@ export function AppSidebar() {
         ? [{ title: 'Panel', href: '/admin', icon: Shield }]
         : [
               { title: 'Dashboard', href: dashboard(), icon: LayoutGrid },
-              ...(canListUsers
-                  ? [
-                        { title: 'Users', href: '/users', icon: Users },
-                    ]
-                  : []),
-              ...(canListRoles
-                  ? [
-                        { title: 'Roles', href: '/roles', icon: Shield },
-                    ]
-                  : []),
               ...(showAnalytics
                   ? [
                         {
@@ -98,6 +84,18 @@ export function AppSidebar() {
                     <SidebarGroup className="px-2 py-0">
                         <SidebarGroupLabel>Account</SidebarGroupLabel>
                         <SidebarMenu>
+                            <SidebarMenuItem>
+                                <SidebarMenuButton
+                                    asChild
+                                    isActive={isCurrentUrl('/settings')}
+                                    tooltip={{ children: 'Settings' }}
+                                >
+                                    <Link href="/settings/profile" prefetch>
+                                        <Settings />
+                                        <span>Settings</span>
+                                    </Link>
+                                </SidebarMenuButton>
+                            </SidebarMenuItem>
                             <SidebarMenuItem>
                                 <SidebarMenuButton
                                     asChild

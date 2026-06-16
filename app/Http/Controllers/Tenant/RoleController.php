@@ -33,7 +33,7 @@ class RoleController extends Controller
             ->orderBy('name')
             ->get();
 
-        return Inertia::render('roles/index', [
+        return Inertia::render('settings/roles/index', [
             'roles' => $roles,
         ]);
     }
@@ -54,7 +54,7 @@ class RoleController extends Controller
             ->pluck('name')
             ->toArray();
 
-        return Inertia::render('roles/show', [
+        return Inertia::render('settings/roles/show', [
             'role' => $role,
             'allPermissions' => $allPermissions,
         ]);

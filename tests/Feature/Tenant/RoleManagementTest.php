@@ -36,7 +36,7 @@ test('role index requires manage-users permission', function () {
     $member->assignRole('member');
 
     $this->actingAs($member)
-        ->get(route('roles.index'))
+        ->get(route('settings.roles.index'))
         ->assertForbidden();
 });
 
@@ -45,10 +45,10 @@ test('role index shows all roles with counts', function () {
     $owner->assignRole('owner');
 
     $this->actingAs($owner)
-        ->get(route('roles.index'))
+        ->get(route('settings.roles.index'))
         ->assertOk()
         ->assertInertia(fn ($page) => $page
-            ->component('roles/index')
+            ->component('settings/roles/index')
             ->has('roles', 3)
         );
 });
@@ -58,12 +58,12 @@ test('role index is accessible by tenant-admin', function () {
     $admin->assignRole('tenant-admin');
 
     $this->actingAs($admin)
-        ->get(route('roles.index'))
+        ->get(route('settings.roles.index'))
         ->assertOk();
 });
 
 test('unauthenticated user is redirected to login on GET /roles', function () {
-    $this->get(route('roles.index'))
+    $this->get(route('settings.roles.index'))
         ->assertRedirect(route('login'));
 });
 
@@ -75,7 +75,7 @@ test('role show requires manage-users permission', function () {
     $role = Role::where('name', 'member')->first();
 
     $this->actingAs($member)
-        ->get(route('roles.show', $role))
+        ->get(route('settings.roles.show', $role))
         ->assertForbidden();
 });
 
@@ -85,10 +85,10 @@ test('role show displays permissions and users', function () {
     $role = Role::where('name', 'owner')->first();
 
     $this->actingAs($owner)
-        ->get(route('roles.show', $role))
+        ->get(route('settings.roles.show', $role))
         ->assertOk()
         ->assertInertia(fn ($page) => $page
-            ->component('roles/show')
+            ->component('settings/roles/show')
             ->where('role.name', 'owner')
             ->has('role.permissions')
             ->has('role.users')
@@ -100,14 +100,14 @@ test('role show returns 404 for nonexistent role', function () {
     $owner->assignRole('owner');
 
     $this->actingAs($owner)
-        ->get(route('roles.show', 99999))
+        ->get(route('settings.roles.show', 99999))
         ->assertNotFound();
 });
 
 test('unauthenticated user is redirected to login on GET /roles/{role}', function () {
     $role = Role::where('name', 'owner')->first();
 
-    $this->get(route('roles.show', $role))
+    $this->get(route('settings.roles.show', $role))
         ->assertRedirect(route('login'));
 });
 
@@ -119,7 +119,7 @@ test('owner can assign role to user', function () {
     $target = User::factory()->createQuietly();
 
     $this->actingAs($owner)
-        ->post(route('users.assignRole', $target), ['role' => 'member'])
+        ->post(route('settings.users.assignRole', $target), ['role' => 'member'])
         ->assertRedirect();
 
     expect($target->fresh()->hasRole('member'))->toBeTrue();
@@ -131,7 +131,7 @@ test('tenant-admin can assign role to user', function () {
     $target = User::factory()->createQuietly();
 
     $this->actingAs($admin)
-        ->post(route('users.assignRole', $target), ['role' => 'member'])
+        ->post(route('settings.users.assignRole', $target), ['role' => 'member'])
         ->assertRedirect();
 
     expect($target->fresh()->hasRole('member'))->toBeTrue();
@@ -143,14 +143,14 @@ test('member cannot assign role', function () {
     $target = User::factory()->createQuietly();
 
     $this->actingAs($member)
-        ->post(route('users.assignRole', $target), ['role' => 'member'])
+        ->post(route('settings.users.assignRole', $target), ['role' => 'member'])
         ->assertForbidden();
 });
 
 test('unauthenticated user cannot assign role', function () {
     $target = User::factory()->createQuietly();
 
-    $this->post(route('users.assignRole', $target), ['role' => 'member'])
+    $this->post(route('settings.users.assignRole', $target), ['role' => 'member'])
         ->assertRedirect(route('login'));
 });
 
@@ -159,7 +159,7 @@ test('assign role returns 404 for nonexistent user', function () {
     $owner->assignRole('owner');
 
     $this->actingAs($owner)
-        ->post(route('users.assignRole', 99999), ['role' => 'member'])
+        ->post(route('settings.users.assignRole', 99999), ['role' => 'member'])
         ->assertNotFound();
 });
 
@@ -173,7 +173,7 @@ test('owner can remove role from user', function () {
     $role = Role::where('name', 'member')->first();
 
     $this->actingAs($owner)
-        ->delete(route('users.removeRole', [$target, $role]))
+        ->delete(route('settings.users.removeRole', [$target, $role]))
         ->assertRedirect();
 
     expect($target->fresh()->hasRole('member'))->toBeFalse();
@@ -187,7 +187,7 @@ test('tenant-admin can remove role from user', function () {
     $role = Role::where('name', 'member')->first();
 
     $this->actingAs($admin)
-        ->delete(route('users.removeRole', [$target, $role]))
+        ->delete(route('settings.users.removeRole', [$target, $role]))
         ->assertRedirect();
 
     expect($target->fresh()->hasRole('member'))->toBeFalse();
@@ -201,7 +201,7 @@ test('member cannot remove role', function () {
     $role = Role::where('name', 'member')->first();
 
     $this->actingAs($member)
-        ->delete(route('users.removeRole', [$target, $role]))
+        ->delete(route('settings.users.removeRole', [$target, $role]))
         ->assertForbidden();
 });
 
@@ -213,7 +213,7 @@ test('owner cannot remove own owner role', function () {
     $role = Role::where('name', 'owner')->first();
 
     $this->actingAs($owner)
-        ->delete(route('users.removeRole', [$owner, $role]))
+        ->delete(route('settings.users.removeRole', [$owner, $role]))
         ->assertSessionHasErrors('role');
 
     expect($owner->fresh()->hasRole('owner'))->toBeTrue();
@@ -225,7 +225,7 @@ test('tenant-admin cannot remove own tenant-admin role', function () {
     $role = Role::where('name', 'tenant-admin')->first();
 
     $this->actingAs($admin)
-        ->delete(route('users.removeRole', [$admin, $role]))
+        ->delete(route('settings.users.removeRole', [$admin, $role]))
         ->assertSessionHasErrors('role');
 
     expect($admin->fresh()->hasRole('tenant-admin'))->toBeTrue();
@@ -241,7 +241,7 @@ test('owner role cannot be removed from any user', function () {
     $role = Role::where('name', 'owner')->first();
 
     $this->actingAs($owner)
-        ->delete(route('users.removeRole', [$target, $role]))
+        ->delete(route('settings.users.removeRole', [$target, $role]))
         ->assertSessionHasErrors('role');
 
     expect($target->fresh()->hasRole('owner'))->toBeTrue();
@@ -255,7 +255,7 @@ test('tenant-admin cannot remove owner role from another user', function () {
     $role = Role::where('name', 'owner')->first();
 
     $this->actingAs($admin)
-        ->delete(route('users.removeRole', [$target, $role]))
+        ->delete(route('settings.users.removeRole', [$target, $role]))
         ->assertSessionHasErrors('role');
 
     expect($target->fresh()->hasRole('owner'))->toBeTrue();
@@ -273,7 +273,7 @@ test('first user gets owner role via store', function () {
     $this->actingAs($actingUser);
     User::where('id', $actingUser->id)->delete();
 
-    $this->post(route('users.store'), [
+    $this->post(route('settings.users.store'), [
         'name' => 'Created User',
         'email' => 'created@example.com',
         'password' => 'password123',
@@ -292,7 +292,7 @@ test('subsequent user gets member role via store', function () {
 
     // Now create a second user
     $this->actingAs($first)
-        ->post(route('users.store'), [
+        ->post(route('settings.users.store'), [
             'name' => 'Second User',
             'email' => 'second@example.com',
             'password' => 'password123',
@@ -320,7 +320,7 @@ test('permission cache is cleared on role mutation', function () {
 
     // Assign tenant-admin role
     $this->actingAs($owner)
-        ->post(route('users.assignRole', $target), ['role' => 'tenant-admin'])
+        ->post(route('settings.users.assignRole', $target), ['role' => 'tenant-admin'])
         ->assertRedirect();
 
     // Verify permission takes effect immediately
@@ -334,7 +334,7 @@ test('role operations are tenant-scoped', function () {
     $owner->assignRole('owner');
 
     $this->actingAs($owner)
-        ->post(route('users.assignRole', 99999), ['role' => 'member'])
+        ->post(route('settings.users.assignRole', 99999), ['role' => 'member'])
         ->assertNotFound();
 });
 

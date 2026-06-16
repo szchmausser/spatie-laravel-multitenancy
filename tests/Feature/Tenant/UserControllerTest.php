@@ -86,45 +86,45 @@ function createUserWithOwnerRole(array $overrides = []): User
 }
 
 test('unauthenticated user is redirected to login on GET /users', function () {
-    $this->get(route('users.index'))
+    $this->get(route('settings.users.index'))
         ->assertRedirect(route('login'));
 });
 
 test('unauthenticated user is redirected to login on GET /users/create', function () {
-    $this->get(route('users.create'))
+    $this->get(route('settings.users.create'))
         ->assertRedirect(route('login'));
 });
 
 test('unauthenticated user is redirected to login on POST /users', function () {
-    $this->post(route('users.store'), [])
+    $this->post(route('settings.users.store'), [])
         ->assertRedirect(route('login'));
 });
 
 test('unauthenticated user is redirected to login on GET /users/{user}', function () {
     $user = User::factory()->createQuietly();
 
-    $this->get(route('users.show', $user))
+    $this->get(route('settings.users.show', $user))
         ->assertRedirect(route('login'));
 });
 
 test('unauthenticated user is redirected to login on GET /users/{user}/edit', function () {
     $user = User::factory()->createQuietly();
 
-    $this->get(route('users.edit', $user))
+    $this->get(route('settings.users.edit', $user))
         ->assertRedirect(route('login'));
 });
 
 test('unauthenticated user is redirected to login on PUT /users/{user}', function () {
     $user = User::factory()->createQuietly();
 
-    $this->put(route('users.update', $user), [])
+    $this->put(route('settings.users.update', $user), [])
         ->assertRedirect(route('login'));
 });
 
 test('unauthenticated user is redirected to login on DELETE /users/{user}', function () {
     $user = User::factory()->createQuietly();
 
-    $this->delete(route('users.destroy', $user))
+    $this->delete(route('settings.users.destroy', $user))
         ->assertRedirect(route('login'));
 });
 
@@ -134,10 +134,10 @@ test('authenticated user can view paginated user list', function () {
     $user = createUserWithOwnerRole(['name' => 'Alice']);
 
     $this->actingAs($user)
-        ->get(route('users.index'))
+        ->get(route('settings.users.index'))
         ->assertOk()
         ->assertInertia(fn (Assert $page) => $page
-            ->component('users/index')
+            ->component('settings/users/index')
             ->has('users')
             ->has('users.data', 1)
             ->where('users.data.0.name', 'Alice')
@@ -150,7 +150,7 @@ test('index search filters users by name', function () {
     User::factory()->createQuietly(['name' => 'Bob Jones']);
 
     $this->actingAs($owner)
-        ->get(route('users.index', ['search' => 'Alice']))
+        ->get(route('settings.users.index', ['search' => 'Alice']))
         ->assertOk()
         ->assertInertia(fn (Assert $page) => $page
             ->has('users.data', 1)
@@ -164,7 +164,7 @@ test('index search filters users by email', function () {
     User::factory()->createQuietly(['email' => 'bob@example.com']);
 
     $this->actingAs($owner)
-        ->get(route('users.index', ['search' => 'alice']))
+        ->get(route('settings.users.index', ['search' => 'alice']))
         ->assertOk()
         ->assertInertia(fn (Assert $page) => $page
             ->has('users.data', 1)
@@ -177,7 +177,7 @@ test('index shows paginated results when more than 15 users exist', function () 
     User::factory()->count(20)->createQuietly();
 
     $this->actingAs($owner)
-        ->get(route('users.index'))
+        ->get(route('settings.users.index'))
         ->assertOk()
         ->assertInertia(fn (Assert $page) => $page
             ->has('users.data', 15)
@@ -192,10 +192,10 @@ test('authenticated user can view user detail', function () {
     $user = User::factory()->createQuietly(['name' => 'John Doe', 'email' => 'john@example.com']);
 
     $this->actingAs($owner)
-        ->get(route('users.show', $user))
+        ->get(route('settings.users.show', $user))
         ->assertOk()
         ->assertInertia(fn (Assert $page) => $page
-            ->component('users/show')
+            ->component('settings/users/show')
             ->where('user.name', 'John Doe')
             ->where('user.email', 'john@example.com')
         );
@@ -205,7 +205,7 @@ test('show returns 404 for non-existent user', function () {
     $owner = createUserWithOwnerRole(['name' => 'Owner']);
 
     $this->actingAs($owner)
-        ->get(route('users.show', 99999))
+        ->get(route('settings.users.show', 99999))
         ->assertNotFound();
 });
 
@@ -215,10 +215,10 @@ test('authenticated user can view create user form', function () {
     $owner = createUserWithOwnerRole(['name' => 'Owner']);
 
     $this->actingAs($owner)
-        ->get(route('users.create'))
+        ->get(route('settings.users.create'))
         ->assertOk()
         ->assertInertia(fn (Assert $page) => $page
-            ->component('users/create')
+            ->component('settings/users/create')
         );
 });
 
@@ -226,7 +226,7 @@ test('store creates a user with valid data', function () {
     $owner = createUserWithOwnerRole(['name' => 'Owner']);
 
     $this->actingAs($owner)
-        ->post(route('users.store'), [
+        ->post(route('settings.users.store'), [
             'name' => 'New User',
             'email' => 'newuser@example.com',
             'password' => 'password123',
@@ -244,7 +244,7 @@ test('store validates required fields', function () {
     $owner = createUserWithOwnerRole(['name' => 'Owner']);
 
     $this->actingAs($owner)
-        ->post(route('users.store'), [])
+        ->post(route('settings.users.store'), [])
         ->assertSessionHasErrors(['name', 'email', 'password']);
 });
 
@@ -253,7 +253,7 @@ test('store rejects duplicate email', function () {
     User::factory()->createQuietly(['email' => 'existing@example.com']);
 
     $this->actingAs($owner)
-        ->post(route('users.store'), [
+        ->post(route('settings.users.store'), [
             'name' => 'Duplicate',
             'email' => 'existing@example.com',
             'password' => 'password123',
@@ -266,7 +266,7 @@ test('store rejects short password', function () {
     $owner = createUserWithOwnerRole(['name' => 'Owner']);
 
     $this->actingAs($owner)
-        ->post(route('users.store'), [
+        ->post(route('settings.users.store'), [
             'name' => 'Short Pass',
             'email' => 'short@example.com',
             'password' => 'short',
@@ -282,10 +282,10 @@ test('authenticated user can view edit user form', function () {
     $user = User::factory()->createQuietly(['name' => 'Edit Me']);
 
     $this->actingAs($owner)
-        ->get(route('users.edit', $user))
+        ->get(route('settings.users.edit', $user))
         ->assertOk()
         ->assertInertia(fn (Assert $page) => $page
-            ->component('users/edit')
+            ->component('settings/users/edit')
             ->where('user.name', 'Edit Me')
         );
 });
@@ -295,7 +295,7 @@ test('update modifies user name and email', function () {
     $user = User::factory()->createQuietly(['name' => 'Old Name', 'email' => 'old@example.com']);
 
     $this->actingAs($owner)
-        ->put(route('users.update', $user), [
+        ->put(route('settings.users.update', $user), [
             'name' => 'New Name',
             'email' => 'new@example.com',
         ])
@@ -314,7 +314,7 @@ test('update with blank password leaves password unchanged', function () {
     $originalPassword = $user->password;
 
     $this->actingAs($owner)
-        ->put(route('users.update', $user), [
+        ->put(route('settings.users.update', $user), [
             'name' => 'Updated Name',
             'email' => $user->email,
         ])
@@ -330,7 +330,7 @@ test('update with new password changes it', function () {
     $originalPassword = $user->password;
 
     $this->actingAs($owner)
-        ->put(route('users.update', $user), [
+        ->put(route('settings.users.update', $user), [
             'name' => 'Change Pass',
             'email' => $user->email,
             'password' => 'newpassword123',
@@ -348,7 +348,7 @@ test('update rejects duplicate email from another user', function () {
     User::factory()->createQuietly(['email' => 'taken@example.com']);
 
     $this->actingAs($owner)
-        ->put(route('users.update', $user), [
+        ->put(route('settings.users.update', $user), [
             'name' => $user->name,
             'email' => 'taken@example.com',
         ])
@@ -360,7 +360,7 @@ test('update allows keeping own email', function () {
     $user = User::factory()->createQuietly(['email' => 'keep@example.com']);
 
     $this->actingAs($owner)
-        ->put(route('users.update', $user), [
+        ->put(route('settings.users.update', $user), [
             'name' => 'Updated',
             'email' => 'keep@example.com',
         ])
@@ -376,7 +376,7 @@ test('update returns 404 for non-existent user', function () {
     $owner = createUserWithOwnerRole(['name' => 'Owner']);
 
     $this->actingAs($owner)
-        ->put(route('users.update', 99999), [
+        ->put(route('settings.users.update', 99999), [
             'name' => 'Ghost',
             'email' => 'ghost@example.com',
         ])
@@ -390,7 +390,7 @@ test('authenticated user can delete another user', function () {
     $user = User::factory()->createQuietly(['name' => 'Delete Me']);
 
     $this->actingAs($owner)
-        ->delete(route('users.destroy', $user))
+        ->delete(route('settings.users.destroy', $user))
         ->assertRedirect();
 
     $this->assertDatabaseMissing('users', ['id' => $user->id]);
@@ -400,7 +400,7 @@ test('user cannot delete themselves', function () {
     $owner = createUserWithOwnerRole(['name' => 'Owner']);
 
     $this->actingAs($owner)
-        ->delete(route('users.destroy', $owner))
+        ->delete(route('settings.users.destroy', $owner))
         ->assertSessionHasErrors('user');
 
     $this->assertDatabaseHas('users', ['id' => $owner->id]);
@@ -410,7 +410,7 @@ test('delete returns 404 for non-existent user', function () {
     $owner = createUserWithOwnerRole(['name' => 'Owner']);
 
     $this->actingAs($owner)
-        ->delete(route('users.destroy', 99999))
+        ->delete(route('settings.users.destroy', 99999))
         ->assertNotFound();
 });
 
@@ -436,7 +436,7 @@ test('full user management flow: create, verify, edit, verify, delete, verify', 
 
     // Step 1: Create a new user
     $this->actingAs($owner)
-        ->post(route('users.store'), [
+        ->post(route('settings.users.store'), [
             'name' => 'Integration User',
             'email' => 'integration@example.com',
             'password' => 'password123',
@@ -450,7 +450,7 @@ test('full user management flow: create, verify, edit, verify, delete, verify', 
 
     // Step 2: Verify the user appears in the index
     $this->actingAs($owner)
-        ->get(route('users.index', ['search' => 'integration']))
+        ->get(route('settings.users.index', ['search' => 'integration']))
         ->assertOk()
         ->assertInertia(fn (Assert $page) => $page
             ->has('users.data', 1)
@@ -461,7 +461,7 @@ test('full user management flow: create, verify, edit, verify, delete, verify', 
     $originalPassword = $createdUser->password;
 
     $this->actingAs($owner)
-        ->put(route('users.update', $createdUser), [
+        ->put(route('settings.users.update', $createdUser), [
             'name' => 'Updated Integration User',
             'email' => 'integration@example.com',
         ])
@@ -473,7 +473,7 @@ test('full user management flow: create, verify, edit, verify, delete, verify', 
 
     // Step 4: Verify the updated name in show page
     $this->actingAs($owner)
-        ->get(route('users.show', $createdUser))
+        ->get(route('settings.users.show', $createdUser))
         ->assertOk()
         ->assertInertia(fn (Assert $page) => $page
             ->where('user.name', 'Updated Integration User')
@@ -481,12 +481,12 @@ test('full user management flow: create, verify, edit, verify, delete, verify', 
 
     // Step 5: Delete the user
     $this->actingAs($owner)
-        ->delete(route('users.destroy', $createdUser))
+        ->delete(route('settings.users.destroy', $createdUser))
         ->assertRedirect();
 
     // Step 6: Verify the user is gone from the index
     $this->actingAs($owner)
-        ->get(route('users.index', ['search' => 'integration']))
+        ->get(route('settings.users.index', ['search' => 'integration']))
         ->assertOk()
         ->assertInertia(fn (Assert $page) => $page
             ->has('users.data', 0)

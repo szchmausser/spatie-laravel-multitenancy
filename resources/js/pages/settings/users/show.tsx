@@ -17,11 +17,11 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
-import { edit, index, assignRole, removeRole, destroy } from '@/routes/users';
+import { edit, index, assignRole, removeRole, destroy } from '@/routes/settings/users';
 import type { BreadcrumbItem } from '@/types';
 
 const breadcrumbs: BreadcrumbItem[] = [
-    { title: 'Users', href: '/users' },
+    { title: 'Users', href: '/settings/users' },
     { title: 'Details', href: '#' },
 ];
 

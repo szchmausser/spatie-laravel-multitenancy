@@ -2,12 +2,12 @@ import { Form, Link } from '@inertiajs/react';
 import { X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { UserForm } from '@/components/tenant/user-form';
-import { store, index } from '@/routes/users';
+import { store, index } from '@/routes/settings/users';
 import type { BreadcrumbItem } from '@/types';
 
 const breadcrumbs: BreadcrumbItem[] = [
-    { title: 'Users', href: '/users' },
-    { title: 'Create', href: '/users/create' },
+    { title: 'Users', href: '/settings/users' },
+    { title: 'Create', href: '/settings/users/create' },
 ];
 
 export default function UsersCreate() {

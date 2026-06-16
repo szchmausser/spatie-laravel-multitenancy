@@ -3,11 +3,11 @@ import { Plus, Pencil, Eye, Trash2, Users } from 'lucide-react';
 import { useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { create, show, edit, destroy } from '@/routes/users';
+import { create, show, edit, destroy } from '@/routes/settings/users';
 import type { BreadcrumbItem } from '@/types';
 
 const breadcrumbs: BreadcrumbItem[] = [
-    { title: 'Users', href: '/users' },
+    { title: 'Users', href: '/settings/users' },
 ];
 
 type UserRow = {
@@ -33,7 +33,7 @@ export default function UsersIndex({
 
     const handleSearch = (value: string) => {
         setSearch(value);
-        router.get('/users', { search: value }, { preserveState: true, replace: true });
+        router.get('/settings/users', { search: value }, { preserveState: true, replace: true });
     };
 
     return (

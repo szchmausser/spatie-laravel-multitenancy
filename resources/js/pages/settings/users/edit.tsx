@@ -2,11 +2,11 @@ import { Form, Link } from '@inertiajs/react';
 import { X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { UserForm } from '@/components/tenant/user-form';
-import { update } from '@/routes/users';
+import { update } from '@/routes/settings/users';
 import type { BreadcrumbItem } from '@/types';
 
 const breadcrumbs: BreadcrumbItem[] = [
-    { title: 'Users', href: '/users' },
+    { title: 'Users', href: '/settings/users' },
     { title: 'Edit', href: '#' },
 ];
 
@@ -28,7 +28,7 @@ export default function UsersEdit({
                     }}
                     onCancel={
                         <Button variant="outline" asChild>
-                            <Link href={`/users/${user.id}`}>
+                            <Link href={`/settings/users/${user.id}`}>
                                 <X className="h-4 w-4" />
                                 Cancel
                             </Link>
