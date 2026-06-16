@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Landlord\AdminPanelController;
+use App\Http\Controllers\Landlord\NotificationController;
 use App\Http\Controllers\Landlord\OrderController;
 use App\Http\Controllers\Landlord\PaymentController;
 use App\Http\Controllers\Landlord\PlanController;
@@ -71,4 +72,10 @@ Route::middleware(['auth', 'verified', EnsureUserIsAdmin::class])->prefix('admin
     // Payment actions (verify / cancel) — used from the Order detail page
     Route::post('payments/{payment}/verify', [PaymentController::class, 'verify'])->name('payments.verify');
     Route::post('payments/{payment}/cancel', [PaymentController::class, 'cancel'])->name('payments.cancel');
+
+    // Manual notifications — landlord admin can compose, preview, send, and review
+    Route::get('notifications', [NotificationController::class, 'create'])->name('notifications.create');
+    Route::post('notifications/preview', [NotificationController::class, 'preview'])->name('notifications.preview');
+    Route::post('notifications/send', [NotificationController::class, 'send'])->name('notifications.send');
+    Route::get('notifications/history', [NotificationController::class, 'history'])->name('notifications.history');
 });

@@ -1,5 +1,5 @@
 import { Head, Link, router } from '@inertiajs/react';
-import { Bell, CheckCheck } from 'lucide-react';
+import { Bell, Check, CheckCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { formatDateTime } from '@/lib/utils';
 import type { BreadcrumbItem } from '@/types';
@@ -29,58 +29,74 @@ type Props = {
 };
 
 function NotificationItem({ notification }: { notification: Notification }) {
-    const handleClick = () => {
-        if (!notification.read_at) {
-            fetch(`/notifications/${notification.id}`, {
-                method: 'PUT',
-                headers: {
-                    'X-Requested-With': 'XMLHttpRequest',
-                    'X-XSRF-TOKEN': decodeURIComponent(
-                        document.cookie.match(/XSRF-TOKEN=([^;]+)/)?.[1] ?? ''
-                    ),
-                },
-            });
-        }
+    const markAsRead = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        fetch(`/notifications/${notification.id}`, {
+            method: 'PUT',
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest',
+                'X-XSRF-TOKEN': decodeURIComponent(
+                    document.cookie.match(/XSRF-TOKEN=([^;]+)/)?.[1] ?? ''
+                ),
+            },
+        }).then(() => {
+            router.reload({ only: ['unread', 'read'] });
+        });
+    };
 
+    const handleClick = () => {
         if (notification.data.url) {
             router.visit(`${notification.data.url}?refresh=1`);
         }
     };
 
     return (
-        <button
-            type="button"
-            className={`w-full text-left flex items-center gap-4 border-b px-6 py-4 last:border-b-0 transition-colors ${
-                notification.data.url ? 'cursor-pointer hover:bg-accent' : ''
+        <div
+            className={`w-full flex items-center gap-4 border-b px-6 py-4 last:border-b-0 transition-colors ${
+                notification.data.url ? 'hover:bg-accent' : ''
             } ${!notification.read_at ? 'bg-muted/30' : ''}`}
-            onClick={handleClick}
         >
-            <div className="shrink-0">
-                {notification.type.includes('ExpiringWarning') ? (
-                    <div className="h-2.5 w-2.5 rounded-full bg-yellow-500" />
-                ) : notification.type.includes('Expired') ? (
-                    <div className="h-2.5 w-2.5 rounded-full bg-red-500" />
-                ) : (
-                    <div className="h-2.5 w-2.5 rounded-full bg-blue-500" />
-                )}
-            </div>
-            <div className="flex-1 min-w-0">
-                {notification.data.title && (
-                    <p className="text-sm font-semibold">{notification.data.title}</p>
-                )}
-                <p className="text-sm">{notification.data.message}</p>
-                {notification.data.days_remaining !== undefined && (
-                    <p className="text-xs text-muted-foreground">
-                        {notification.data.days_remaining} day(s) remaining
+            <button
+                type="button"
+                className="flex-1 text-left flex items-center gap-4 min-w-0"
+                onClick={handleClick}
+                disabled={!notification.data.url}
+            >
+                <div className="shrink-0">
+                    {notification.type.includes('ExpiringWarning') ? (
+                        <div className="h-2.5 w-2.5 rounded-full bg-yellow-500" />
+                    ) : notification.type.includes('Expired') ? (
+                        <div className="h-2.5 w-2.5 rounded-full bg-red-500" />
+                    ) : (
+                        <div className="h-2.5 w-2.5 rounded-full bg-blue-500" />
+                    )}
+                </div>
+                <div className="flex-1 min-w-0">
+                    {notification.data.title && (
+                        <p className="text-sm font-semibold">{notification.data.title}</p>
+                    )}
+                    <p className="text-sm">{notification.data.message}</p>
+                    {notification.data.days_remaining !== undefined && (
+                        <p className="text-xs text-muted-foreground">
+                            {notification.data.days_remaining} day(s) remaining
+                        </p>
+                    )}
+                    <p className="mt-1 text-xs text-muted-foreground">
+                        {formatDateTime(notification.created_at)}
                     </p>
-                )}
-                <p className="mt-1 text-xs text-muted-foreground">
-                    {formatDateTime(notification.created_at)}
-                </p>
-            </div>
+                </div>
+            </button>
             <div className="flex items-center gap-2 shrink-0">
                 {!notification.read_at && (
-                    <span className="h-2 w-2 rounded-full bg-blue-500" />
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={markAsRead}
+                        className="h-7 px-2 text-xs"
+                    >
+                        <Check className="mr-1 h-3 w-3" />
+                        Leído
+                    </Button>
                 )}
                 {notification.data.url && (
                     <span className="text-xs font-medium text-primary whitespace-nowrap">
@@ -88,7 +104,7 @@ function NotificationItem({ notification }: { notification: Notification }) {
                     </span>
                 )}
             </div>
-        </button>
+        </div>
     );
 }
 

@@ -1,5 +1,5 @@
 import { Head, Link } from '@inertiajs/react';
-import { Building, CreditCard, Download, ShoppingCart, Users } from 'lucide-react';
+import { Bell, Building, CreditCard, Download, ShoppingCart, Users } from 'lucide-react';
 import {
     Card,
     CardDescription,
@@ -10,6 +10,7 @@ import { index as plansIndex } from '@/routes/landlord/plans';
 import { index as resourcesIndex } from '@/routes/landlord/resources';
 import { index as subscriptionsIndex } from '@/routes/landlord/subscriptions';
 import { index as tenantsIndex } from '@/routes/landlord/tenants';
+import { create as notificationsIndex } from '@/routes/landlord/notifications';
 import type {BreadcrumbItem} from '@/types';
 
 const breadcrumbs: BreadcrumbItem[] = [{ title: 'Panel', href: '/admin' }];
@@ -50,6 +51,13 @@ const cards = [
         href: '/admin/orders',
         icon: ShoppingCart,
         testId: 'admin-card-orders',
+    },
+    {
+        title: 'Notifications',
+        description: 'Send announcements to tenant users.',
+        href: notificationsIndex().url,
+        icon: Bell,
+        testId: 'admin-card-notifications',
     },
 ] as const;
 

@@ -9,10 +9,12 @@ use App\Models\Payment;
 use App\Models\Plan;
 use App\Models\Resource;
 use App\Models\Tenant;
+use App\Notifications\PendingPaymentCreated;
 use App\Services\Payment\BankTransferGateway;
 use App\Services\Payment\PagoMovilGateway;
 use App\Services\Payment\PaymentService;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Notification;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 
 beforeEach(function () {
@@ -286,4 +288,29 @@ test('record payment uses correct gateway based on order payment method', functi
     ]);
 
     expect($payment->payment_method)->toBe('pago_movil');
+});
+
+test('record payment sends PendingPaymentCreated notification to landlord admins', function () {
+    Notification::fake();
+
+    $tenant = Tenant::factory()->createQuietly();
+    $plan = Plan::factory()->createQuietly();
+    $order = Order::factory()->createQuietly([
+        'tenant_id' => $tenant->id,
+        'plan_id' => $plan->id,
+    ]);
+
+    $admin = Landlord::factory()->createQuietly();
+
+    $service = new PaymentService([
+        'pago_movil' => new PagoMovilGateway,
+    ]);
+
+    $service->recordPayment($order, 5000, 'pago_movil', null, [
+        'sender_bank' => 'Banco de Venezuela',
+        'sender_phone' => '0412-7654321',
+        'payment_date' => '2026-06-13',
+    ]);
+
+    Notification::assertSentTo($admin, PendingPaymentCreated::class);
 });

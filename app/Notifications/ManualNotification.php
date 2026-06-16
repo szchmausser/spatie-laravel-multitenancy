@@ -43,8 +43,14 @@ class ManualNotification extends Notification
      */
     public function toMail(object $notifiable): MailMessage
     {
-        return (new MailMessage)
-            ->subject($this->title ?? 'New notification')
+        $mail = (new MailMessage)
+            ->subject($this->title ?? 'New notification');
+
+        if ($this->title) {
+            $mail->line("**{$this->title}**");
+        }
+
+        return $mail
             ->line($this->message)
             ->line('Thank you for using our service!');
     }
