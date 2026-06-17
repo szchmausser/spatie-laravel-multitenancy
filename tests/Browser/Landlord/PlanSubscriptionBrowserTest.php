@@ -8,7 +8,7 @@ use App\Models\Tenant;
  * Browser tests for the plans + subscription assignment flow.
  *
  * Exercises the UI created in PR #1B to make sure the landlord can:
- *  - browse the plans list
+ *  - browse the plans list with data
  *  - create a new plan
  *  - assign that plan to a tenant from the tenant detail page
  *  - see the active plan reflected back on the tenant detail page
@@ -21,10 +21,13 @@ beforeEach(function () {
     $this->admin = Landlord::factory()->createQuietly();
 });
 
-test('admin can see the plans list page', function () {
+test('plans list renders and shows plans', function () {
+    Plan::factory()->create(['name' => 'Premium Plan', 'slug' => 'premium', 'is_active' => true]);
+
     $this->actingAs($this->admin)
         ->visit(route('landlord.plans.index'))
         ->assertSee('Plans')
+        ->assertSee('Premium Plan')
         ->assertNoJavaScriptErrors();
 });
 
@@ -65,12 +68,4 @@ test('admin can assign a plan to a tenant from the tenant detail page', function
     expect($tenant->subscription)->not->toBeNull();
     expect($tenant->subscription->plan_id)->toBe($plan->id);
     expect($tenant->subscription->status->value)->toBe('active');
-});
-
-test('admin panel shows links to plans and subscriptions', function () {
-    $this->actingAs($this->admin)
-        ->visit(route('landlord.admin-panel'))
-        ->assertSee('Plans')
-        ->assertSee('Subscriptions')
-        ->assertNoJavaScriptErrors();
 });

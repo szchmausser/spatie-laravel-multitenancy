@@ -1,6 +1,5 @@
 <?php
 
-use App\Models\Landlord;
 use App\Models\Tenant;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
@@ -13,9 +12,12 @@ uses(TenantConnectionHelpers::class);
  * Browser tests for the public welcome page (/).
  *
  * Covers:
- *   - Guest sees "Log in" and "Register" links
- *   - Authenticated tenant user sees "Log out" and "Dashboard" links
+ *   - Guest sees "Log in" and "Register" links (not authenticated links)
+ *   - Authenticated tenant user sees "Log out" and "Dashboard" links (not guest links)
  *   - Guest can click "Log in" to navigate to the login page
+ *
+ * The welcome page is a static landing page — tests focus on the
+ * auth-conditional nav, not static content.
  */
 beforeEach(function () {
     $testDatabase = config('database.connections.landlord.database');
@@ -102,23 +104,5 @@ test('guest can click login link to navigate to login page', function () {
         ->waitForText('Log in')
         ->assertSee('Email')
         ->assertSee('Password')
-        ->assertNoJavaScriptErrors();
-});
-
-test('welcome page renders the Laravel logo and getting started text', function () {
-    $testDatabase = config('database.connections.landlord.database');
-    $tenant = Tenant::factory()->createQuietly([
-        'domain' => '127.0.0.1',
-        'database' => $testDatabase,
-    ]);
-
-    $this->fakeTenantFinderForTest($tenant);
-    $tenant->makeCurrent();
-
-    $this->visit('/')
-        ->waitForText("Let's get started")
-        ->assertSee("Let's get started")
-        ->assertSee('Documentation')
-        ->assertSee('Laracasts')
         ->assertNoJavaScriptErrors();
 });

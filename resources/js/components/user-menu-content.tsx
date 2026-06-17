@@ -71,7 +71,7 @@ export function UserMenuContent({ user }: Props) {
                     href={logout()}
                     as="button"
                     onClick={handleLogout}
-                    data-test="logout-button"
+                    data-testid="logout-button"
                 >
                     <LogOut className="mr-2" />
                     Log out

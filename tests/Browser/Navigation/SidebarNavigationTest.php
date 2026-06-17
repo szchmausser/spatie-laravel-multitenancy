@@ -13,7 +13,7 @@ uses(TenantConnectionHelpers::class);
  *
  * Covers:
  *   - Sidebar links navigate to the correct pages
- *   - Each main page loads correctly via sidebar navigation
+ *   - Each main page loads with expected content via sidebar navigation
  *
  * Connection setup mirrors other tenant browser tests: the tenant
  * connection is pointed at the test database, Spatie permission
@@ -60,6 +60,7 @@ test('sidebar navigation to settings profile', function () {
             ->assertSee('Profile')
             ->assertSee('Name')
             ->assertSee('Email address')
+            ->assertVisible('[data-testid="update-profile-button"]')
             ->assertNoJavaScriptErrors();
     } finally {
         $this->cleanupTenantConnection($previousDefault);
@@ -152,6 +153,8 @@ test('sidebar navigation to shop', function () {
             ->visit('/shop')
             ->waitForText('Shop')
             ->assertSee('Shop')
+            ->assertSee('Mis Órdenes')
+            ->assertSee('Historial')
             ->assertNoJavaScriptErrors();
     } finally {
         $this->cleanupTenantConnection($previousDefault);
@@ -181,6 +184,7 @@ test('sidebar navigation to billing orders', function () {
             ->visit('/billing/orders')
             ->waitForText('Orders')
             ->assertSee('Orders')
+            ->assertSee('No orders yet')
             ->assertNoJavaScriptErrors();
     } finally {
         $this->cleanupTenantConnection($previousDefault);

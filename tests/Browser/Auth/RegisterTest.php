@@ -57,7 +57,7 @@ test('new user can register and access dashboard', function () {
             ->type('input[name="email"]', $email)
             ->type('input[name="password"]', 'password123')
             ->type('input[name="password_confirmation"]', 'password123')
-            ->click('[data-test="register-button"]')
+            ->click('[data-testid="register-button"]')
             ->waitForText('Dashboard', 15)
             ->assertPathIs('/dashboard')
             ->assertSee($name)
@@ -93,7 +93,7 @@ test('registration prevents submit with empty fields', function () {
         // so we verify the user stays on /register (form did not submit).
         $this->visit('/register')
             ->waitForText('Create an account')
-            ->click('[data-test="register-button"]')
+            ->click('[data-testid="register-button"]')
             ->assertPathIs('/register')
             ->assertNoJavaScriptErrors();
     } finally {
@@ -121,7 +121,7 @@ test('registration validates password confirmation match', function () {
             ->type('input[name="email"]', "user-{$uniqueId}@test.com")
             ->type('input[name="password"]', 'password123')
             ->type('input[name="password_confirmation"]', 'different456')
-            ->click('[data-test="register-button"]')
+            ->click('[data-testid="register-button"]')
             ->waitForText('password')
             ->assertSee('confirmation')
             ->assertPathIs('/register')

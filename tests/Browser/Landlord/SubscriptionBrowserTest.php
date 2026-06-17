@@ -9,23 +9,16 @@ use App\Models\Tenant;
  * Browser tests for the subscription index and show pages.
  *
  * Verifies the landlord can:
- *  - browse the subscriptions list
- *  - see tenant name, plan, and status for each subscription
+ *  - browse the subscriptions list with data
  *  - search/filter subscriptions
  *  - view subscription details on the show page
+ *  - navigate from list to detail
  */
 beforeEach(function () {
     $this->admin = Landlord::factory()->createQuietly();
 });
 
-test('admin can see the subscriptions list page', function () {
-    $this->actingAs($this->admin)
-        ->visit(route('landlord.subscriptions.index'))
-        ->assertSee('Subscriptions')
-        ->assertNoJavaScriptErrors();
-});
-
-test('subscriptions list shows subscription with tenant and plan', function () {
+test('subscriptions list renders and shows subscriptions', function () {
     $plan = Plan::factory()->create(['name' => 'Gold Plan', 'slug' => 'gold']);
     $tenant = Tenant::factory()->createQuietly(['name' => 'Acme Corp']);
     Subscription::factory()->create([
@@ -35,6 +28,7 @@ test('subscriptions list shows subscription with tenant and plan', function () {
 
     $this->actingAs($this->admin)
         ->visit(route('landlord.subscriptions.index'))
+        ->assertSee('Subscriptions')
         ->assertSee('Acme Corp')
         ->assertSee('Gold Plan')
         ->assertSee('active')

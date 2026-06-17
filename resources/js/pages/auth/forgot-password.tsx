@@ -42,7 +42,7 @@ export default function ForgotPassword({ status }: { status?: string }) {
                                 <Button
                                     className="w-full"
                                     disabled={processing}
-                                    data-test="email-password-reset-link-button"
+                                    data-testid="email-password-reset-link-button"
                                 >
                                     {processing && (
                                         <LoaderCircle className="h-4 w-4 animate-spin" />

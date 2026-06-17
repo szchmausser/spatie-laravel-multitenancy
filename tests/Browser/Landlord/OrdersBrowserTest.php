@@ -14,8 +14,7 @@ uses(TenantConnectionHelpers::class);
  * Browser tests for the landlord orders index and show pages.
  *
  * Covers:
- *   - Admin can see the orders list page
- *   - Orders list shows order with tenant and status
+ *   - Orders list renders and shows order data
  *   - Orders list search filters results
  *   - Admin can view order detail page
  *   - Order detail shows payments
@@ -24,14 +23,7 @@ beforeEach(function () {
     $this->admin = Landlord::factory()->createQuietly();
 });
 
-test('admin can see orders list page', function () {
-    $this->actingAs($this->admin)
-        ->visit(route('landlord.orders.index'))
-        ->assertSee('Órdenes')
-        ->assertNoJavaScriptErrors();
-});
-
-test('orders list shows order with tenant and status', function () {
+test('orders list renders and shows orders', function () {
     $plan = Plan::factory()->create(['name' => 'Gold Plan', 'slug' => 'gold']);
     $tenant = Tenant::factory()->createQuietly(['name' => 'Acme Corp']);
     $order = Order::factory()->create([
@@ -43,6 +35,7 @@ test('orders list shows order with tenant and status', function () {
 
     $this->actingAs($this->admin)
         ->visit(route('landlord.orders.index'))
+        ->assertSee('Órdenes')
         ->assertSee('Acme Corp')
         ->assertSee('Gold Plan')
         ->assertSee('#'.$order->id)
@@ -107,5 +100,3 @@ test('order detail shows payments', function () {
         ->assertSee('Acciones')
         ->assertNoJavaScriptErrors();
 });
-
-

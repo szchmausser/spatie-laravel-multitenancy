@@ -57,8 +57,8 @@ test('authenticated user can logout', function () {
             ->visit('/dashboard')
             ->waitForText('Dashboard')
             ->click('[data-testid="user-menu-trigger"]')
-            ->assertVisible('[data-test="logout-button"]')
-            ->click('[data-test="logout-button"]')
+            ->assertVisible('[data-testid="logout-button"]')
+            ->click('[data-testid="logout-button"]')
             ->waitForText('Log in')
             ->assertPathIsNot('/dashboard')
             ->assertNoJavaScriptErrors();

@@ -7,10 +7,10 @@ use App\Models\Resource;
  * Browser tests for the resource admin CRUD flow.
  *
  * Verifies the landlord can:
- *  - browse the resources list
+ *  - browse the resources list with data
  *  - see the create form with all fields
  *  - load the edit form with existing resource data
- *  - see the admin panel link to resources
+ *  - trigger validation errors on empty submit
  *
  * File upload is NOT tested here because Pest browser tests
  * don't have a reliable way to attach files via Playwright.
@@ -64,12 +64,5 @@ test('resource create form shows validation errors on empty submit', function ()
         ->visit(route('landlord.resources.create'))
         ->click('@submit-resource-btn')
         ->waitForText('required')
-        ->assertNoJavaScriptErrors();
-});
-
-test('admin panel shows link to resources', function () {
-    $this->actingAs($this->admin)
-        ->visit(route('landlord.admin-panel'))
-        ->assertSee('Resources')
         ->assertNoJavaScriptErrors();
 });

@@ -31,7 +31,7 @@ test('forgot password form can be filled and submitted', function () {
 
     $this->visit(route('password.request'))
         ->fill('email', $this->admin->email)
-        ->click('[data-test="email-password-reset-link-button"]')
+        ->click('[data-testid="email-password-reset-link-button"]')
         // The Inertia <Form> submits via XHR and Fortify redirects back
         // with a flash status. The flash message may not be reliably
         // visible to Playwright after the Inertia redirect, so we verify
@@ -80,7 +80,7 @@ test('reset password form submits and redirects', function () {
     $this->visit($url)
         ->fill('password', $newPassword)
         ->fill('password_confirmation', $newPassword)
-        ->click('[data-test="reset-password-button"]')
+        ->click('[data-testid="reset-password-button"]')
         ->waitForText('Log in')
         ->assertSee('Log in')
         ->assertNoJavaScriptErrors();

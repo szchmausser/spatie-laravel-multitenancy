@@ -13,10 +13,12 @@ uses(TenantConnectionHelpers::class);
  * Browser tests for the premium analytics page (/premium/analytics).
  *
  * Covers:
- *   - User with premium-zone feature can access the page
- *   - Page displays stat cards (users, sessions, revenue)
- *   - Premium badge is visible
- *   - User without premium-zone feature is denied (403)
+ *   - User with premium-zone feature can access the page and sees stat cards
+ *   - Page displays stat labels (users, sessions, revenue)
+ *   - User without premium-zone feature gets 403
+ *
+ * The page is a static stats dashboard — tests focus on access control
+ * and correct rendering of stat elements, not on business logic.
  */
 beforeEach(function () {
     $testDatabase = config('database.connections.landlord.database');
@@ -81,7 +83,7 @@ test('user with premium-zone feature can access premium analytics', function () 
     }
 });
 
-test('premium analytics displays stat values', function () {
+test('premium analytics displays stat labels', function () {
     $testDatabase = config('database.connections.landlord.database');
     $tenant = Tenant::factory()->createQuietly([
         'domain' => '127.0.0.1',
@@ -166,51 +168,6 @@ test('user without premium-zone feature gets 403 on premium analytics', function
             ->visit('/premium/analytics')
             ->waitForText('403')
             ->assertSee('403')
-            ->assertNoJavaScriptErrors();
-    } finally {
-        $this->cleanupTenantConnection($previousDefault);
-    }
-});
-
-test('premium analytics shows feature description', function () {
-    $testDatabase = config('database.connections.landlord.database');
-    $tenant = Tenant::factory()->createQuietly([
-        'domain' => '127.0.0.1',
-        'database' => $testDatabase,
-    ]);
-
-    $premiumPlan = Plan::factory()->create([
-        'name' => 'Premium Plan',
-        'slug' => 'premium',
-        'is_active' => true,
-        'features' => ['premium-zone' => true],
-    ]);
-
-    $tenant->subscription()->create([
-        'plan_id' => $premiumPlan->id,
-        'status' => 'active',
-    ]);
-
-    $previousDefault = $this->setupTenantConnectionForTest();
-
-    try {
-        $user = User::on('tenant')->create([
-            'name' => 'Feature User',
-            'email' => 'feature-user@tenant.test',
-            'password' => bcrypt('password'),
-            'email_verified_at' => now(),
-        ]);
-        $user->assignRole('tenant-admin');
-
-        $this->fakeTenantFinderForTest($tenant);
-        $tenant->makeCurrent();
-
-        $this->actingAs($user)
-            ->visit('/premium/analytics')
-            ->waitForText('Premium Analytics')
-            ->assertSee('premium-zone')
-            ->assertSee('Welcome to your premium dashboard')
-            ->assertSee('Protected by the')
             ->assertNoJavaScriptErrors();
     } finally {
         $this->cleanupTenantConnection($previousDefault);

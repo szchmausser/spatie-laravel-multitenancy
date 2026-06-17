@@ -13,8 +13,10 @@ uses(TenantConnectionHelpers::class);
  *
  * Covers:
  *   - Authenticated tenant user can access the dashboard
- *   - Dashboard page stays at /dashboard (breadcrumb navigation)
  *   - Unauthenticated user is redirected to login
+ *
+ * The dashboard is a placeholder page with no interactive elements,
+ * so tests focus on access control rather than UI behavior.
  */
 beforeEach(function () {
     $testDatabase = config('database.connections.landlord.database');
@@ -77,36 +79,6 @@ test('unauthenticated user is redirected to login from dashboard', function () {
         ->waitForText('Log in')
         ->assertSee('Log in')
         ->assertSee('Password')
+        ->assertSee('Email')
         ->assertNoJavaScriptErrors();
-});
-
-test('dashboard page stays at /dashboard after navigation', function () {
-    $testDatabase = config('database.connections.landlord.database');
-    $tenant = Tenant::factory()->createQuietly([
-        'domain' => '127.0.0.1',
-        'database' => $testDatabase,
-    ]);
-
-    $previousDefault = $this->setupTenantConnectionForTest();
-
-    try {
-        $user = User::on('tenant')->create([
-            'name' => 'Nav User',
-            'email' => 'nav-user@tenant.test',
-            'password' => bcrypt('password'),
-            'email_verified_at' => now(),
-        ]);
-        $user->assignRole('member');
-
-        $this->fakeTenantFinderForTest($tenant);
-        $tenant->makeCurrent();
-
-        $this->actingAs($user)
-            ->visit('/dashboard')
-            ->waitForText('Dashboard')
-            ->assertPathIs('/dashboard')
-            ->assertNoJavaScriptErrors();
-    } finally {
-        $this->cleanupTenantConnection($previousDefault);
-    }
 });

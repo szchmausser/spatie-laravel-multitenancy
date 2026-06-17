@@ -92,7 +92,7 @@ export default function Register({ passwordRules }: Props) {
                                 className="mt-4 w-full"
                                 tabIndex={5}
                                 disabled={processing}
-                                data-test="register-button"
+                                data-testid="register-button"
                             >
                                 {processing && <Spinner />}
                                 Create account

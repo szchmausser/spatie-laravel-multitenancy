@@ -377,8 +377,9 @@ public function isFullyPaid(): bool
 | `status` | varchar(20) | NO | pending/verified/cancelled | Estado del pago |
 | `verified_by` | bigint | SÍ | FK a users | Admin que verificó |
 | `verified_at` | timestamp | SÍ | Cuándo se verificó | Audit trail |
-| `cancellation_reason` | text | SÍ | Razón de cancelación | Si fue cancelado, por qué |
-| `cancelled_by` | bigint | SÍ | FK a users | Admin que canceló |
+| `cancellation_reason` | text | SÍ | Razón de cancelación | Texto libre (sin enum). Si fue cancelado, por qué |
+| `cancellation_type` | varchar(30) | SÍ | Tipo de cancelación (requiere migración) | Enum: manual, system_duplicate, system_expired, method_changed. Para routing de notificaciones. Se crea en Fase 2B (conciliación) |
+| `cancelled_by` | bigint | SÍ | FK a users | Landlord que canceló |
 | `cancelled_at` | timestamp | SÍ | Cuándo se canceló | Audit trail |
 | `metadata` | json | SÍ | Datos contextuales | Información no crítica |
 | `created_at` | timestamp | NO | Creación | Audit trail |
@@ -412,7 +413,12 @@ public function order(): BelongsTo
 
 public function verifier(): BelongsTo
 {
-    return $this->belongsTo(User::class, 'verified_by');
+    return $this->belongsTo(Landlord::class, 'verified_by');
+}
+
+public function canceller(): BelongsTo
+{
+    return $this->belongsTo(Landlord::class, 'cancelled_by');
 }
 
 public function tenant(): BelongsTo
@@ -435,9 +441,9 @@ public function bankTransferDetail(): HasOne
     return $this->hasOne(BankTransferDetail::class);
 }
 
-public function getDetailsAttribute()
+public function getDetailsAttribute(): PagoMovilDetail|BankTransferDetail|null
 {
-    return match($this->payment_method) {
+    return match ($this->payment_method) {
         'pago_movil' => $this->pagoMovilDetail,
         'bank_transfer' => $this->bankTransferDetail,
         default => null,
@@ -682,7 +688,7 @@ interface PaymentGatewayInterface
 
 ### 4.7 PagoMovilGateway (Implementación)
 
-Usa transacciones para garantizar la inserción atómica del supertipo (`Payment`) y su subtipo (`PagoMovilDetail`). El receiver se resuelve desde `PaymentMethodConfig` (con fallback a config global) y se almacena como **snapshot** en el detail table.
+Usa transacciones para garantizar la inserción atómica del supertipo (`Payment`) y su subtipo (`PagoMovilDetail`). El receiver se resuelve desde `PaymentMethodConfig` cuando se provee `payment_method_config_id`, con **fallback** a `config('payment.pago_movil.*')` cuando no se provee config ID. El receiver se almacena como **snapshot** en el detail table.
 
 ```php
 class PagoMovilGateway implements PaymentGatewayInterface
@@ -736,7 +742,7 @@ class PagoMovilGateway implements PaymentGatewayInterface
                 ['label' => 'Banco', 'value' => $detail->bank],
                 ['label' => 'RIF', 'value' => $detail->rif],
             ],
-            'amount' => $payment->amount_cents / 100,
+            'amount' => $payment->amount_cents,
         ];
     }
 }
@@ -745,10 +751,11 @@ class PagoMovilGateway implements PaymentGatewayInterface
 **Diferencias con el diseño original**:
 - `recordPayment()` recibe `Order` + `array $data` (no `CreatePaymentRequest`)
 - `currency` es `'VES'` (no `'USD'`)
-- Datos de cuenta receptor vienen de `PaymentMethodConfig` (con fallback a config global)
+- Datos de cuenta receptor vienen de `PaymentMethodConfig` (con fallback a `config('payment.pago_movil.*')` cuando no hay config ID)
 - **Snapshot receiver** se almacena en el detail table (inmutable)
 - **Sender fields** se almacenan en el detail table
 - `payment_method_config_id` se guarda en `payments` para referencia
+- `getInstructions()` retorna `amount_cents` directo (sin dividir por 100)
 
 ---
 
@@ -810,7 +817,7 @@ class BankTransferGateway implements PaymentGatewayInterface
                 ['label' => 'Titular', 'value' => $detail->account_holder],
                 ['label' => 'RIF/Cédula', 'value' => $detail->holder_id],
             ],
-            'amount' => $payment->amount_cents / 100,
+            'amount' => $payment->amount_cents,
         ];
     }
 }
@@ -905,10 +912,15 @@ class PaymentService
 
     /**
      * Verifica un pago. Solo admins pueden verificar.
+     * Solo acepta pagos en status pending.
      */
     public function verifyPayment(Payment $payment, int $adminId): void
     {
         DB::transaction(function () use ($payment, $adminId) {
+            if ($payment->status !== PaymentStatus::Pending) {
+                abort(422, 'Only pending payments can be verified.');
+            }
+
             $payment->update([
                 'status' => PaymentStatus::Verified,
                 'verified_by' => $adminId,
@@ -927,6 +939,10 @@ class PaymentService
         int $adminId,
     ): void {
         DB::transaction(function () use ($payment, $reason, $adminId) {
+            if (! in_array($payment->status, [PaymentStatus::Pending, PaymentStatus::Verified])) {
+                abort(422, 'Only pending or verified payments can be cancelled.');
+            }
+
             $payment->update([
                 'status' => PaymentStatus::Cancelled,
                 'cancellation_reason' => $reason,
@@ -937,7 +953,7 @@ class PaymentService
         });
     }
 
-    private function resolveGateway(string $method): PaymentGatewayInterface
+    public function resolveGateway(string $method): PaymentGatewayInterface
     {
         return $this->gateways[$method]
             ?? throw new \InvalidArgumentException("Unknown payment method: {$method}");
@@ -968,8 +984,9 @@ class PaymentService
 - `recordPayment()` es idempotente — retorna pago existente si ya hay uno pending
 - Acepta `paymentMethodConfigId` (nullable para backward compatibility)
 - Acepta `gatewayData` (sender fields específicos del método)
-- `verifyPayment()` recibe `adminId` (int), no `User` + `string $reference`
-- `cancelPayment()` acepta **ambos estados** (pending y verified), no solo verified
+- `verifyPayment()` recibe `adminId` (int), no `User` + `string $reference`. Incluye guard de estado: aborta 422 si el pago no es pending
+- `cancelPayment()` acepta **ambos estados** (pending y verified), no solo verified. Incluye guard de estado: aborta 422 si el pago no es pending ni verified
+- `resolveGateway()` es **public** (no private) — utilizado por el controller para validar el método de pago
 
 ---
 
@@ -1065,64 +1082,59 @@ Request → Formato (digits_between:6,10)
 
 Las páginas frontend manejan el flujo completo de pago desde la perspectiva del tenant y del admin.
 
-#### Tenant: `billing/orders/show.tsx` — Formulario de Reporte de Pago
+#### Tenant: `billing/orders/index.tsx` — Listado de Órdenes
 
-**Propósito**: Permite al tenant reportar un pago existente con sus datos de emisión (sender fields).
+**Propósito**: Muestra todas las órdenes del tenant con su estado y pagos asociados.
+
+**Responsabilidades**:
+- Listado de órdenes con estado (pending/paid/cancelled/expired)
+- Monto total, pagos acumulados, remaining
+- Link al detalle de cada orden
+
+#### Tenant: `billing/orders/show.tsx` — Detalle de Orden + Reporte de Pago
+
+**Propósito**: Permite al tenant ver el detalle de una orden y reportar un pago existente con sus datos de emisión (sender fields).
 
 **Responsabilidades**:
 - Muestra el detalle de la orden (monto total, pagos acumulados, estado)
 - Selector de método de pago (pago_movil / bank_transfer)
 - Selector de cuenta receptora (PaymentMethodConfig filtrado por tipo)
 - **Formulario de sender fields** — varía según método seleccionado:
-  - Pago Móvil: `sender_id` (Cédula/RIF)
+  - Pago Móvil: `sender_bank`, `sender_phone`, `sender_id`, `payment_date`, `concept`
   - Transferencia Bancaria: `sender_bank`, `sender_name`, `sender_id`, `sender_account_number`, `tenant_rif`, `payment_date`, `concept`
 - Envía POST a `POST /billing/orders/{order}/payments`
-- Muestra estado de pagos existentes con `PaymentStatusBadge`
+- Muestra estado de pagos existentes con componentes de detalle (pago_movil_detail / bank_transfer_detail)
+- **Payment details card** — muestra snapshot receiver + sender report para pagos existentes
 
-**Sender fields — Estado del formulario**:
-```typescript
-// Pago Móvil
-const [senderId, setSenderId] = useState('');
+**Eager Loading**: El controller `Tenant\PaymentController::show()` eager-loads `payments.pagoMovilDetail`, `payments.bankTransferDetail`, `plan`, `resource`, y `paymentMethodConfigs`.
 
-// Transferencia Bancaria
-const [senderBank, setSenderBank] = useState('');
-const [senderName, setSenderName] = useState('');
-const [senderId, setSenderId] = useState('');
-const [tenantRif, setTenantRif] = useState('');
-const [paymentDate, setPaymentDate] = useState('');
-const [concept, setConcept] = useState('');
-```
+#### Tenant: `billing/history.tsx` — Historial de Facturación
 
-**Condición de deshabilitado**: El botón "Reportar Pago" se deshabilita cuando la orden no está en status `pending`.
+**Propósito**: Historial completo de transacciones del tenant.
 
-#### Tenant: `billing/payment.tsx` — Estado del Pago
+#### Landlord Admin: `admin/orders/show.tsx` — Detalle de Orden + Verificación de Pago
 
-**Propósito**: Muestra el estado actual del pago, instrucciones de pago, y detalle de sender para pagos existentes.
+**Propósito**: Vista completa de la orden para el admin. Desde aquí se verifican y cancelan pagos.
 
 **Responsabilidades**:
-- Instrucciones de pago (cuenta receptora desde snapshot)
-- Estado del pago (pending / verified / cancelled)
-- **Detalle de sender** — sección que muestra los datos del tenant que reportó el pago:
-  - Pago Móvil: banco emisor, teléfono, cédula/RIF, fecha, concepto
-  - Transferencia Bancaria: banco emisor, nombre del titular, cédula/RIF, RIF del cliente, fecha, concepto
-- Fecha formateada con `formatDate()` (no ISO raw)
+- Información core de la orden (tenant, plan/resource, monto total, pagos acumulados)
+- **Payment Details Card** — para cada pago asociado:
+  - Información core del pago (monto, moneda, método, estado, referencia)
+  - **Snapshot Receiver** — datos de la cuenta receptora al momento del pago:
+    - Pago Móvil: teléfono, banco, RIF
+    - Transferencia Bancaria: banco, cuenta, titular, RIF
+  - **Sender Report** — datos del tenant que reportó el pago:
+    - Pago Móvil: banco emisor, teléfono, cédula/RIF, fecha, concepto
+    - Transferencia Bancaria: banco emisor, nombre del titular, cédula/RIF, RIF del cliente, fecha, concepto
+- **Acciones**: Verificar (POST) / Cancelar (con razón, POST)
+- Usa `verify` y `cancel` de `@/routes/landlord/payments`
+- Modal de confirmación para cancelación con campo de razón
 
-#### Landlord Admin: `admin/payments/show.tsx` — Detalle de Pago
+#### Landlord Admin: `admin/orders/index.tsx` — Listado de Órdenes
 
-**Propósito**: Vista completa del pago para el admin que verifica. Muestra snapshot receiver + sender report.
+**Propósito**: Listado de todas las órdenes de todos los tenants para el landlord admin.
 
-**Responsabilidades**:
-- Información core del pago (monto, moneda, método, estado, referencia)
-- **Snapshot Receiver** — datos de la cuenta receptora al momento del pago:
-  - Pago Móvil: teléfono, banco, RIF
-  - Transferencia Bancaria: banco, cuenta, titular, RIF
-- **Sender Report** — datos del tenant que reportó el pago:
-  - Pago Móvil: banco emisor, teléfono, cédula/RIF, fecha, concepto
-  - Transferencia Bancaria: banco emisor, nombre del titular, cédula/RIF, RIF del cliente, fecha, concepto
-- Acciones: Verificar / Cancelar (con razón)
-- Fecha formateada con `formatDate()` (no ISO raw)
-
-**Eager Loading requerido**: El controller `Landlord\PaymentController::show()` debe eager-load `pagoMovilDetail` y `bankTransferDetail` para evitar lazy loading.
+**Eager Loading**: El controller `Landlord\OrderController` eager-loads relationships necesarias para el listado.
 
 ---
 
@@ -1374,9 +1386,9 @@ Durante la implementación y testing manual se descubrieron los siguientes issue
 |-------|------------|-----|
 | **5 test failures pre-existentes** | `PagoMovilDetailFactory` no incluía `sender_bank`, `sender_phone`, `payment_date` — campos NOT NULL agregados por migración `2026_06_13_000004` | Actualizar factory con los 3 campos faltantes |
 | **sender_id faltante en formulario de reporte** | `billing/orders/show.tsx` no tenía `senderId` state ni input field para pago_móvil | Agregar state, input, POST data, y disabled condition |
-| **Admin payments show sin BankTransferDetail** | `Landlord\PaymentController::show()` no eager-loadaba `bankTransferDetail`, y el frontend no tenía tipo ni UI para el detalle | Agregar eager loading + tipo `BankTransferDetail` + card completa con Cuenta Destino + Datos del Emisor + Referencia |
-| **Fechas en formato ISO raw** | `admin/payments/show.tsx` y `billing/payment.tsx` mostraban `created_at` como string ISO sin formatear | Reemplazar con `formatDate()` de `@/lib/utils` |
-| **Billing/payment.tsx sin secciones de sender** | La página de estado del pago no mostraba los datos del emisor para pagos existentes | Agregar secciones condicionales para ambos métodos (pago_móvil y bank_transfer) |
+| **Admin orders show sin BankTransferDetail** | `Landlord\OrderController` (antes `Landlord\PaymentController`) no eager-loadaba `bankTransferDetail`, y el frontend no tenía tipo ni UI para el detalle | Agregar eager loading + tipo `BankTransferDetail` + card completa con Cuenta Destino + Datos del Emisor + Referencia |
+| **Fechas en formato ISO raw** | `admin/orders/show.tsx` y `billing/orders/show.tsx` mostraban `created_at` como string ISO sin formatear | Reemplazar con `formatDate()` de `@/lib/utils` |
+| **Billing/orders/show.tsx sin secciones de sender** | La página de detalle de orden no mostraba los datos del emisor para pagos existentes | Agregar secciones condicionales para ambos métodos (pago_móvil y bank_transfer) |
 | **Billing/orders/show.tsx sin sender fields para bank_transfer** | El formulario de reporte no incluía campos de emisor para transferencia bancaria | Agregar `senderBank`, `senderName`, `senderId`, `tenantRif`, `paymentDate`, `concept` + submit + disabled |
 
 **Lección aprendida**: Los factories de tests deben actualizarse cuando se agregan columnas NOT NULL a tablas existentes. Siempre verificar que los factories incluyan todos los campos requeridos después de una migración.
@@ -1407,17 +1419,20 @@ Durante la implementación y testing manual se descubrieron los siguientes issue
 - UNIQUE constraint en transaction_id (defensa a nivel DB)
 - **Frontend — Tenant billing:**
   - `billing/orders/index.tsx` — listado de órdenes del tenant
-  - `billing/orders/show.tsx` — detalle de orden + formulario de reporte de pago (sender fields para ambos métodos)
-  - `billing/payment.tsx` — estado del pago, instrucciones, detalle de sender para ambos métodos
+  - `billing/orders/show.tsx` — detalle de orden + formulario de reporte de pago (sender fields para ambos métodos) + payment details cards
+  - `billing/history.tsx` — historial de facturación del tenant
 - **Frontend — Landlord admin:**
-  - `admin/payments/show.tsx` — detalle de pago con snapshot receiver + sender report + BankTransferDetail completo
+  - `admin/orders/index.tsx` — listado de órdenes de todos los tenants
+  - `admin/orders/show.tsx` — detalle de orden con verificación/cancelación de pagos + snapshot receiver + sender report
 - Frontend: selector de método de pago, componentes de instrucciones por tipo
-- Config: config/payment.php (gateway, expiry, pago_movil settings)
+- Config: config/payment.php (gateway, expiry, pago_movil settings — pendiente migración a system_configs)
 
-### Excluido (Phase 2B+)
+### Excluido (Phase 2B — Conciliación Automática)
 - PayPal, Stripe u otros métodos de pago internacionales
 - Reembolsos
-- Reconciliación bancaria automatizada
+- **Reconciliación bancaria automatizada** (ver `docs/plan-conciliacion-automatica.md`)
+- **`cancellation_type` enum + migración** (parte del plan de conciliación)
+- **Evento `PaymentCancelled` + listener `NotifyPaymentRejected`** (parte del plan de conciliación)
 - Proration
 - Reintentos automáticos
 - Webhooks de confirmación bancaria
@@ -1454,10 +1469,9 @@ Durante la implementación y testing manual se descubrieron los siguientes issue
 - [x] Validación: solo se aceptan pagos para órdenes en status pending
 - [x] UNIQUE constraint en transaction_id previene duplicados a nivel DB
 - [x] Frontend: selector de método de pago muestra cuentas activas filtradas por tipo
-- [x] Frontend: billing/orders/show.tsx muestra sender fields para ambos métodos
-- [x] Frontend: billing/payment.tsx muestra detalle de sender para ambos métodos
-- [x] Frontend: admin/payments/show.tsx muestra BankTransferDetail completo con sender fields
+- [x] Frontend: billing/orders/show.tsx muestra sender fields y payment details para ambos métodos
+- [x] Frontend: admin/orders/show.tsx muestra verificación/cancelación de pagos con snapshot receiver + sender report
 - [x] Frontend: fechas formateadas con formatDate() en todas las páginas de pago
-- [x] Todos los tests pasan (68/68)
+- [x] Todos los tests pasan
 - [x] Pint formatting limpio
 - [x] Todo funciona manteniendo el aislamiento del tenant (Base de datos Landlord)
