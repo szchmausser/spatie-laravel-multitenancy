@@ -163,6 +163,77 @@ test('assign role returns 404 for nonexistent user', function () {
         ->assertNotFound();
 });
 
+// --- Assign Role Edge Cases ---
+
+test('user cannot change their own role', function () {
+    $owner = User::factory()->createQuietly();
+    $owner->assignRole('owner');
+
+    $this->actingAs($owner)
+        ->post(route('settings.users.assignRole', $owner), ['role' => 'member'])
+        ->assertSessionHasErrors('role');
+
+    expect($owner->fresh()->hasRole('owner'))->toBeTrue();
+});
+
+test('owner role cannot be changed via assignRole', function () {
+    $owner = User::factory()->createQuietly();
+    $owner->assignRole('owner');
+    $target = User::factory()->createQuietly();
+    $target->assignRole('owner');
+
+    $this->actingAs($owner)
+        ->post(route('settings.users.assignRole', $target), ['role' => 'member'])
+        ->assertSessionHasErrors('role');
+
+    expect($target->fresh()->hasRole('owner'))->toBeTrue();
+});
+
+test('tenant-admin cannot change role of another tenant-admin via assignRole', function () {
+    $admin = User::factory()->createQuietly();
+    $admin->assignRole('tenant-admin');
+    $target = User::factory()->createQuietly();
+    $target->assignRole('tenant-admin');
+
+    $this->actingAs($admin)
+        ->post(route('settings.users.assignRole', $target), ['role' => 'member'])
+        ->assertSessionHasErrors('role');
+
+    expect($target->fresh()->hasRole('tenant-admin'))->toBeTrue();
+});
+
+test('assignRole requires role input', function () {
+    $owner = User::factory()->createQuietly();
+    $owner->assignRole('owner');
+    $target = User::factory()->createQuietly();
+
+    $this->actingAs($owner)
+        ->post(route('settings.users.assignRole', $target), [])
+        ->assertSessionHasErrors('role');
+});
+
+test('owner role cannot be assigned via assignRole', function () {
+    $owner = User::factory()->createQuietly();
+    $owner->assignRole('owner');
+    $target = User::factory()->createQuietly();
+
+    $this->actingAs($owner)
+        ->post(route('settings.users.assignRole', $target), ['role' => 'owner'])
+        ->assertSessionHasErrors('role');
+
+    expect($target->fresh()->hasRole('owner'))->toBeFalse();
+});
+
+test('assignRole rejects non-existent role', function () {
+    $owner = User::factory()->createQuietly();
+    $owner->assignRole('owner');
+    $target = User::factory()->createQuietly();
+
+    $this->actingAs($owner)
+        ->post(route('settings.users.assignRole', $target), ['role' => 'non-existent-role'])
+        ->assertSessionHasErrors('role');
+});
+
 // --- Remove Role ---
 
 test('owner can remove role from user', function () {

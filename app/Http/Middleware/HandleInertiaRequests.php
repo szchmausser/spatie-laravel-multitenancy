@@ -9,7 +9,6 @@ use App\Models\Tenant;
 use App\Models\User;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Inertia\Middleware;
 
@@ -220,29 +219,15 @@ class HandleInertiaRequests extends Middleware
 
         try {
             if (! Schema::connection($connection)->hasTable('roles')) {
-                \Log::debug('resolveRoles: roles table missing on connection: '.$connection);
-
                 return [];
             }
-        } catch (\Throwable $e) {
-            \Log::debug('resolveRoles: schema check failed', ['connection' => $connection, 'error' => $e->getMessage()]);
-
+        } catch (\Throwable) {
             return [];
         }
 
         try {
-            $roles = $user->roles?->pluck('name')->toArray() ?? [];
-            \Log::debug('resolveRoles result', [
-                'connection' => $connection,
-                'roles' => $roles,
-                'user_id' => $user->id,
-                'user_email' => $user->email,
-            ]);
-
-            return $roles;
-        } catch (\Throwable $e) {
-            \Log::debug('resolveRoles: roles query failed', ['error' => $e->getMessage()]);
-
+            return $user->roles?->pluck('name')->toArray() ?? [];
+        } catch (\Throwable) {
             return [];
         }
     }

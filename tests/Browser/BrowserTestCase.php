@@ -4,6 +4,7 @@ namespace Tests\Browser;
 
 use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Foundation\Testing\RefreshDatabaseState;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 /**
@@ -22,6 +23,15 @@ class BrowserTestCase extends TestCase
     {
         if (! RefreshDatabaseState::$migrated) {
             $this->artisan('migrate:fresh', $this->migrateFreshUsing());
+
+            // Purge the landlord connection to reset its schema cache.
+            // Since landlord and default share the same physical database,
+            // migrate:fresh drops ALL tables. The landlord connection's
+            // cached schema state is stale and must be reset before running
+            // landlord migrations — otherwise Schema::hasTable('migrations')
+            // returns false and the migrate command tries to CREATE it again,
+            // causing a "Duplicate table" error.
+            DB::purge('landlord');
 
             $this->artisan('migrate', [
                 '--path' => 'database/migrations/landlord',

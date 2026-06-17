@@ -188,9 +188,9 @@ export default function UsersShow({
                                     {allRoles
                                         .filter((r) => r.name !== 'owner')
                                         .map((role) => (
-                                            <SelectItem key={role.id} value={role.name}>
-                                                {role.name}
-                                            </SelectItem>
+                                <SelectItem key={role.id} value={role.name} data-testid={`role-option-${role.name}`}>
+                                    {role.name}
+                                </SelectItem>
                                         ))}
                                 </SelectContent>
                             </Select>

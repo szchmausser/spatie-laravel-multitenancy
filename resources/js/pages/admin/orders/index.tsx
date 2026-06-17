@@ -86,6 +86,7 @@ export default function OrdersPage({ orders }: OrdersPageProps) {
                         <div className="flex items-center gap-2">
                             <Search className="h-4 w-4 text-muted-foreground" />
                             <Input
+                                data-testid="orders-search"
                                 placeholder="Buscar por tenant, plan o ID..."
                                 value={filter}
                                 onChange={(e) => setFilter(e.target.value)}
