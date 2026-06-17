@@ -42,6 +42,7 @@ class PlanChangeController extends Controller
         abort_unless($request->user()?->can('change-plan'), 403);
 
         $tenant = Tenant::current();
+        $tenant?->load('subscription.plan');
         $currentPlan = $tenant?->subscription?->plan;
         $subscription = $tenant?->subscription;
 

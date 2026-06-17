@@ -298,7 +298,7 @@ test('users delete flow removes user', function () {
             ->click("[data-testid=\"delete-user-btn-{$deleteUser->id}\"]")
             ->waitForText('Are you sure')
             ->click("[data-testid=\"confirm-delete-user-btn-{$deleteUser->id}\"]")
-            ->wait(1)
+            ->waitForText('Users')
             ->assertDontSee('To Be Deleted')
             ->assertNoJavaScriptErrors();
     } finally {

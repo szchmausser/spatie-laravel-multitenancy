@@ -9,15 +9,15 @@ use Tests\Browser\Concerns\TenantConnectionHelpers;
 uses(TenantConnectionHelpers::class);
 
 /**
- * Browser tests for the settings profile page.
+ * Browser tests for the login flow.
  *
- * Covers:
- *   - Profile edit shows current user data
- *   - Profile update flow
+ * Tests the actual login UI without actingAs() to verify that:
+ *   - Valid credentials grant access to the dashboard
+ *   - Invalid credentials show error messages
+ *   - The complete authentication flow works end-to-end
  *
- * Profile settings are shared routes (not tenant-scoped) but
- * used by tenant users. The user is created on the tenant
- * connection for consistency with other tenant browser tests.
+ * These tests are CRITICAL — they verify the entry point to the app.
+ * All other tests use actingAs() which bypasses the login UI.
  */
 beforeEach(function () {
     $testDatabase = config('database.connections.landlord.database');
@@ -35,7 +35,7 @@ beforeEach(function () {
     DB::purge('tenant');
 });
 
-test('profile edit shows current user data', function () {
+test('tenant user can login with valid credentials', function () {
     $testDatabase = config('database.connections.landlord.database');
     $tenant = Tenant::factory()->createQuietly([
         'domain' => '127.0.0.1',
@@ -46,29 +46,32 @@ test('profile edit shows current user data', function () {
 
     try {
         $user = User::on('tenant')->create([
-            'name' => 'Profile User',
-            'email' => 'profile@tenant.test',
-            'password' => bcrypt('password'),
+            'name' => 'Login Test User',
+            'email' => 'login@tenant.test',
+            'password' => bcrypt('password123'),
             'email_verified_at' => now(),
         ]);
         $user->assignRole('tenant-admin');
 
+        // makeCurrent() is needed so post-login redirect to /dashboard works
         $tenant->makeCurrent();
-        $this->actingAs($user)
-            ->visit('/settings/profile')
-            ->waitForText('Profile settings')
-            ->assertSee('Profile settings')
-            ->assertSee('Update your name and email address')
-            ->assertValue('input[name="name"]', 'Profile User')
-            ->assertValue('input[name="email"]', 'profile@tenant.test')
-            ->assertVisible('[data-testid="update-profile-button"]')
+
+        // ⚠️ NO usar actingAs() — este test DEBE usar la UI real
+        $this->visit('/login')
+            ->waitForText('Email address')
+            ->type('input[name="email"]', 'login@tenant.test')
+            ->type('input[name="password"]', 'password123')
+            ->click('[data-test="login-button"]')
+            ->waitForText('Dashboard')
+            ->assertPathIs('/dashboard')
+            ->assertSee('Login Test User')
             ->assertNoJavaScriptErrors();
     } finally {
         $this->cleanupTenantConnection($previousDefault);
     }
 });
 
-test('profile update flow', function () {
+test('login shows error with invalid credentials', function () {
     $testDatabase = config('database.connections.landlord.database');
     $tenant = Tenant::factory()->createQuietly([
         'domain' => '127.0.0.1',
@@ -78,23 +81,22 @@ test('profile update flow', function () {
     $previousDefault = $this->setupTenantConnectionForTest();
 
     try {
-        $user = User::on('tenant')->create([
-            'name' => 'Update Profile',
-            'email' => 'update-profile@tenant.test',
-            'password' => bcrypt('password'),
+        User::on('tenant')->create([
+            'name' => 'Valid User',
+            'email' => 'valid@tenant.test',
+            'password' => bcrypt('correctpassword'),
             'email_verified_at' => now(),
         ]);
-        $user->assignRole('tenant-admin');
 
-        $tenant->makeCurrent();
-        $this->actingAs($user)
-            ->visit('/settings/profile')
-            ->waitForText('Profile settings')
-            ->type('input[name="name"]', 'Updated Profile Name')
-            ->type('input[name="email"]', 'updated@tenant.test')
-            ->click('[data-testid="update-profile-button"]')
-            ->waitForText('Profile settings')
-            ->assertSee('Profile settings')
+        // Login is a public route — no makeCurrent() needed
+        $this->visit('/login')
+            ->waitForText('Email address')
+            ->type('input[name="email"]', 'valid@tenant.test')
+            ->type('input[name="password"]', 'wrongpassword')
+            ->click('[data-test="login-button"]')
+            ->waitForText('These credentials do not match our records')
+            ->assertSee('These credentials do not match our records')
+            ->assertPathIs('/login')
             ->assertNoJavaScriptErrors();
     } finally {
         $this->cleanupTenantConnection($previousDefault);

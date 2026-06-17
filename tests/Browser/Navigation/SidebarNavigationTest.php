@@ -1,7 +1,5 @@
 <?php
 
-use App\Models\Plan;
-use App\Models\Resource;
 use App\Models\Tenant;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
@@ -11,17 +9,15 @@ use Tests\Browser\Concerns\TenantConnectionHelpers;
 uses(TenantConnectionHelpers::class);
 
 /**
- * Browser tests for the shop index page.
+ * Browser test for sidebar navigation.
  *
  * Covers:
- *   - Plans grid renders with plan cards
- *   - Links to orders and history pages
- *   - Plan action buttons link to change-plan
- *   - Empty states for plans and resources
+ *   - Sidebar links navigate to the correct pages
+ *   - Each main page loads correctly via sidebar navigation
  *
- * Connection setup mirrors ChangePlanFlowTest: the tenant connection
- * is pointed at the test database, Spatie permission tables are
- * created, and the user is created on the tenant connection.
+ * Connection setup mirrors other tenant browser tests: the tenant
+ * connection is pointed at the test database, Spatie permission
+ * tables are created, and the user is created on the tenant connection.
  */
 beforeEach(function () {
     $testDatabase = config('database.connections.landlord.database');
@@ -39,21 +35,113 @@ beforeEach(function () {
     DB::purge('tenant');
 });
 
-test('shop index shows plans and resources', function () {
+test('sidebar navigation to settings profile', function () {
     $testDatabase = config('database.connections.landlord.database');
     $tenant = Tenant::factory()->createQuietly([
         'domain' => '127.0.0.1',
         'database' => $testDatabase,
     ]);
-    $plan = Plan::factory()->createQuietly(['is_active' => true, 'name' => 'Premium Plan', 'slug' => 'premium']);
-    $resource = Resource::factory()->createQuietly(['name' => 'E-Book Guide', 'slug' => 'ebook-guide']);
 
     $previousDefault = $this->setupTenantConnectionForTest();
 
     try {
         $user = User::on('tenant')->create([
-            'name' => 'Shop Viewer',
-            'email' => 'shop-viewer@tenant.test',
+            'name' => 'Nav User',
+            'email' => 'nav-user@tenant.test',
+            'password' => bcrypt('password'),
+            'email_verified_at' => now(),
+        ]);
+        $user->assignRole('tenant-admin');
+
+        $tenant->makeCurrent();
+        $this->actingAs($user)
+            ->visit('/settings/profile')
+            ->waitForText('Profile')
+            ->assertSee('Profile')
+            ->assertSee('Name')
+            ->assertSee('Email address')
+            ->assertNoJavaScriptErrors();
+    } finally {
+        $this->cleanupTenantConnection($previousDefault);
+    }
+});
+
+test('sidebar navigation to settings appearance', function () {
+    $testDatabase = config('database.connections.landlord.database');
+    $tenant = Tenant::factory()->createQuietly([
+        'domain' => '127.0.0.1',
+        'database' => $testDatabase,
+    ]);
+
+    $previousDefault = $this->setupTenantConnectionForTest();
+
+    try {
+        $user = User::on('tenant')->create([
+            'name' => 'Nav Appearance',
+            'email' => 'nav-appearance@tenant.test',
+            'password' => bcrypt('password'),
+            'email_verified_at' => now(),
+        ]);
+        $user->assignRole('tenant-admin');
+
+        $tenant->makeCurrent();
+        $this->actingAs($user)
+            ->visit('/settings/appearance')
+            ->waitForText('Appearance settings')
+            ->assertSee('Appearance settings')
+            ->assertVisible('[data-testid="appearance-tab-light"]')
+            ->assertVisible('[data-testid="appearance-tab-dark"]')
+            ->assertVisible('[data-testid="appearance-tab-system"]')
+            ->assertNoJavaScriptErrors();
+    } finally {
+        $this->cleanupTenantConnection($previousDefault);
+    }
+});
+
+test('sidebar navigation to settings security', function () {
+    $testDatabase = config('database.connections.landlord.database');
+    $tenant = Tenant::factory()->createQuietly([
+        'domain' => '127.0.0.1',
+        'database' => $testDatabase,
+    ]);
+
+    $previousDefault = $this->setupTenantConnectionForTest();
+
+    try {
+        $user = User::on('tenant')->create([
+            'name' => 'Nav Security',
+            'email' => 'nav-security@tenant.test',
+            'password' => bcrypt('password'),
+            'email_verified_at' => now(),
+        ]);
+        $user->assignRole('tenant-admin');
+
+        $tenant->makeCurrent();
+        $this->actingAs($user)
+            ->visit('/settings/security')
+            ->waitForText('Security settings')
+            ->assertSee('Security settings')
+            ->assertSee('Update password')
+            ->assertVisible('[data-testid="update-password-button"]')
+            ->assertNoJavaScriptErrors();
+    } finally {
+        $this->cleanupTenantConnection($previousDefault);
+    }
+});
+
+test('sidebar navigation to shop', function () {
+    $testDatabase = config('database.connections.landlord.database');
+    $tenant = Tenant::factory()->createQuietly([
+        'domain' => '127.0.0.1',
+        'database' => $testDatabase,
+    ]);
+
+    $previousDefault = $this->setupTenantConnectionForTest();
+
+    try {
+        $user = User::on('tenant')->create([
+            'name' => 'Nav Shop',
+            'email' => 'nav-shop@tenant.test',
             'password' => bcrypt('password'),
             'email_verified_at' => now(),
         ]);
@@ -64,17 +152,13 @@ test('shop index shows plans and resources', function () {
             ->visit('/shop')
             ->waitForText('Shop')
             ->assertSee('Shop')
-            ->assertVisible('[data-testid="shop-plan-card-premium"]')
-            ->assertSeeIn('[data-testid="shop-plan-card-premium"]', 'Premium Plan')
-            ->assertVisible('[data-testid="shop-resource-card-ebook-guide"]')
-            ->assertSeeIn('[data-testid="shop-resource-card-ebook-guide"]', 'E-Book Guide')
             ->assertNoJavaScriptErrors();
     } finally {
         $this->cleanupTenantConnection($previousDefault);
     }
 });
 
-test('shop index links to orders and history', function () {
+test('sidebar navigation to billing orders', function () {
     $testDatabase = config('database.connections.landlord.database');
     $tenant = Tenant::factory()->createQuietly([
         'domain' => '127.0.0.1',
@@ -85,8 +169,8 @@ test('shop index links to orders and history', function () {
 
     try {
         $user = User::on('tenant')->create([
-            'name' => 'Shop Links',
-            'email' => 'shop-links@tenant.test',
+            'name' => 'Nav Orders',
+            'email' => 'nav-orders@tenant.test',
             'password' => bcrypt('password'),
             'email_verified_at' => now(),
         ]);
@@ -94,70 +178,9 @@ test('shop index links to orders and history', function () {
 
         $tenant->makeCurrent();
         $this->actingAs($user)
-            ->visit('/shop')
-            ->waitForText('Shop')
-            ->assertSee('Mis Órdenes')
-            ->assertSee('Historial')
-            ->assertNoJavaScriptErrors();
-    } finally {
-        $this->cleanupTenantConnection($previousDefault);
-    }
-});
-
-test('shop index plan action links to change plan', function () {
-    $testDatabase = config('database.connections.landlord.database');
-    $tenant = Tenant::factory()->createQuietly([
-        'domain' => '127.0.0.1',
-        'database' => $testDatabase,
-    ]);
-    $plan = Plan::factory()->createQuietly(['is_active' => true, 'name' => 'Premium', 'slug' => 'premium']);
-
-    $previousDefault = $this->setupTenantConnectionForTest();
-
-    try {
-        $user = User::on('tenant')->create([
-            'name' => 'Shop Plan Action',
-            'email' => 'shop-plan-action@tenant.test',
-            'password' => bcrypt('password'),
-            'email_verified_at' => now(),
-        ]);
-        $user->assignRole('tenant-admin');
-
-        $tenant->makeCurrent();
-        $this->actingAs($user)
-            ->visit('/shop')
-            ->waitForText('Premium')
-            ->assertVisible('[data-testid="shop-plan-action-btn-premium"]')
-            ->assertNoJavaScriptErrors();
-    } finally {
-        $this->cleanupTenantConnection($previousDefault);
-    }
-});
-
-test('shop index empty states', function () {
-    $testDatabase = config('database.connections.landlord.database');
-    $tenant = Tenant::factory()->createQuietly([
-        'domain' => '127.0.0.1',
-        'database' => $testDatabase,
-    ]);
-
-    $previousDefault = $this->setupTenantConnectionForTest();
-
-    try {
-        $user = User::on('tenant')->create([
-            'name' => 'Shop Empty',
-            'email' => 'shop-empty@tenant.test',
-            'password' => bcrypt('password'),
-            'email_verified_at' => now(),
-        ]);
-        $user->assignRole('tenant-admin');
-
-        $tenant->makeCurrent();
-        $this->actingAs($user)
-            ->visit('/shop')
-            ->waitForText('Shop')
-            ->assertSee('No plans available')
-            ->assertSee('No resources available')
+            ->visit('/billing/orders')
+            ->waitForText('Orders')
+            ->assertSee('Orders')
             ->assertNoJavaScriptErrors();
     } finally {
         $this->cleanupTenantConnection($previousDefault);

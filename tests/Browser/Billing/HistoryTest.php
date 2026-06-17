@@ -36,7 +36,7 @@ beforeEach(function () {
     DB::purge('tenant');
 });
 
-test('history shows subscription history page', function () {
+test('history shows subscription history page with events', function () {
     $testDatabase = config('database.connections.landlord.database');
     $tenant = Tenant::factory()->createQuietly([
         'domain' => '127.0.0.1',
@@ -54,12 +54,29 @@ test('history shows subscription history page', function () {
         ]);
         $user->assignRole('tenant-admin');
 
+        // Create subscription with history
+        $plan = \App\Models\Plan::factory()->create(['name' => 'Test Plan']);
+        $subscription = $tenant->subscription()->create([
+            'plan_id' => $plan->id,
+            'status' => 'active',
+        ]);
+
+        \App\Models\SubscriptionHistory::create([
+            'subscription_id' => $subscription->id,
+            'tenant_id' => $tenant->id,
+            'event_type' => 'subscription_created',
+            'actor_type' => 'tenant',
+            'new_plan_name' => 'Test Plan',
+            'new_status' => 'active',
+        ]);
+
         $tenant->makeCurrent();
 
         $this->actingAs($user)
             ->visit('/billing/history')
             ->waitForText('Subscription History')
-            ->assertSee('Subscription History')
+            ->assertSee('Created')
+            ->assertSee('Test Plan')
             ->assertNoJavaScriptErrors();
     } finally {
         $this->cleanupTenantConnection($previousDefault);
@@ -114,13 +131,41 @@ test('history page loads correctly with content', function () {
         ]);
         $user->assignRole('tenant-admin');
 
+        // Create subscription and history with specific content to verify
+        $plan = \App\Models\Plan::factory()->create(['name' => 'Pro Plan', 'price_cents' => 5000]);
+        $subscription = $tenant->subscription()->create([
+            'plan_id' => $plan->id,
+            'status' => 'active',
+        ]);
+
+        $historyEntry = \App\Models\SubscriptionHistory::create([
+            'subscription_id' => $subscription->id,
+            'tenant_id' => $tenant->id,
+            'event_type' => 'subscription_created',
+            'actor_type' => 'tenant',
+            'new_plan_name' => 'Pro Plan',
+            'new_plan_price_cents' => 5000,
+            'new_status' => 'active',
+            'currency' => 'USD',
+            'amount_cents' => 5000,
+            'created_at' => '2025-06-15 10:30:00',
+        ]);
+
         $tenant->makeCurrent();
 
         $this->actingAs($user)
             ->visit('/billing/history')
             ->waitForText('Subscription History')
-            ->assertSee('Subscription History')
-            ->assertSee('Back')
+            // Verify the history list container exists
+            ->assertVisible('[data-testid="history-list"]')
+            // Verify the specific event type badge is rendered
+            ->assertSee('Created')
+            // Verify the plan name is shown
+            ->assertSee('Pro Plan')
+            // Verify the history entry container is rendered
+            ->assertVisible("[data-testid=\"history-entry-{$historyEntry->id}\"]")
+            // Verify the event type badge within the entry
+            ->assertVisible("[data-testid=\"history-event-type-{$historyEntry->id}\"]")
             ->assertNoJavaScriptErrors();
     } finally {
         $this->cleanupTenantConnection($previousDefault);

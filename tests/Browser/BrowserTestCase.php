@@ -42,13 +42,23 @@ class BrowserTestCase extends TestCase
         parent::setUp();
 
         // Clean up between tests since we can't use database transactions.
-        // Only delete from the tables that browser tests actually write to.
+        // Delete from ALL tables that browser tests write to, in the correct
+        // order to respect foreign key constraints (child tables first).
         // Landlord model uses the `users` table on the landlord connection.
         $landlord = $this->app->make('db')->connection('landlord');
-        $landlord->table('tenants')->delete();
-        $landlord->table('users')->delete();
-        $landlord->table('resources')->delete();
+
+        // Child tables first (foreign keys reference parent tables)
+        $landlord->table('subscription_history')->delete();
+        $landlord->table('payments')->delete();
+        $landlord->table('orders')->delete();
+        $landlord->table('payment_method_configs')->delete();
+        $landlord->table('entitlements')->delete();
+
+        // Parent tables
         $landlord->table('subscriptions')->delete();
+        $landlord->table('tenants')->delete();
+        $landlord->table('resources')->delete();
         $landlord->table('plans')->delete();
+        $landlord->table('users')->delete();
     }
 }

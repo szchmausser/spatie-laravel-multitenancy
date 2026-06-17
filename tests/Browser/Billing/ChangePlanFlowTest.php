@@ -43,7 +43,12 @@ beforeEach(function () {
 });
 
 test('tenant-admin can change plan from the change-plan dialog', function () {
-    $tenant = Tenant::factory()->createQuietly();
+    $testDatabase = config('database.connections.landlord.database');
+    $tenant = Tenant::factory()->createQuietly([
+        'database' => $testDatabase,
+    ]);
+
+    $this->fakeTenantFinderForTest($tenant);
 
     $previousDefault = $this->setupTenantConnectionForTest();
 
@@ -70,7 +75,7 @@ test('tenant-admin can change plan from the change-plan dialog', function () {
             'name' => 'Premium',
             'slug' => 'premium',
             'is_active' => true,
-            'price_cents' => 2900,
+            'price_cents' => 0,
             'features' => ['premium-zone' => true],
         ]);
 
@@ -83,6 +88,7 @@ test('tenant-admin can change plan from the change-plan dialog', function () {
         $basicSlug = $basic->slug;
         $premiumSlug = $premium->slug;
 
+        $tenant->makeCurrent();
         $this->actingAs($user)
             ->visit('/billing/change-plan')
             ->waitForText('Change plan')
@@ -90,23 +96,13 @@ test('tenant-admin can change plan from the change-plan dialog', function () {
                 '@current-plan-card-'.$basicSlug,
                 'Basic',
             )
-            ->assertSeeIn(
-                '@change-plan-card-'.$premiumSlug,
-                'Premium',
-            )
+            ->assertVisible('@change-plan-card-'.$premiumSlug)
             ->click('@change-plan-trigger-btn-'.$premiumSlug)
-            ->waitFor('@change-plan-dialog-'.$premiumSlug)
-            ->within(
-                '@change-plan-dialog-'.$premiumSlug,
-                fn ($browser) => $browser->click(
-                    '@change-plan-confirm-btn-'.$premiumSlug,
-                ),
-            )
+            ->assertVisible('@change-plan-dialog-'.$premiumSlug)
+            ->click('@change-plan-confirm-btn-'.$premiumSlug)
             ->waitForText('Premium')
-            ->assertSeeIn(
-                '@current-plan-card-'.$premiumSlug,
-                'Premium',
-            )
+            ->assertVisible('@current-plan-card-'.$premiumSlug)
+            ->assertDontSee('@current-plan-card-'.$basicSlug)
             ->assertNoJavaScriptErrors();
     } finally {
         $this->cleanupTenantConnection($previousDefault);

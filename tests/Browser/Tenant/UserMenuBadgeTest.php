@@ -59,10 +59,13 @@ beforeEach(function () {
 });
 
 test('admin badge is visible in user menu for tenant-admin', function () {
+    $testDatabase = config('database.connections.landlord.database');
+
     // Domain MUST match the test server host (127.0.0.1) so the
     // DomainTenantFinder can resolve the tenant from the HTTP request.
     $tenant = Tenant::factory()->createQuietly([
         'domain' => '127.0.0.1',
+        'database' => $testDatabase,
     ]);
 
     $previousDefault = $this->setupTenantConnectionForTest();
@@ -78,21 +81,24 @@ test('admin badge is visible in user menu for tenant-admin', function () {
         $user->assignRole('tenant-admin');
         app(PermissionRegistrar::class)->forgetCachedPermissions();
 
+        $tenant->makeCurrent();
         $this->actingAs($user)
             ->visit('/dashboard')
             ->waitForText($user->name)
             ->click('@user-menu-trigger')
-            ->waitFor('[role="menu"]')
-            ->assertVisible('@user-role-badge')
-            ->assertSeeIn('@user-role-badge', 'Admin');
+            ->assertVisible('[role="menu"]')
+            ->assertVisible('@user-meta')
+            ->assertSeeIn('@user-meta', 'Admin');
     } finally {
         $this->cleanupTenantConnection($previousDefault);
     }
 });
 
 test('admin badge is not visible in user menu for non-admin user', function () {
+    $testDatabase = config('database.connections.landlord.database');
     $tenant = Tenant::factory()->createQuietly([
         'domain' => '127.0.0.1',
+        'database' => $testDatabase,
     ]);
 
     $previousDefault = $this->setupTenantConnectionForTest();
@@ -108,12 +114,13 @@ test('admin badge is not visible in user menu for non-admin user', function () {
         // No role assigned — the badge must be absent.
         app(PermissionRegistrar::class)->forgetCachedPermissions();
 
+        $tenant->makeCurrent();
         $this->actingAs($user)
             ->visit('/dashboard')
             ->waitForText('Badge Regular')
             ->click('@user-menu-trigger')
-            ->waitFor('[role="menu"]')
-            ->assertMissing('@user-role-badge');
+            ->assertVisible('[role="menu"]')
+            ->assertDontSeeIn('@user-meta', 'Admin');
     } finally {
         $this->cleanupTenantConnection($previousDefault);
     }

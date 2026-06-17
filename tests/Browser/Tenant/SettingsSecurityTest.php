@@ -97,8 +97,15 @@ test('security change password flow', function () {
             ->type('input[name="password"]', 'newpassword123')
             ->type('input[name="password_confirmation"]', 'newpassword123')
             ->click('[data-testid="update-password-button"]')
-            ->wait(1)
+            ->waitForText('Update password')
+            // After successful submission with resetOnSuccess, the form fields are cleared
+            // and the page still shows the security settings form
             ->assertSee('Security settings')
+            ->assertSee('Update password')
+            ->assertSee('Save')
+            ->assertVisible('[data-testid="update-password-button"]')
+            // Verify the form was reset (current_password field should be empty)
+            ->assertValue('input[name="current_password"]', '')
             ->assertNoJavaScriptErrors();
     } finally {
         $this->cleanupTenantConnection($previousDefault);

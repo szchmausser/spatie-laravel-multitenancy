@@ -93,15 +93,17 @@ test('appearance theme toggle', function () {
         $this->actingAs($user)
             ->visit('/settings/appearance')
             ->waitForText('Appearance settings')
+            // Click dark tab and verify dark class is added to <html>
             ->click('[data-testid="appearance-tab-dark"]')
-            ->wait(0.5)
-            ->click('[data-testid="appearance-tab-system"]')
-            ->wait(0.5)
+            ->assertScript('document.documentElement.classList.contains("dark")', true)
+            ->assertScript('localStorage.getItem("appearance")', 'dark')
+            // Click light tab and verify dark class is removed
             ->click('[data-testid="appearance-tab-light"]')
-            ->wait(0.5)
-            ->assertVisible('[data-testid="appearance-tab-light"]')
-            ->assertVisible('[data-testid="appearance-tab-dark"]')
-            ->assertVisible('[data-testid="appearance-tab-system"]')
+            ->assertScript('document.documentElement.classList.contains("dark")', false)
+            ->assertScript('localStorage.getItem("appearance")', 'light')
+            // Click system tab and verify it's set
+            ->click('[data-testid="appearance-tab-system"]')
+            ->assertScript('localStorage.getItem("appearance")', 'system')
             ->assertNoJavaScriptErrors();
     } finally {
         $this->cleanupTenantConnection($previousDefault);
