@@ -6,9 +6,9 @@ use Database\Seeders\TenantPermissionsSeeder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Spatie\Permission\PermissionRegistrar;
-use Tests\Browser\BrowserTestCase;
+use Tests\Browser\Concerns\TenantConnectionHelpers;
 
-uses(BrowserTestCase::class);
+uses(TenantConnectionHelpers::class);
 
 /**
  * Browser tests for the "Admin" badge in the user menu.
@@ -59,15 +59,15 @@ beforeEach(function () {
 });
 
 test('admin badge is visible in user menu for tenant-admin', function () {
-    $tenant = Tenant::factory()->createQuietly();
+    // Domain MUST match the test server host (127.0.0.1) so the
+    // DomainTenantFinder can resolve the tenant from the HTTP request.
+    $tenant = Tenant::factory()->createQuietly([
+        'domain' => '127.0.0.1',
+    ]);
 
-    pointTenantConnectionAtTestDatabase();
-    $previousDefault = setDefaultConnectionToTenant();
+    $previousDefault = $this->setupTenantConnectionForTest();
 
     try {
-        runSpatiePermissionMigration();
-        runTenantPermissionsSeeder();
-
         $user = User::on('tenant')->create([
             'name' => 'Badge Admin',
             'email' => 'badge-admin@tenant.test',
@@ -86,21 +86,18 @@ test('admin badge is visible in user menu for tenant-admin', function () {
             ->assertVisible('@user-role-badge')
             ->assertSeeIn('@user-role-badge', 'Admin');
     } finally {
-        restoreDefaultConnection($previousDefault);
-        DB::purge('tenant');
+        $this->cleanupTenantConnection($previousDefault);
     }
 });
 
 test('admin badge is not visible in user menu for non-admin user', function () {
-    $tenant = Tenant::factory()->createQuietly();
+    $tenant = Tenant::factory()->createQuietly([
+        'domain' => '127.0.0.1',
+    ]);
 
-    pointTenantConnectionAtTestDatabase();
-    $previousDefault = setDefaultConnectionToTenant();
+    $previousDefault = $this->setupTenantConnectionForTest();
 
     try {
-        runSpatiePermissionMigration();
-        runTenantPermissionsSeeder();
-
         $user = User::on('tenant')->create([
             'name' => 'Badge Regular',
             'email' => 'badge-regular@tenant.test',
@@ -118,74 +115,6 @@ test('admin badge is not visible in user menu for non-admin user', function () {
             ->waitFor('[role="menu"]')
             ->assertMissing('@user-role-badge');
     } finally {
-        restoreDefaultConnection($previousDefault);
-        DB::purge('tenant');
+        $this->cleanupTenantConnection($previousDefault);
     }
 });
-
-/**
- * Point the `tenant` connection at the test physical database and
- * purge the cached connection. The test environment cannot create
- * per-tenant PostgreSQL databases inside a transaction, so the
- * tenant connection is repointed at the same physical DB that
- * `landlord` points to for the duration of the test.
- */
-function pointTenantConnectionAtTestDatabase(): void
-{
-    $testDatabase = config('database.connections.landlord.database');
-
-    config(['database.connections.tenant.database' => $testDatabase]);
-    DB::purge('tenant');
-}
-
-/**
- * Run the Spatie permission tables migration on the current tenant
- * connection, bypassing the `migrate` command. This is necessary
- * in tests because the `migrations` table is shared between the
- * default and tenant connections in the test environment.
- */
-function runSpatiePermissionMigration(): void
-{
-    $migration = require base_path('database/migrations/2026_06_06_132424_create_permission_tables.php');
-    $migration->up();
-}
-
-/**
- * Set the default connection to `tenant` and return the previous
- * default connection name so the caller can restore it. The Spatie
- * migration guards itself with `DB::connection()->getName()` (the
- * default connection), so we have to switch the default to `tenant`
- * before invoking the migration manually.
- */
-function setDefaultConnectionToTenant(): string
-{
-    $previous = config('database.default');
-
-    DB::setDefaultConnection('tenant');
-
-    return $previous;
-}
-
-function restoreDefaultConnection(string $previous): void
-{
-    DB::setDefaultConnection($previous);
-}
-
-/**
- * Run the TenantPermissionsSeeder on the active tenant connection.
- * Caller MUST have set the default connection to `tenant` first
- * (use {@see setDefaultConnectionToTenant()}).
- */
-function runTenantPermissionsSeeder(): void
-{
-    $tenant = Tenant::latest('id')->first();
-
-    if ($tenant) {
-        $originalDb = $tenant->database;
-        $tenant->database = config('database.connections.landlord.database');
-        (new TenantPermissionsSeeder)->forTenant($tenant);
-        $tenant->database = originalDb;
-    } else {
-        (new TenantPermissionsSeeder)->run();
-    }
-}

@@ -9,6 +9,15 @@ import {
     CardHeader,
     CardTitle,
 } from '@/components/ui/card';
+import {
+    Dialog,
+    DialogClose,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogTitle,
+    DialogTrigger,
+} from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import {
     Select,
@@ -66,18 +75,40 @@ export default function UsersShow({
                             Edit
                         </Link>
                     </Button>
-                    <Button
-                        variant="destructive"
-                        onClick={() => {
-                            if (confirm('Are you sure you want to delete this user? This action cannot be undone.')) {
-                                router.delete(destroy(user.id).url);
-                            }
-                        }}
-                        data-testid="delete-user-btn"
-                    >
-                        <Trash2 className="h-4 w-4" />
-                        Delete
-                    </Button>
+                    <Dialog>
+                        <DialogTrigger asChild>
+                            <Button
+                                variant="destructive"
+                                data-testid="delete-user-btn"
+                            >
+                                <Trash2 className="h-4 w-4" />
+                                Delete
+                            </Button>
+                        </DialogTrigger>
+                        <DialogContent>
+                            <DialogTitle>
+                                Are you sure you want to delete this user?
+                            </DialogTitle>
+                            <DialogDescription>
+                                This action cannot be undone. The user will be
+                                permanently removed from this tenant.
+                            </DialogDescription>
+                            <DialogFooter className="gap-2">
+                                <DialogClose asChild>
+                                    <Button variant="secondary">Cancel</Button>
+                                </DialogClose>
+                                <DialogClose asChild>
+                                    <Button
+                                        variant="destructive"
+                                        onClick={() => router.delete(destroy(user.id).url)}
+                                        data-testid="confirm-delete-user-btn"
+                                    >
+                                        Delete
+                                    </Button>
+                                </DialogClose>
+                            </DialogFooter>
+                        </DialogContent>
+                    </Dialog>
                 </div>
             </div>
             <Card>

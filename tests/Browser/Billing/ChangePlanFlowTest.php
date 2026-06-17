@@ -7,6 +7,9 @@ use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Spatie\Permission\PermissionRegistrar;
+use Tests\Browser\Concerns\TenantConnectionHelpers;
+
+uses(TenantConnectionHelpers::class);
 
 /**
  * Browser tests for the change-plan flow.
@@ -42,13 +45,9 @@ beforeEach(function () {
 test('tenant-admin can change plan from the change-plan dialog', function () {
     $tenant = Tenant::factory()->createQuietly();
 
-    pointTenantConnectionAtTestDatabase();
-    $previousDefault = setDefaultConnectionToTenant();
+    $previousDefault = $this->setupTenantConnectionForTest();
 
     try {
-        runSpatiePermissionMigration();
-        runTenantPermissionsSeeder();
-
         $user = User::on('tenant')->create([
             'name' => 'Plan Changer',
             'email' => 'plan-changer@tenant.test',
@@ -110,8 +109,7 @@ test('tenant-admin can change plan from the change-plan dialog', function () {
             )
             ->assertNoJavaScriptErrors();
     } finally {
-        restoreDefaultConnection($previousDefault);
-        DB::purge('tenant');
+        $this->cleanupTenantConnection($previousDefault);
     }
 });
 

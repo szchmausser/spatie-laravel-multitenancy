@@ -5362,3 +5362,199 @@ Debe aparecer una notificación de tipo `SubscriptionExpiringWarning` y el statu
 Entrá a la app con el usuario admin del tenant (owner o tenant-admin) y revisá:
 - El badge de notificaciones en el sidebar muestra el conteo
 - La página `/notifications` muestra la notificación con el tipo correcto (amarillo para ExpiringWarning, rojo para Expired)
+
+---
+
+## 26. Browser Tests — Tenant resolution y troubleshooting
+
+Esta sección documenta el patrón correcto para browser tests con multitenancy, los problemas que se encontraron y cómo se solucionaron. **Leer esta sección ANTES de escribir browser tests** para evitar reinventar soluciones que ya funcionan.
+
+### 26.1 Arquitectura de pest-plugin-browser
+
+`pest-plugin-browser` usa Playwright (Node.js) para controlar un browser real. El HTTP server corre via **amphp** en el mismo proceso PHP que los tests, compartiendo la misma instancia `$app`:
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  PHP Process (same $app instance)                       │
+│                                                         │
+│  ┌──────────────────┐     ┌──────────────────────────┐  │
+│  │ Test Process     │     │ HTTP Server (amphp)       │  │
+│  │ (Pest runner)    │────▶│ Laravel Kernel::handle()  │  │
+│  │                  │     │                          │  │
+│  │ makeCurrent()    │     │ NeedsTenant middleware    │  │
+│  │ actingAs($user)  │     │ Tenant::current()        │  │
+│  └──────────────────┘     └──────────────────────────┘  │
+│           │                         ▲                   │
+│           │    share same $app      │                   │
+│           └─────────────────────────┘                   │
+└─────────────────────────────────────────────────────────┘
+                         ▲
+                         │ HTTP (Playwright)
+                         │
+                  ┌──────────────┐
+                  │ Playwright   │
+                  │ (Node.js)    │
+                  │ Chromium     │
+                  └──────────────┘
+```
+
+**Punto clave:** Ambos procesos comparten la misma instancia `$app`. Cuando llamás `$tenant->makeCurrent()` en el test process, se setea el tenant actual en el container — el HTTP server (amphp) lo ve porque es el mismo proceso.
+
+### 26.2 El problema raíz: DomainTenantFinder no funciona en tests
+
+El `DomainTenantFinder` (configurado en `config/multitenancy.php`) resuelve el tenant a partir del dominio del request HTTP. En tests, el dominio es siempre `127.0.0.1` (Playwright se conecta ahí). El finder intenta matchear `127.0.0.1` contra la tabla `tenants`, pero:
+
+1. `Tenant::factory()->createQuietly()` **salta** el callback `creating` del modelo — la BD física del tenant **no se crea**
+2. El `booting` callback de `MultitenancyServiceProvider` ya registró el finder **antes** de que el test cree el tenant
+3. Incluso si el finder encontrara el tenant, `SwitchTenantDatabaseTask` intentaría configurar una BD que no existe
+
+**Resultado:** El `NeedsTenant` middleware falla porque no hay tenant resuelto → 404 o redirect a error page.
+
+### 26.3 La solución: `makeCurrent()` + factory test database
+
+El patrón que funciona (probado con 24 tests pasando):
+
+```php
+test('my browser test', function () {
+    $testDatabase = config('database.connections.landlord.database');
+
+    // 1. Crear tenant apuntando a la BD de testing
+    $tenant = Tenant::factory()->createQuietly([
+        'domain' => '127.0.0.1',
+        'database' => $testDatabase,  // ← CRÍTICO
+    ]);
+
+    $previousDefault = $this->setupTenantConnectionForTest();
+
+    try {
+        // 2. Crear usuario en la conexión tenant
+        $user = User::on('tenant')->create([
+            'name' => 'Test User',
+            'email' => 'test@tenant.test',
+            'password' => bcrypt('password'),
+            'email_verified_at' => now(),
+        ]);
+        $user->assignRole('tenant-admin');
+
+        // 3. Setear el tenant actual (esto es lo que hace funcionar todo)
+        $tenant->makeCurrent();
+
+        // 4. Actuar como el usuario y visitar la página
+        $this->actingAs($user)
+            ->visit('/my-page')
+            ->waitForText('Expected Text')
+            ->assertVisible('[data-testid="my-element"]')
+            ->assertNoJavaScriptErrors();
+    } finally {
+        $this->cleanupTenantConnection($previousDefault);
+    }
+});
+```
+
+#### Por qué funciona
+
+| Componente | Por qué |
+|---|---|
+| `'database' => $testDatabase` | `SwitchTenantDatabaseTask` reconfigura la conexión `tenant` a la BD de testing (que ya existe). Sin esto, la factory genera un nombre random (`tenant_XXXXX`) que no existe como BD física. |
+| `$user->assignRole('tenant-admin')` | Las tablas de Spatie Permission existen en la BD de testing (via `setupTenantConnectionForTest()`), pero los usuarios necesitan asignación explícita de roles. |
+| `$tenant->makeCurrent()` | Setea el tenant en el container. El middleware `NeedsTenant` verifica `app(IsTenant::class)::checkCurrent()` — que retorna `true` porque `makeCurrent()` ya lo hizo. **No necesita** `DomainTenantFinder`. |
+
+### 26.4 Ejecución: UN SOLO ARCHIVO POR VEZ
+
+```bash
+# ✅ CORRECTO — un archivo a la vez
+vendor/bin/pest tests/Browser/Billing/HistoryTest.php
+vendor/bin/pest tests/Browser/Tenant/UsersCrudTest.php
+
+# ❌ NUNCA hacer esto — causa timeouts y colisiones
+vendor/bin/pest tests/Browser/
+php artisan test --compact  # Solo suite completa cuando el usuario lo pida
+```
+
+**Por qué:** Todos los browser tests comparten la misma BD (`spatie-laravel-multitenancy-testing`). Cuando múltiples archivos corren en paralelo o secuencialmente, interferían con las llamadas `migrate:fresh` y el estado del tenant. El HTTP server también tiene estado de conexión que conflicta.
+
+### 26.5 Fix de timezone: `formatDateTime` con `timeZone: 'UTC'`
+
+**Síntoma:** El server renderiza `Jun 16, 2026, 9:35 PM` pero Playwright ve `5:35 PM`.
+
+**Causa:** `APP_TIMEZONE=UTC` pero `new Date()` en el browser usa la timezone local (ej: UTC-4 para Venezuela).
+
+**Fix en `resources/js/lib/utils.ts`:**
+
+```typescript
+export function formatDateTime(date: string): string {
+    const d = new Date(date);
+    return d.toLocaleDateString('en-US', {
+        timeZone: 'UTC',  // ← OBLIGATORIO para que coincida con el server
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+    });
+}
+```
+
+### 26.6 Fix de `confirm()` nativo
+
+**Síntoma:** El test se traba en un `click()` porque aparece un `confirm()` nativo del browser.
+
+**Causa:** Playwright no puede interactuar con diálogos nativos del browser (`confirm()`, `alert()`, `prompt()`).
+
+**Fix:** Reemplazar `confirm()` con el componente `Dialog` del proyecto (Radix-based). Ver `resources/js/pages/settings/users/index.tsx` y `show.tsx` para ejemplos.
+
+### 26.7 Fix de botón disabled
+
+**Síntoma:** `click('button[type="submit"]')` hace timeout.
+
+**Causa:** El botón tiene `disabled` attribute basado en validación del form. Playwright espera que el elemento sea interactuable.
+
+**Fix:** O llenar los campos requeridos antes de click, o assert `assertDisabled('button[type="submit"]')` para verificar el estado disabled.
+
+### 26.8 Fix de labels en español
+
+**Síntoma:** `assertSee('Pending')` falla pero el badge muestra "Pendiente".
+
+**Causa:** `PaymentStatusBadge` usa labels en español (`Pendiente`, `Verificado`, `Cancelado`).
+
+**Fix:** Assert contra el label en español que realmente se renderiza.
+
+### 26.9 Referencia: helpers de tenant connection
+
+`tests/Browser/Concerns/TenantConnectionHelpers.php` provee:
+
+- `setupTenantConnectionForTest()` — configura la conexión tenant a la BD de testing, crea tablas de Spatie Permission, retorna el default anterior
+- `cleanupTenantConnection($previousDefault)` — restaura la conexión anterior
+
+`tests/Browser/FakeTenantFinder.php` fue creado durante la investigación pero **NO es necesario** cuando se usa `makeCurrent()` directamente. Se conserva por si acaso.
+
+### 26.10 Convención de selectores
+
+Usar `data-testid` — NO `data-test`, `data-cy`, ni clases CSS. Ejemplo:
+
+```tsx
+// ✅ Correcto
+<button data-testid="delete-user-button">Eliminar</button>
+
+// ❌ Incorrecto
+<button data-test="delete">Eliminar</button>
+<button data-cy="delete">Eliminar</button>
+```
+
+En los tests:
+```php
+->click('[data-testid="delete-user-button"]')
+->assertVisible('[data-testid="user-list"]')
+```
+
+### 26.11 Archivos relevantes
+
+| Archivo | Rol |
+|---|---|
+| `tests/Browser/BrowserTestCase.php` | Clase base; NO modificar |
+| `tests/Pest.php` | Extiende BrowserTestCase para todos los Browser tests; NO modificar |
+| `tests/Browser/Concerns/TenantConnectionHelpers.php` | Helpers compartidos para setup de conexión tenant |
+| `tests/Browser/FakeTenantFinder.php` | Creado durante investigación; NO necesario con `makeCurrent()` |
+| `resources/js/lib/utils.ts` | Fix de timezone en `formatDateTime` |
+| `resources/js/pages/settings/users/index.tsx` | Ejemplo de reemplazo `confirm()` → Dialog |
+| `resources/js/pages/settings/users/show.tsx` | Ejemplo de reemplazo `confirm()` → Dialog |

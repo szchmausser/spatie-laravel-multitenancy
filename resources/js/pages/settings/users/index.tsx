@@ -3,6 +3,15 @@ import { Plus, Pencil, Eye, Trash2, Users } from 'lucide-react';
 import { useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import {
+    Dialog,
+    DialogClose,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogTitle,
+    DialogTrigger,
+} from '@/components/ui/dialog';
 import { create, show, edit, destroy } from '@/routes/settings/users';
 import type { BreadcrumbItem } from '@/types';
 
@@ -101,18 +110,40 @@ export default function UsersIndex({
                                         View
                                     </Link>
                                 </Button>
-                                <Button
-                                    variant="destructive"
-                                    size="sm"
-                                    onClick={() => {
-                                        if (confirm('Are you sure you want to delete this user? This action cannot be undone.')) {
-                                            router.delete(destroy(user.id).url);
-                                        }
-                                    }}
-                                    data-testid={`delete-user-btn-${user.id}`}
-                                >
-                                    <Trash2 className="h-4 w-4" />
-                                </Button>
+                                <Dialog>
+                                    <DialogTrigger asChild>
+                                        <Button
+                                            variant="destructive"
+                                            size="sm"
+                                            data-testid={`delete-user-btn-${user.id}`}
+                                        >
+                                            <Trash2 className="h-4 w-4" />
+                                        </Button>
+                                    </DialogTrigger>
+                                    <DialogContent>
+                                        <DialogTitle>
+                                            Are you sure you want to delete this user?
+                                        </DialogTitle>
+                                        <DialogDescription>
+                                            This action cannot be undone. The user will be
+                                            permanently removed from this tenant.
+                                        </DialogDescription>
+                                        <DialogFooter className="gap-2">
+                                            <DialogClose asChild>
+                                                <Button variant="secondary">Cancel</Button>
+                                            </DialogClose>
+                                            <DialogClose asChild>
+                                                <Button
+                                                    variant="destructive"
+                                                    onClick={() => router.delete(destroy(user.id).url)}
+                                                    data-testid={`confirm-delete-user-btn-${user.id}`}
+                                                >
+                                                    Delete
+                                                </Button>
+                                            </DialogClose>
+                                        </DialogFooter>
+                                    </DialogContent>
+                                </Dialog>
                             </div>
                         </div>
                     ))

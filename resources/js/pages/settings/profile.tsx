@@ -89,7 +89,7 @@ export default function Profile() {
                             <div className="flex items-center gap-4">
                                 <Button
                                     disabled={processing}
-                                    data-test="update-profile-button"
+                                    data-testid="update-profile-button"
                                 >
                                     Save
                                 </Button>

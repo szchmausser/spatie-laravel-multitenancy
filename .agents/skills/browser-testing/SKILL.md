@@ -748,16 +748,17 @@ Siempre diagnostica primero. Nunca reescribas selectores a ciegas.
 ### 3.2 Establecer la línea base — capturar todos los fallos
 
 ```bash
-# Ejecutar solo el suite de browser tests y capturar el output
-php artisan test --filter=Browser 2>&1 | tee /tmp/browser-failures.txt
+# Ejecutar un solo archivo de browser tests
+php artisan test --compact --filter=Browser/LoginTest.php
 
-# O si los tests están en una ruta específica
-./vendor/bin/pest tests/Browser 2>&1 | tee /tmp/browser-failures.txt
+# Ejecutar un solo test por nombre
+php artisan test --compact --filter="el usuario puede iniciar sesión"
 ```
 
-Lee `/tmp/browser-failures.txt` completo antes de tocar cualquier archivo.
-Agrupa los fallos por tipo de error: elemento no encontrado, timeout, URL inesperada,
-aserción fallida.
+**RESTRICCIÓN IMPORTANTE:** Ejecutar SOLO los tests acotados al cambio.
+NUNCA ejecutar `php artisan test --compact` (suite completa) desde un subagente —
+causa timeouts. Si se necesita la suite completa, solicitar al usuario que la ejecute
+manualmente.
 
 ---
 
@@ -934,7 +935,7 @@ interface Props extends React.HTMLAttributes<HTMLDivElement> {
 ```
 1. Leer el archivo de test completo
 2. Ejecutar SOLO ese archivo:
-   ./vendor/bin/pest tests/Browser/LoginTest.php --verbose
+   php artisan test --compact --filter=Browser/LoginTest.php
 3. Leer el error: ¿qué selector o aserción falló?
 4. Encontrar el componente React: resources/js/pages/...
 5. Identificar el selector correcto (sección 3.4 - 3.5)
@@ -951,24 +952,19 @@ ejecútalo, luego continúa. Evita perseguir fallos fantasma.
 ## PARTE 4 — Ejecución y depuración
 
 ```bash
-# Ejecutar toda la suite de browser tests
-./vendor/bin/pest tests/Browser
-
-# Ejecutar un solo archivo
-./vendor/bin/pest tests/Browser/LoginTest.php
+# Ejecutar un solo archivo de browser tests
+php artisan test --compact --filter=Browser/LoginTest.php
 
 # Ejecutar un solo test por nombre
-./vendor/bin/pest --filter "el usuario puede iniciar sesión"
-
-# Con browser visible (ver qué está pasando)
-PLAYWRIGHT_HEADED=true ./vendor/bin/pest tests/Browser/LoginTest.php
-
-# En cámara lenta para depurar paso a paso
-PLAYWRIGHT_SLOW_MO=500 ./vendor/bin/pest tests/Browser/LoginTest.php
+php artisan test --compact --filter="el usuario puede iniciar sesión"
 
 # Capturar screenshot en un punto específico del test
 $browser->screenshot('estado-antes-de-guardar');
 ```
+
+**RESTRICCIÓN:** Nunca ejecutar la suite completa (`php artisan test --compact`)
+desde un subagente — causa timeouts. Ejecutar SOLO tests acotados al cambio.
+Si se necesita la suite completa, solicitar al usuario que la ejecute manualmente.
 
 ---
 
@@ -1001,9 +997,9 @@ $browser->screenshot('estado-antes-de-guardar');
       aprovecha la reparación para fortalecerlo con verificaciones sobre el resultado concreto
 - [ ] No quedan selectores por clase CSS en el código de los tests
 - [ ] Los `data-testid` nuevos están commiteados junto con los tests
-- [ ] El test pasa ejecutado de forma aislada: `./vendor/bin/pest tests/Browser/ElTest.php`
-- [ ] Todos los browser tests pasan: `php artisan test --filter=Browser`
-- [ ] Todos los feature y unit tests siguen en verde: `php artisan test`
+- [ ] El test pasa ejecutado de forma aislada: `php artisan test --compact --filter=Browser/ElTest.php`
+- [ ] Todos los browser tests pasan: ejecutar manualmente `php artisan test --compact --filter=Browser`
+- [ ] Todos los feature y unit tests siguen en verde: solicitar al usuario ejecutar `php artisan test --compact`
 - [ ] Si es un feature test que hace POST/PUT/DELETE, incluye
       `$this->withoutMiddleware(ValidateCsrfToken::class)` en el `setUp`/`beforeEach`
 
