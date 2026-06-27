@@ -2130,8 +2130,11 @@ Este flujo dropea y recrea las BDs, corre migraciones, y siembra **todos los dat
 
 ```bash
 # 0. Pre-requisito: verificar PostgreSQL
-#     Ajustá la ruta de psql según tu instalación.
-$env:PGPASSWORD = "postgres"
+#     Ajustá la ruta de psql y PGPASSWORD según tu instalación.
+#     Si la BD principal tiene conexiones activas, terminarlas antes del drop:
+#     SELECT pg_terminate_backend(pid) FROM pg_stat_activity
+#     WHERE datname = 'spatie-laravel-multitenancy' AND pid <> pg_backend_pid();
+$env:PGPASSWORD = "0"
 
 # ──────────────────────────────────────────────
 # 1. Drop todas las BDs (landlord + testing + 10 tenants)
@@ -2158,13 +2161,20 @@ $env:PGPASSWORD = "postgres"
   -c 'CREATE DATABASE "spatie-laravel-multitenancy-testing";'
 
 # ──────────────────────────────────────────────
-# 3. Migraciones landlord
+# 3. Migraciones
 # ──────────────────────────────────────────────
 #    3a. Tablas shared (users, sessions, cache, jobs, media, permissions, notifications)
+#        Crea también la tabla `users` que las FKs de landlord necesitan.
 php artisan migrate
 
 #    3b. Tablas específicas de landlord (tenants, plans, subscriptions, resources,
-#        entitlements, orders, payments, payment_method_configs, system_configs, etc.)
+#        entitlements, orders, payments, payment_method_configs, system_configs,
+#        devices, device_heartbeats, device_invite_codes, etc.)
+#        NOTA: La migration 2026_06_10_000000_create_landlord_users_table es
+#        idempotente — si `users` ya existe (de 3a), se salta sin error.
+#        Las migrations 2026_06_27_000002_add_tenant_id_to_devices_table y
+#        2026_06_27_000004_add_device_id_to_device_invite_codes son las más
+#        recientes del flujo de registro por invitación.
 php artisan migrate --path=database/migrations/landlord --database=landlord
 
 # ──────────────────────────────────────────────
@@ -2188,6 +2198,30 @@ php artisan tenants:artisan "migrate --database=tenant --seed"
 # 6. Limpiar caché de config
 # ──────────────────────────────────────────────
 php artisan config:clear
+
+# ──────────────────────────────────────────────
+# 7. (Opcional) Generar códigos de invitación para dispositivos
+# ──────────────────────────────────────────────
+#    Los dispositivos Android se registran usando códigos de un solo uso
+#    scoped al tenant. Cada código permite registrar EXACTAMENTE UN
+#    dispositivo con is_active = true (sin aprobación manual del admin).
+#
+#    Forma A — Por Artisan (ideal para setup automatizado):
+php artisan device:generate-invite 1 --days=30
+#    → INV-3YY9QHUJ (código para Tenant1, expira en 30 días)
+#
+#    Sin expiración: php artisan device:generate-invite tenant1 --days=0
+#    Por domain:     php artisan device:generate-invite tenant1.spatie-laravel-multitenancy.test
+#
+#    Forma B — Por UI del admin (ideal para test manual):
+#    1. Entrá a /admin/invite-codes
+#    2. Click "Nuevo Código"
+#    3. Seleccioná el tenant del dropdown
+#    4. Ajustá los días de expiración (0 = no expira)
+#    5. Click "Generar Código"
+#    El código aparece en la tabla con estado "Válido", listo para usar.
+#
+#    Más info en §20.2 (Registro de dispositivos Android)
 ```
 
 #### Seeders ejecutados (orden y dependencias)
@@ -2198,7 +2232,7 @@ php artisan config:clear
 | 2 | `PlansSeeder` | landlord | 3 planes: free (Bs.0), basic (Bs.8.000), premium (Bs.15.000) |
 | 3 | `TenantsSeeder` | landlord | 10 tenants + BDs físicas + suscripciones (3 free + 6 basic + 1 premium) |
 | 4 | `PaymentMethodConfigSeeder` | landlord | 4 métodos de pago: BDV y BNC (PagoMóvil + Transferencia) |
-| 5 | `SystemConfigSeeder` | landlord | 7 configs: gateway, expiry, heartbeat, regex BDV/BNC |
+| 5 | `SystemConfigSeeder` | landlord | 7 configs: gateway, expiry, heartbeat, shadow mode, regex BDV/BNC |
 | 6 | `TenantPermissionsSeeder` | tenant (x10) | Roles: owner, member, tenant-admin + permiso `change-plan` |
 | 7 | `TenantUsersSeeder` | tenant (x10) | 1 usuario owner por tenant con password fijo |
 

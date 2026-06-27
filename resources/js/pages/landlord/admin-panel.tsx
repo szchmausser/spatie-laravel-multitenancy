@@ -1,5 +1,5 @@
 import { Head, Link } from '@inertiajs/react';
-import { Banknote, Bell, Building, CreditCard, Download, LayoutDashboard, Settings, ShoppingCart, Smartphone, Users } from 'lucide-react';
+import { Banknote, Bell, Building, CreditCard, Download, KeyRound, LayoutDashboard, Settings, ShoppingCart, Smartphone, Users } from 'lucide-react';
 import {
     Card,
     CardDescription,
@@ -100,6 +100,13 @@ const cards = [
         href: '/admin/devices',
         icon: Smartphone,
         testId: 'admin-card-devices',
+    },
+    {
+        title: 'Códigos de Invitación',
+        description: 'Códigos de un solo uso para registro de dispositivos, scoped por tenant.',
+        href: '/admin/invite-codes',
+        icon: KeyRound,
+        testId: 'admin-card-invite-codes',
     },
 ] as const;
 

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Jobs\IngestPaymentNotification;
 use App\Models\Device;
+use App\Models\DeviceInviteCode;
 use App\Models\PaymentNotification;
 use App\Models\SystemConfig;
 use Illuminate\Database\QueryException;
@@ -15,22 +16,39 @@ use Illuminate\Support\Str;
 class DeviceController extends Controller
 {
     /**
-     * Register a new device and return its authentication token.
+     * Register a new device using a single-use invite code.
      *
-     * No authentication required. The generated token must be stored
-     * on the Android device for subsequent requests.
+     * The invite code is scoped to a tenant. On successful validation:
+     * - The code is consumed (marked as used, cannot be reused)
+     * - The device is created with is_active = true
+     * - The device is associated with the tenant that owns the code
      *
      * If an android_device_id is provided and a device with that ID
-     * already exists, the existing device is reactivated and issued
-     * a new token instead of creating a duplicate. This handles
-     * app reinstalls on the same physical device.
+     * already exists, the existing device is reused (new token issued,
+     * reactivated, tenant_id updated if the new code belongs to a
+     * different tenant). This handles app reinstalls.
      */
     public function register(Request $request): JsonResponse
     {
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'android_device_id' => ['nullable', 'string', 'max:255'],
+            'invite_code' => ['required', 'string', 'max:64'],
         ]);
+
+        $inviteCode = DeviceInviteCode::where('code', $validated['invite_code'])->first();
+
+        if (! $inviteCode) {
+            return response()->json(['message' => 'Invalid invite code.'], 401);
+        }
+
+        if (! $inviteCode->isValid()) {
+            $reason = $inviteCode->isUsed() ? 'already been used' : 'expired';
+
+            return response()->json([
+                'message' => "This invite code has {$reason}.",
+            ], 401);
+        }
 
         $device = null;
 
@@ -39,10 +57,11 @@ class DeviceController extends Controller
         }
 
         if ($device !== null) {
-            // Reuse existing device: regenerate token, update name, reactivate
+            // Reuse existing device: regenerate token, update name, reactivate.
             $device->update([
                 'name' => $validated['name'],
                 'token' => Str::random(64),
+                'tenant_id' => $inviteCode->tenant_id,
                 'is_active' => true,
             ]);
         } else {
@@ -50,14 +69,20 @@ class DeviceController extends Controller
                 'name' => $validated['name'],
                 'token' => Str::random(64),
                 'android_device_id' => $validated['android_device_id'] ?? null,
+                'tenant_id' => $inviteCode->tenant_id,
+                'is_active' => true,
             ]);
         }
+
+        // Consume the invite code — single use, tied to this device
+        $inviteCode->consume($device->id);
 
         return response()->json([
             'device_id' => $device->id,
             'token' => $device->token,
             'name' => $device->name,
             'is_active' => $device->is_active,
+            'tenant_id' => $device->tenant_id,
         ], 201);
     }
 

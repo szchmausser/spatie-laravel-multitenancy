@@ -3,6 +3,7 @@
 use App\Http\Controllers\Landlord\AdminPanelController;
 use App\Http\Controllers\Landlord\AlertController;
 use App\Http\Controllers\Landlord\DeviceController;
+use App\Http\Controllers\Landlord\DeviceInviteCodeController;
 use App\Http\Controllers\Landlord\NotificationController;
 use App\Http\Controllers\Landlord\OrderController;
 use App\Http\Controllers\Landlord\PaymentController;
@@ -86,6 +87,14 @@ Route::middleware(['auth', 'verified', EnsureUserIsAdmin::class])->prefix('admin
 
     // Device management — phones that capture bank notifications
     Route::resource('devices', DeviceController::class);
+
+    // Device invite codes — single-use per-tenant registration codes
+    Route::get('invite-codes', [DeviceInviteCodeController::class, 'index'])->name('invite-codes.index');
+    Route::get('invite-codes/create', [DeviceInviteCodeController::class, 'create'])->name('invite-codes.create');
+    Route::post('invite-codes', [DeviceInviteCodeController::class, 'store'])->name('invite-codes.store');
+    Route::get('invite-codes/{device_invite_code}/edit', [DeviceInviteCodeController::class, 'edit'])->name('invite-codes.edit');
+    Route::put('invite-codes/{device_invite_code}', [DeviceInviteCodeController::class, 'update'])->name('invite-codes.update');
+    Route::delete('invite-codes/{device_invite_code}', [DeviceInviteCodeController::class, 'destroy'])->name('invite-codes.destroy');
 
     // Manual notifications — landlord admin can compose, preview, send, and review
     Route::get('notifications', [NotificationController::class, 'create'])->name('notifications.create');

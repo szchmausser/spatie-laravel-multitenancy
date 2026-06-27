@@ -117,6 +117,20 @@ export type Device = {
     updated_at: string;
 };
 
+export type DeviceInviteCode = {
+    id: number;
+    tenant_id: number;
+    code: string;
+    used_at: string | null;
+    expires_at: string | null;
+    created_by: number | null;
+    device_id: number | null;
+    created_at: string;
+    tenant?: { id: number; name: string; domain: string } | null;
+    device?: { id: number; name: string } | null;
+    created_by_user?: { id: number; name: string } | null;
+};
+
 export type DeviceHeartbeat = {
     id: number;
     device_id: number;
