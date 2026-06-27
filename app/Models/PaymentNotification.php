@@ -58,7 +58,7 @@ class PaymentNotification extends Model
                 'reference' => $parsed->reference,
                 'sender_phone_last4' => $parsed->senderPhoneLast4,
             ], $parsed->rawGroups ? ['raw_groups' => $parsed->rawGroups] : []),
-            'parsed_at' => $parsed->parsedAt ?? now(),
+            'parsed_at' => now(),
             'parse_error' => null,
         ]);
     }

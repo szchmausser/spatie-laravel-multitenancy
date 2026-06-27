@@ -2,12 +2,10 @@
 
 namespace App\Services\Payment;
 
-use App\Enums\CancellationType;
 use App\Enums\PaymentStatus;
 use App\Models\Payment;
 use App\Models\PaymentMatch;
 use App\Models\SystemConfig;
-use Illuminate\Support\Facades\DB;
 
 class ReconciliationOrchestrator
 {
@@ -22,46 +20,16 @@ class ReconciliationOrchestrator
      *
      * Must be called inside a DB::transaction for SELECT FOR UPDATE to work.
      * Steps executed in order:
-     *   0. Duplicate detection — verified payment with same reference?
      *   1. Normal matching — pending payment with same ref + amount + window
      *   2. One candidate → verified (or shadow)
      *   3. Multiple candidates → manual review queue
      *   4. No candidates → unmatched
+     *
+     * Note: duplicate detection is handled by the UNIQUE constraint on
+     * payments.transaction_id — no additional code needed.
      */
     public function run(PaymentMatch $match): ReconciliationResult
     {
-        // Paso 0: Duplicate detection (always runs first)
-        if ($match->parsed_reference !== null) {
-            $verified = Payment::where('status', PaymentStatus::Verified)
-                ->where('transaction_id', $match->parsed_reference)
-                ->exists();
-
-            if ($verified) {
-                $match->update(['match_status' => 'duplicate_attempt']);
-
-                $result = new ReconciliationResult;
-
-                // Cancel any pending payment attempting to use this reference
-                $attempting = Payment::where('status', PaymentStatus::Pending)
-                    ->where('transaction_id', $match->parsed_reference)
-                    ->first();
-
-                if ($attempting) {
-                    $this->paymentService->cancelPayment(
-                        $attempting,
-                        CancellationType::SystemDuplicate,
-                        'system',
-                        'Referencia ya verificada',
-                    );
-
-                    $result->cancelledPayment = $attempting->fresh();
-                    $result->cancelledReason = 'Referencia ya verificada';
-                }
-
-                return $result;
-            }
-        }
-
         // Guard: if not unmatched anymore, skip
         if ($match->match_status !== 'unmatched') {
             return new ReconciliationResult;

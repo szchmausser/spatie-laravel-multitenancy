@@ -53,7 +53,7 @@ class PaymentNotificationController extends Controller
             $query->whereDate('created_at', '<=', $request->to);
         }
 
-        $notifications = $query->latest()
+        $notifications = $query->orderBy('id', 'desc')
             ->paginate(20)
             ->withQueryString();
 

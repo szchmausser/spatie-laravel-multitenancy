@@ -18,7 +18,6 @@ export function formatPrice(cents: number): string {
 export function formatDate(date: string): string {
     const d = new Date(date);
     return d.toLocaleDateString('en-US', {
-        timeZone: 'UTC',
         month: 'short',
         day: 'numeric',
         year: 'numeric',
@@ -28,7 +27,6 @@ export function formatDate(date: string): string {
 export function formatDateTime(date: string): string {
     const d = new Date(date);
     return d.toLocaleDateString('en-US', {
-        timeZone: 'UTC',
         month: 'short',
         day: 'numeric',
         year: 'numeric',
@@ -43,7 +41,7 @@ function pad(num: number): string {
 
 export function formatDateShort(date: string): string {
     const d = new Date(date);
-    return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
 export function timeAgo(dateStr: string): string {

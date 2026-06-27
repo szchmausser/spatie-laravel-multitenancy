@@ -13,6 +13,7 @@ use App\Models\PaymentMatch;
 use App\Models\SystemConfig;
 use App\Notifications\PendingPaymentCreated;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Notification;
 
 class PaymentService
@@ -309,8 +310,11 @@ class PaymentService
             }
 
             Notification::send($admins, new PendingPaymentCreated($payment));
-        } catch (\Throwable) {
-            // Notification failure should not break payment recording
+        } catch (\Throwable $e) {
+            Log::warning('Failed to notify landlord admins about pending payment', [
+                'payment_id' => $payment->id,
+                'error' => $e->getMessage(),
+            ]);
         }
     }
 }
