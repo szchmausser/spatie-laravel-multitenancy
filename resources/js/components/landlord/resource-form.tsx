@@ -41,6 +41,7 @@ export function ResourceForm({
     currentFile,
 }: ResourceFormProps) {
     const [isPremium, setIsPremium] = useState(defaults?.is_premium ?? false);
+    const [priceBs, setPriceBs] = useState(defaults?.price_cents ? defaults.price_cents / 100 : 0);
 
     return (
         <div className="p-6">
@@ -63,6 +64,7 @@ export function ResourceForm({
 
             <input type="hidden" name="is_premium" value={isPremium ? '1' : '0'} />
             <input type="hidden" name="is_active" value={(defaults?.is_active ?? true) ? '1' : '0'} />
+            <input type="hidden" name="price_cents" value={Math.round(priceBs * 100)} />
 
             <div className="space-y-4">
                 <Card>
@@ -180,21 +182,21 @@ export function ResourceForm({
                         </div>
                         {isPremium && (
                             <div className="grid gap-2">
-                                <Label htmlFor="price_cents">
-                                    Price (cents)
+                                <Label htmlFor="price_bs">
+                                    Price (Bs.)
                                 </Label>
                                 <Input
-                                    id="price_cents"
-                                    name="price_cents"
+                                    id="price_bs"
                                     data-testid="input-price"
                                     type="number"
                                     min={0}
                                     step={1}
-                                    defaultValue={defaults?.price_cents ?? 0}
-                                    placeholder={mode === 'create' ? '2999' : undefined}
+                                    value={priceBs}
+                                    placeholder={mode === 'create' ? '29' : undefined}
+                                    onChange={(e) => setPriceBs(Number(e.target.value || 0))}
                                 />
                                 <p className="text-xs text-muted-foreground">
-                                    Price in cents (e.g. 2999 = $29.99).
+                                    Ingresá el precio en bolívares (e.g. 29 = Bs. 29.00).
                                     {mode === 'create' && ' Stored now; the Phase 2 payment gateway will use it to charge per download.'}
                                 </p>
                                 <InputError message={errors.price_cents} />

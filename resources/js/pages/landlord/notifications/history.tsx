@@ -37,7 +37,7 @@ interface HistoryProps {
 
 const breadcrumbs: BreadcrumbItem[] = [
     { title: 'Admin', href: '/admin' },
-    { title: 'Notifications', href: '#' },
+    { title: 'Anuncios', href: '#' },
 ];
 
 export default function NotificationHistory({ logs, flash }: HistoryProps) {

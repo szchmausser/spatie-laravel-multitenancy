@@ -2,12 +2,15 @@
 
 namespace App\Services\Payment;
 
+use App\Enums\CancellationType;
 use App\Enums\OrderStatus;
 use App\Enums\PaymentStatus;
 use App\Events\PaymentVerified;
 use App\Models\Landlord;
 use App\Models\Order;
 use App\Models\Payment;
+use App\Models\PaymentMatch;
+use App\Models\SystemConfig;
 use App\Notifications\PendingPaymentCreated;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Notification;
@@ -19,7 +22,85 @@ class PaymentService
      */
     public function __construct(
         private readonly array $gateways,
-    ) {}
+        private readonly ?ReconciliationOrchestrator $orchestrator = null,
+    ) {
+        $this->pendingEvents = [];
+    }
+
+    /**
+     * Accumulated events from reverse matching that need to be dispatched
+     * after the HTTP response is committed (IC-4 compliance).
+     *
+     * @var array<object>
+     */
+    private array $pendingEvents = [];
+
+    /**
+     * Return accumulated pending events and clear the buffer.
+     *
+     * @return array<object>
+     */
+    public function getPendingEvents(): array
+    {
+        $events = $this->pendingEvents;
+        $this->pendingEvents = [];
+
+        return $events;
+    }
+
+    /**
+     * Attempt to reverse-match this payment against existing unmatched
+     * notifications. This is the synchronous counterpart of the forward
+     * matching flow — it handles the ~80% case where the bank notification
+     * arrives before the customer finishes reporting.
+     *
+     * Guards:
+     * - Payment must be Pending with pago_movil method
+     * - Reference must not already be matched
+     * - An unmatched PaymentMatch must exist with matching ref + amount
+     *
+     * When a match is found, delegates to ReconciliationOrchestrator::runReverse()
+     * and accumulates any resulting events for later dispatch.
+     *
+     * ReconciliationOrchestrator is resolved via app() instead of constructor
+     * injection to break the circular dependency (Orchestrator depends on
+     * PaymentService, which would prevent either from being resolved).
+     */
+    public function attemptReverseMatch(Payment $payment): void
+    {
+        // Guard: only Pending + pago_movil
+        if ($payment->status !== PaymentStatus::Pending || $payment->payment_method !== 'pago_movil') {
+            return;
+        }
+
+        // Duplicate check: has this reference already been matched?
+        $alreadyMatched = PaymentMatch::where('match_status', 'matched')
+            ->where('parsed_reference', $payment->transaction_id)
+            ->exists();
+
+        if ($alreadyMatched) {
+            return;
+        }
+
+        // Query unmatched payment_matches with matching reference and amount
+        $match = PaymentMatch::where('match_status', 'unmatched')
+            ->where('parsed_reference', $payment->transaction_id)
+            ->where('parsed_amount_cents', $payment->amount_cents)
+            ->first();
+
+        if ($match === null) {
+            return;
+        }
+
+        /** @var ReconciliationOrchestrator $orchestrator */
+        $orchestrator = app(ReconciliationOrchestrator::class);
+        $result = $orchestrator->runReverse($match, $payment);
+
+        // If auto-verified, push event to pendingEvents for controller dispatch
+        if ($result->verifiedPayment !== null) {
+            $this->pendingEvents[] = new PaymentVerified($result->verifiedPayment);
+        }
+    }
 
     /**
      * Create an order for a buyable (Plan or Resource).
@@ -53,7 +134,7 @@ class PaymentService
                 'resource_id' => $buyableType === 'resource' ? $buyableId : null,
                 'total_cents' => $totalCents,
                 'status' => OrderStatus::Pending,
-                'expires_at' => now()->addHours(48),
+                'expires_at' => now()->addHours((int) SystemConfig::get('payment.order_expiry_hours', 48)),
             ]);
 
             return [
@@ -81,6 +162,7 @@ class PaymentService
         string $method = 'pago_movil',
         ?int $paymentMethodConfigId = null,
         array $gatewayData = [],
+        ?string $transactionId = null,
     ): Payment {
         // Check for existing pending payment — idempotency guard
         $existingPayment = $order->payments()
@@ -93,10 +175,12 @@ class PaymentService
             }
 
             // Method changed — cancel the old pending payment
-            $existingPayment->update([
-                'status' => PaymentStatus::Cancelled,
-                'cancellation_reason' => 'Payment method changed to '.$method,
-            ]);
+            $this->cancelPayment(
+                $existingPayment,
+                CancellationType::MethodChanged,
+                'system',
+                'Payment method changed to '.$method,
+            );
         }
 
         $gateway = $this->resolveGateway($method);
@@ -105,8 +189,17 @@ class PaymentService
             'payment_method_config_id' => $paymentMethodConfigId,
         ], $gatewayData));
 
+        // Normalize and store the transaction reference (if provided)
+        if ($transactionId !== null) {
+            $payment->update(['transaction_id' => normalizeRef($transactionId)]);
+            $payment->refresh();
+        }
+
         // Notify landlord admins that a new payment needs verification
         $this->notifyLandlordAdmins($payment);
+
+        // Attempt reverse match against existing unmatched notifications
+        $this->attemptReverseMatch($payment);
 
         return $payment;
     }
@@ -128,8 +221,11 @@ class PaymentService
      * Sets verified_by, verified_at, and fires PaymentVerified event.
      * The event listener (ActivateSubscription) handles order status
      * transition and subscription creation.
+     *
+     * When $adminId is null (auto-verify from reconciliation), verified_by
+     * is set to null to distinguish from manual admin verification.
      */
-    public function verifyPayment(Payment $payment, int $adminId): void
+    public function verifyPayment(Payment $payment, ?int $adminId = null): void
     {
         DB::transaction(function () use ($payment, $adminId) {
             if ($payment->status !== PaymentStatus::Pending) {
@@ -141,8 +237,6 @@ class PaymentService
                 'verified_by' => $adminId,
                 'verified_at' => now(),
             ]);
-
-            event(new PaymentVerified($payment));
         });
     }
 
@@ -153,22 +247,29 @@ class PaymentService
      *   - Pending payment → reject it (the admin determined it's invalid).
      *   - Verified payment → cancel it (refund-like, the money was already approved).
      *
-     * In both cases the payment is marked as cancelled with the given reason.
+     * In both cases the payment is marked as cancelled with the given type and reason.
      * For verified payments the order is recalculated (if no longer fully paid,
      * it reverts to pending). For pending payments the order was never paid,
      * so recalculation is a no-op.
+     *
+     * @param  int|string  $actorId  Admin ID or 'system' for automated cancellations
      */
-    public function cancelPayment(Payment $payment, string $reason, int $adminId): void
-    {
-        DB::transaction(function () use ($payment, $reason, $adminId) {
+    public function cancelPayment(
+        Payment $payment,
+        CancellationType $type,
+        int|string $actorId,
+        ?string $reason = null,
+    ): void {
+        DB::transaction(function () use ($payment, $type, $actorId, $reason) {
             if (! in_array($payment->status, [PaymentStatus::Pending, PaymentStatus::Verified])) {
                 abort(422, 'Only pending or verified payments can be cancelled.');
             }
 
             $payment->update([
                 'status' => PaymentStatus::Cancelled,
+                'cancellation_type' => $type,
                 'cancellation_reason' => $reason,
-                'cancelled_by' => $adminId,
+                'cancelled_by' => is_int($actorId) ? $actorId : null,
                 'cancelled_at' => now(),
             ]);
 

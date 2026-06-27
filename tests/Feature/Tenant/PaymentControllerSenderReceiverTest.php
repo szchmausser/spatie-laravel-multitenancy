@@ -55,6 +55,10 @@ test('pago_movil requires sender_id', function () {
 });
 
 test('pago_movil with sender_id creates payment successfully', function () {
+    $config = PaymentMethodConfig::factory()->ofPagoMovil()->createQuietly([
+        'is_active' => true,
+    ]);
+
     $order = Order::factory()->createQuietly([
         'tenant_id' => $this->tenant->id,
         'plan_id' => $this->plan->id,
@@ -66,6 +70,7 @@ test('pago_movil with sender_id creates payment successfully', function () {
         'amount_cents' => $order->total_cents,
         'reference' => '1234567',
         'payment_method' => 'pago_movil',
+        'payment_method_config_id' => $config->id,
         'sender_bank' => 'Banco Mercantil',
         'sender_phone' => '0414-1234567',
         'sender_id' => 'V-12345678',

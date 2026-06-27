@@ -1,0 +1,94 @@
+flowchart TB
+
+    %% ==================== BANNER DE LEYENDA (Superior) ====================
+    subgraph LEGEND["CAPAS DEL SISTEMA"]
+        direction LR
+        l1["Controller / API"]:::legendController --- l2["Queue / Events"]:::legendQueue --- l3["Parser / Config"]:::legendParser --- l4["Service / Orchestrator"]:::legendService --- l5["State / Model"]:::legendState --- l6["Terminal State"]:::legendTerminal
+    end
+
+    %% Nodo invisible para forzar el quiebre de línea debajo de la leyenda
+    ancora[ ]:::invisible
+    LEGEND --> ancora
+    ancora --> FWD
+    ancora --> REV
+
+    %% ==================== DOS COLUMNAS DEBAJO ====================
+
+    %% ---------- COLUMNA IZQUIERDA: FORWARD ----------
+    subgraph FWD["Forward Flow (S5a+S5b) - Notification arrives first"]
+        direction TB
+
+        f1["php artisan simulate:payment-notification<br/>SimulatePaymentNotification command<br/>Creates PaymentNotification via forceCreate()"]:::controller
+        f2["PaymentNotification record created<br/>parse_status -> 'pending'<br/>bank_code, raw_text, dedup_hash"]:::state
+        f3["IngestPaymentNotification::dispatch()<br/>Job enqueue - No Eloquent events"]:::queue
+        f4["Queue worker :: handle()<br/>Loads notification from DB"]:::queue
+        f5["PaymentNotificationParser::parse()<br/>Match BDV/BNC regex by bank_code<br/>Extract ref, amount, date, phone"]:::parser
+        f6{"Parse matched<br/>a known format?"}:::query
+        f6n["parse_status -> 'failed'<br/>parse_error logged<br/>Terminal state"]:::terminal
+        f7["PaymentNotification::markParsed()<br/>parse_status -> 'parsed'<br/>parsed_data stored"]:::state
+        f8["PaymentMatch::createFromParsed()<br/>match_status -> 'unmatched'"]:::state
+        f9["ReconciliationOrchestrator::run()<br/>SELECT payments WHERE<br/>transaction_id = parsed_reference<br/>amount_cents = parsed_amount_cents<br/>AND status = 'pending'"]:::service
+        f10{"Payment pending<br/>found?"}:::query
+        f11a{"Shadow mode<br/>enabled?"}:::query
+        f11b["match_status -> 'pending'<br/>payment_id linked<br/>No auto-verify<br/>Admin must confirm"]:::terminal
+        f11c["match_status -> 'matched'<br/>payment_id linked<br/>PaymentService::verifyPayment(null)<br/>payment.status -> 'verified'"]:::state
+        f12["Transaction committed<br/>event(new PaymentVerified)<br/>IC-4: events AFTER commit"]:::queue
+        f13["match_status stays 'unmatched'<br/>No payment in system yet<br/>Waits for Reverse flow"]:::terminal
+
+        f1 --> f2 --> f3 --> f4 --> f5 --> f6
+        f6 -->|No| f6n
+        f6 -->|Yes| f7 --> f8 --> f9 --> f10
+        f10 -->|Yes| f11a
+        f11a -->|Yes| f11b --> f12
+        f11a -->|No| f11c --> f12
+        f10 -->|No| f13
+    end
+
+    %% ---------- COLUMNA DERECHA: REVERSE ----------
+    subgraph REV["Reverse Flow (S6) - Payment reported first"]
+        direction TB
+
+        r1["Tenant PaymentController@store()<br/>Client reports payment manually"]:::controller
+        r2["PaymentService::recordPayment()<br/>Validate method, create Payment<br/>payment.status -> 'pending'"]:::service
+        r3["attemptReverseMatch(payment)<br/>SELECT payment_matches WHERE<br/>match_status = 'unmatched'<br/>parsed_reference = payment.transaction_id<br/>parsed_amount_cents = payment.amount_cents"]:::service
+        r4{"Match found<br/>same ref + amount?"}:::query
+        r5["Orchestrator::runReverse(match, payment)<br/>Guard: payment still Pending<br/>Guard: match still unmatched<br/>payment_id linked"]:::service
+        r6{"Shadow mode<br/>enabled?"}:::query
+        r7["SystemConfig::get('reconciliation.shadow_mode_enabled')"]:::parser
+        r8["PaymentService::verifyPayment(null)<br/>payment.status -> 'verified'<br/>match_status -> 'matched'<br/>verified_by -> null (auto)"]:::state
+        r9["match_status -> 'pending'<br/>No auto-verify<br/>Admin must confirm"]:::terminal
+        r10["Controller dispatches events:<br/>getPendingEvents()<br/>event(PaymentVerified)<br/>IC-4: AFTER commit"]:::queue
+        r11["Response to frontend:<br/>'Auto-verified'<br/>'Awaiting verification'"]:::controller
+        r12["payment.status stays 'pending'<br/>No notification yet<br/>Waits for Forward flow"]:::terminal
+
+        r1 --> r2 --> r3 --> r4
+        r4 -->|No| r12 --> r11
+        r4 -->|Yes| r5 --> r6
+        r6 -->|Yes| r7 --> r9 --> r10 --> r11
+        r6 -->|No| r8 --> r10 --> r11
+    end
+
+    %% ==================== STYLES ====================
+    classDef controller fill:#d4e6f1,stroke:#2c6aa0,stroke-width:2px,color:#1a3a5c
+    classDef queue fill:#d5c4e0,stroke:#6a3d8a,stroke-width:2px,color:#3a1a5c
+    classDef parser fill:#f5eccf,stroke:#b8962e,stroke-width:2px,color:#5c4a1a
+    classDef service fill:#f5d6c6,stroke:#b86a3a,stroke-width:2px,color:#5c2a0a
+    classDef state fill:#c8e6c9,stroke:#388e3c,stroke-width:2px,color:#1a3c1a
+    classDef terminal fill:#f5f5f5,stroke:#999999,stroke-width:1px,stroke-dasharray:4 4,color:#666666
+    classDef query fill:#ffffff,stroke:#666666,stroke-width:2px,color:#333333
+    
+    classDef legendController fill:#d4e6f1,stroke:#2c6aa0,color:#1a3a5c
+    classDef legendQueue fill:#d5c4e0,stroke:#6a3d8a,color:#3a1a5c
+    classDef legendParser fill:#f5eccf,stroke:#b8962e,color:#5c4a1a
+    classDef legendService fill:#f5d6c6,stroke:#b86a3a,color:#5c2a0a
+    classDef legendState fill:#c8e6c9,stroke:#388e3c,color:#1a3c1a
+    classDef legendTerminal fill:#f5f5f5,stroke:#999999,color:#666666
+    
+    classDef invisible fill:none,stroke:none,stroke-width:0px
+
+    class l1 legendController
+    class l2 legendQueue
+    class l3 legendParser
+    class l4 legendService
+    class l5 legendState
+    class l6 legendTerminal

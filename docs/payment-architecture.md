@@ -688,7 +688,7 @@ interface PaymentGatewayInterface
 
 ### 4.7 PagoMovilGateway (Implementación)
 
-Usa transacciones para garantizar la inserción atómica del supertipo (`Payment`) y su subtipo (`PagoMovilDetail`). El receiver se resuelve desde `PaymentMethodConfig` cuando se provee `payment_method_config_id`, con **fallback** a `config('payment.pago_movil.*')` cuando no se provee config ID. El receiver se almacena como **snapshot** en el detail table.
+Usa transacciones para garantizar la inserción atómica del supertipo (`Payment`) y su subtipo (`PagoMovilDetail`). El receiver se resuelve desde `PaymentMethodConfig` usando `payment_method_config_id` — **siempre requiere una cuenta activa**, sin fallback a config file. El receiver se almacena como **snapshot** en el detail table.
 
 ```php
 class PagoMovilGateway implements PaymentGatewayInterface
@@ -751,7 +751,7 @@ class PagoMovilGateway implements PaymentGatewayInterface
 **Diferencias con el diseño original**:
 - `recordPayment()` recibe `Order` + `array $data` (no `CreatePaymentRequest`)
 - `currency` es `'VES'` (no `'USD'`)
-- Datos de cuenta receptor vienen de `PaymentMethodConfig` (con fallback a `config('payment.pago_movil.*')` cuando no hay config ID)
+- Datos de cuenta receptor vienen de `PaymentMethodConfig` — **siempre requiere cuenta activa**, no hay fallback a config file
 - **Snapshot receiver** se almacena en el detail table (inmutable)
 - **Sender fields** se almacenan en el detail table
 - `payment_method_config_id` se guarda en `payments` para referencia
@@ -1436,7 +1436,6 @@ Durante la implementación y testing manual se descubrieron los siguientes issue
 - Proration
 - Reintentos automáticos
 - Webhooks de confirmación bancaria
-- Pagos parciales con múltiples métodos en una sola transacción
 - Soporte visual (captura de pantalla/PDF del comprobante bancario)
 - Admin CRUD para gestión de PaymentMethodConfig (pendiente)
 

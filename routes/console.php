@@ -10,3 +10,6 @@ Artisan::command('inspire', function () {
 
 Schedule::command('orders:expire')->hourly();
 Schedule::command('subscriptions:expire')->daily();
+Schedule::command('payments:expire-pending')->hourly();
+Schedule::command('devices:check-heartbeats')->everyFiveMinutes();
+Schedule::command('device-heartbeats:purge')->daily();

@@ -42,7 +42,7 @@ class OrderController extends Controller
     {
         $order->load(['tenant', 'plan', 'resource', 'payments' => function ($q) {
             $q->orderByDesc('created_at');
-        }, 'payments.pagoMovilDetail', 'payments.bankTransferDetail']);
+        }, 'payments.pagoMovilDetail', 'payments.bankTransferDetail', 'payments.verifier', 'payments.paymentMatch']);
 
         return Inertia::render('admin/orders/show', [
             'order' => $order,

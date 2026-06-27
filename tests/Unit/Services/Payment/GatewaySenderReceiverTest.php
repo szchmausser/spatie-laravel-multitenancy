@@ -8,6 +8,7 @@ use App\Models\Plan;
 use App\Models\Tenant;
 use App\Services\Payment\BankTransferGateway;
 use App\Services\Payment\PagoMovilGateway;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 
 test('PagoMovilGateway persists payment_method_config_id on payment', function () {
     $tenant = Tenant::factory()->createQuietly();
@@ -35,6 +36,7 @@ test('PagoMovilGateway persists payment_method_config_id on payment', function (
 test('PagoMovilGateway persists sender_id on PagoMovilDetail', function () {
     $tenant = Tenant::factory()->createQuietly();
     $plan = Plan::factory()->createQuietly();
+    $config = PaymentMethodConfig::factory()->ofPagoMovil()->createQuietly();
     $order = Order::factory()->createQuietly([
         'tenant_id' => $tenant->id,
         'plan_id' => $plan->id,
@@ -43,6 +45,7 @@ test('PagoMovilGateway persists sender_id on PagoMovilDetail', function () {
     $gateway = new PagoMovilGateway;
     $payment = $gateway->recordPayment($order, [
         'amount_cents' => 5000,
+        'payment_method_config_id' => $config->id,
         'sender_bank' => 'Banco Mercantil',
         'sender_phone' => '0414-1234567',
         'sender_id' => 'V-12345678',
@@ -54,7 +57,7 @@ test('PagoMovilGateway persists sender_id on PagoMovilDetail', function () {
     expect($detail->sender_id)->toBe('V-12345678');
 });
 
-test('PagoMovilGateway works without payment_method_config_id', function () {
+test('PagoMovilGateway requires payment_method_config_id', function () {
     $tenant = Tenant::factory()->createQuietly();
     $plan = Plan::factory()->createQuietly();
     $order = Order::factory()->createQuietly([
@@ -63,15 +66,14 @@ test('PagoMovilGateway works without payment_method_config_id', function () {
     ]);
 
     $gateway = new PagoMovilGateway;
-    $payment = $gateway->recordPayment($order, [
+
+    expect(fn () => $gateway->recordPayment($order, [
         'amount_cents' => 5000,
         'sender_bank' => 'Banco Mercantil',
         'sender_phone' => '0414-1234567',
         'sender_id' => 'V-12345678',
         'payment_date' => '2026-06-14',
-    ]);
-
-    expect($payment->payment_method_config_id)->toBeNull();
+    ]))->toThrow(HttpException::class, 'Se requiere una configuración de método de pago para Pago Móvil.');
 });
 
 test('BankTransferGateway persists payment_method_config_id on payment', function () {

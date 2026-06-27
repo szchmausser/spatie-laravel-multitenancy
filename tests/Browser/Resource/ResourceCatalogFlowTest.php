@@ -1,6 +1,5 @@
 <?php
 
-use App\Models\Plan;
 use App\Models\Resource;
 use App\Models\Tenant;
 use App\Models\User;

@@ -1,5 +1,5 @@
 import { Head, Link } from '@inertiajs/react';
-import { Bell, Building, CreditCard, Download, ShoppingCart, Users } from 'lucide-react';
+import { Banknote, Bell, Building, CreditCard, Download, LayoutDashboard, Settings, ShoppingCart, Smartphone, Users } from 'lucide-react';
 import {
     Card,
     CardDescription,
@@ -53,11 +53,53 @@ const cards = [
         testId: 'admin-card-orders',
     },
     {
-        title: 'Notifications',
-        description: 'Send announcements to tenant users.',
+        title: 'Configuración del Sistema',
+        description: 'Gestionar configuraciones dinámicas del sistema',
+        href: '/admin/system-configs',
+        icon: Settings,
+        testId: 'admin-card-system-configs',
+    },
+    {
+        title: 'Anuncios',
+        description: 'Enviar comunicados a los tenants.',
         href: notificationsIndex().url,
         icon: Bell,
         testId: 'admin-card-notifications',
+    },
+    {
+        title: 'Cuentas Bancarias',
+        description: 'Gestionar cuentas receptoras PagoMóvil y Transferencia Bancaria',
+        href: '/admin/payment-configs',
+        icon: CreditCard,
+        testId: 'admin-card-payment-configs',
+    },
+    {
+        title: 'Notificaciones Bancarias',
+        description: 'Monitorear SMS de pago entrantes de los bancos.',
+        href: '/admin/payment-notifications',
+        icon: Banknote,
+        testId: 'admin-card-payment-notifications',
+    },
+    {
+        title: 'Dashboard de Conciliación',
+        description: 'KPIs de conciliación, pagos huérfanos y timeline.',
+        href: '/admin/reconciliation',
+        icon: LayoutDashboard,
+        testId: 'admin-card-reconciliation',
+    },
+    {
+        title: 'Alertas del Sistema',
+        description: 'Monitorear fallas y advertencias críticas del sistema.',
+        href: '/admin/alerts',
+        icon: Bell,
+        testId: 'admin-card-alerts',
+    },
+    {
+        title: 'Dispositivos',
+        description: 'Gestionar teléfonos que capturan notificaciones bancarias.',
+        href: '/admin/devices',
+        icon: Smartphone,
+        testId: 'admin-card-devices',
     },
 ] as const;
 

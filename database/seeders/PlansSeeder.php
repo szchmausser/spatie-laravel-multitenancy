@@ -50,7 +50,7 @@ class PlansSeeder extends Seeder
                     'priority-support' => false,
                     'custom-branding' => false,
                 ],
-                'price_cents' => 4900,
+                'price_cents' => 800000,
                 'is_active' => true,
             ],
         );
@@ -68,7 +68,7 @@ class PlansSeeder extends Seeder
                     'priority-support' => true,
                     'custom-branding' => true,
                 ],
-                'price_cents' => 14900,
+                'price_cents' => 1500000,
                 'is_active' => true,
             ],
         );

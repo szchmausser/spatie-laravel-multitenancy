@@ -1,10 +1,13 @@
 <?php
 
 use App\Enums\OrderStatus;
+use App\Enums\PaymentStatus;
 use App\Models\Landlord;
 use App\Models\Order;
-use App\Models\Plan;
 use App\Models\Payment;
+use App\Models\PaymentMatch;
+use App\Models\PaymentNotification;
+use App\Models\Plan;
 use App\Models\Tenant;
 use Tests\Browser\Concerns\TenantConnectionHelpers;
 
@@ -91,12 +94,155 @@ test('order detail shows payments', function () {
         'tenant_id' => $tenant->id,
         'order_id' => $order->id,
         'amount_cents' => 3000,
-        'status' => \App\Enums\PaymentStatus::Pending,
+        'status' => PaymentStatus::Pending,
     ]);
 
     $this->actingAs($this->admin)
         ->visit(route('landlord.orders.show', $order))
         ->assertSee('Orden #'.$order->id)
         ->assertSee('Acciones')
+        ->assertNoJavaScriptErrors();
+});
+
+test('verified payment shows verifier info', function () {
+    $plan = Plan::factory()->create(['name' => 'Gold Plan']);
+    $tenant = Tenant::factory()->createQuietly(['name' => 'Verifier Corp']);
+    $verifier = Landlord::factory()->createQuietly(['name' => 'Juan Verifier']);
+    $order = Order::factory()->create([
+        'tenant_id' => $tenant->id,
+        'plan_id' => $plan->id,
+        'status' => OrderStatus::Pending,
+        'total_cents' => 5000,
+    ]);
+
+    Payment::factory()->create([
+        'tenant_id' => $tenant->id,
+        'order_id' => $order->id,
+        'amount_cents' => 5000,
+        'status' => PaymentStatus::Verified,
+        'verified_by' => $verifier->id,
+        'verified_at' => now(),
+    ]);
+
+    $this->actingAs($this->admin)
+        ->visit(route('landlord.orders.show', $order))
+        ->assertSee('Verificado por')
+        ->assertSee($verifier->name)
+        ->assertNoJavaScriptErrors();
+});
+
+test('auto-verified payment shows Automático', function () {
+    $plan = Plan::factory()->create(['name' => 'Gold Plan']);
+    $tenant = Tenant::factory()->createQuietly(['name' => 'Auto Corp']);
+    $order = Order::factory()->create([
+        'tenant_id' => $tenant->id,
+        'plan_id' => $plan->id,
+        'status' => OrderStatus::Pending,
+        'total_cents' => 5000,
+    ]);
+
+    Payment::factory()->create([
+        'tenant_id' => $tenant->id,
+        'order_id' => $order->id,
+        'amount_cents' => 5000,
+        'status' => PaymentStatus::Verified,
+        'verified_by' => null,
+        'verified_at' => now(),
+    ]);
+
+    $this->actingAs($this->admin)
+        ->visit(route('landlord.orders.show', $order))
+        ->assertSee('Automático')
+        ->assertNoJavaScriptErrors();
+});
+
+test('cancelled payment shows coloured badge per type', function () {
+    $plan = Plan::factory()->create(['name' => 'Gold Plan']);
+    $tenant = Tenant::factory()->createQuietly(['name' => 'Cancel Corp']);
+    $order = Order::factory()->create([
+        'tenant_id' => $tenant->id,
+        'plan_id' => $plan->id,
+        'status' => OrderStatus::Pending,
+        'total_cents' => 10000,
+    ]);
+
+    // Create one payment per cancellation type
+    foreach (['manual' => 'Cancelado manualmente', 'system_duplicate' => 'Cancelado: duplicado', 'system_expired' => 'Cancelado: expirado', 'method_changed' => 'Cambio de método'] as $type => $label) {
+        $payment = Payment::factory()->create([
+            'tenant_id' => $tenant->id,
+            'order_id' => $order->id,
+            'amount_cents' => 2500,
+            'status' => PaymentStatus::Cancelled,
+            'cancellation_type' => $type,
+            'cancellation_reason' => 'Test reason',
+            'cancelled_at' => now(),
+        ]);
+    }
+
+    $this->actingAs($this->admin)
+        ->visit(route('landlord.orders.show', $order))
+        ->assertSee('Cancelado manualmente')
+        ->assertSee('Cancelado: duplicado')
+        ->assertSee('Cancelado: expirado')
+        ->assertSee('Cambio de método')
+        ->assertNoJavaScriptErrors();
+});
+
+test('matched payment shows match data', function () {
+    $plan = Plan::factory()->create(['name' => 'Gold Plan']);
+    $tenant = Tenant::factory()->createQuietly(['name' => 'Match Corp']);
+    $order = Order::factory()->create([
+        'tenant_id' => $tenant->id,
+        'plan_id' => $plan->id,
+        'status' => OrderStatus::Pending,
+        'total_cents' => 5000,
+    ]);
+
+    $payment = Payment::factory()->create([
+        'tenant_id' => $tenant->id,
+        'order_id' => $order->id,
+        'amount_cents' => 5000,
+        'status' => PaymentStatus::Verified,
+        'verified_at' => now(),
+    ]);
+
+    $notification = PaymentNotification::factory()->create();
+    PaymentMatch::factory()->create([
+        'payment_id' => $payment->id,
+        'payment_notification_id' => $notification->id,
+        'match_status' => 'matched',
+        'parsed_reference' => 'REF-123456',
+        'parsed_amount_cents' => 5000,
+        'matched_at' => now(),
+    ]);
+
+    $this->actingAs($this->admin)
+        ->visit(route('landlord.orders.show', $order))
+        ->assertSee('Estado de conciliación')
+        ->assertSee('REF-123456')
+        ->assertNoJavaScriptErrors();
+});
+
+test('unmatched payment hides match section', function () {
+    $plan = Plan::factory()->create(['name' => 'Gold Plan']);
+    $tenant = Tenant::factory()->createQuietly(['name' => 'NoMatch Corp']);
+    $order = Order::factory()->create([
+        'tenant_id' => $tenant->id,
+        'plan_id' => $plan->id,
+        'status' => OrderStatus::Pending,
+        'total_cents' => 5000,
+    ]);
+
+    Payment::factory()->create([
+        'tenant_id' => $tenant->id,
+        'order_id' => $order->id,
+        'amount_cents' => 5000,
+        'status' => PaymentStatus::Pending,
+        'payment_method' => 'pago_movil',
+    ]);
+
+    $this->actingAs($this->admin)
+        ->visit(route('landlord.orders.show', $order))
+        ->assertDontSee('Estado de conciliación')
         ->assertNoJavaScriptErrors();
 });

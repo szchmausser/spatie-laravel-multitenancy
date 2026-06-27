@@ -1,14 +1,20 @@
 <?php
 
 use App\Http\Controllers\Landlord\AdminPanelController;
+use App\Http\Controllers\Landlord\AlertController;
+use App\Http\Controllers\Landlord\DeviceController;
 use App\Http\Controllers\Landlord\NotificationController;
 use App\Http\Controllers\Landlord\OrderController;
 use App\Http\Controllers\Landlord\PaymentController;
+use App\Http\Controllers\Landlord\PaymentMethodConfigController;
+use App\Http\Controllers\Landlord\PaymentNotificationController;
 use App\Http\Controllers\Landlord\PlanController;
+use App\Http\Controllers\Landlord\ReconciliationDashboardController;
 use App\Http\Controllers\Landlord\ResourceController;
 use App\Http\Controllers\Landlord\SubscriptionChangeController;
 use App\Http\Controllers\Landlord\SubscriptionController;
 use App\Http\Controllers\Landlord\SubscriptionHistoryController;
+use App\Http\Controllers\Landlord\SystemConfigController;
 use App\Http\Controllers\Landlord\TenantController;
 use App\Http\Middleware\EnsureUserIsAdmin;
 use Illuminate\Support\Facades\Route;
@@ -73,9 +79,33 @@ Route::middleware(['auth', 'verified', EnsureUserIsAdmin::class])->prefix('admin
     Route::post('payments/{payment}/verify', [PaymentController::class, 'verify'])->name('payments.verify');
     Route::post('payments/{payment}/cancel', [PaymentController::class, 'cancel'])->name('payments.cancel');
 
+    // Payment method config CRUD — manage PagoMóvil and Transferencia accounts
+    Route::resource('payment-configs', PaymentMethodConfigController::class)
+        ->parameters(['payment-configs' => 'payment_method_config'])
+        ->except('show');
+
+    // Device management — phones that capture bank notifications
+    Route::resource('devices', DeviceController::class);
+
     // Manual notifications — landlord admin can compose, preview, send, and review
     Route::get('notifications', [NotificationController::class, 'create'])->name('notifications.create');
     Route::post('notifications/preview', [NotificationController::class, 'preview'])->name('notifications.preview');
     Route::post('notifications/send', [NotificationController::class, 'send'])->name('notifications.send');
     Route::get('notifications/history', [NotificationController::class, 'history'])->name('notifications.history');
+
+    // System configuration management — dynamic configs with type-aware editing
+    Route::get('system-configs', [SystemConfigController::class, 'index'])->name('admin.system-configs');
+    Route::put('system-configs/{system_config}', [SystemConfigController::class, 'update'])->name('admin.system-configs.update');
+
+    // System alerts dashboard — filterable, paginated system notification viewer
+    Route::get('alerts', [AlertController::class, 'index'])->name('alerts.index');
+    Route::post('alerts/{notification}/read', [AlertController::class, 'read'])->name('alerts.read');
+
+    // Payment notifications — monitor and reprocess failed notifications
+    Route::get('payment-notifications', [PaymentNotificationController::class, 'index'])->name('payment-notifications.index');
+    Route::post('payment-notifications/{notification}/reprocess', [PaymentNotificationController::class, 'reprocess'])->name('payment-notifications.reprocess');
+
+    // Reconciliation dashboard — KPIs, orphaned records, timeline, shadow mode toggle
+    Route::get('reconciliation', [ReconciliationDashboardController::class, 'index'])->name('reconciliation.index');
+    Route::patch('reconciliation/shadow-mode', [ReconciliationDashboardController::class, 'toggleShadowMode'])->name('reconciliation.shadow-mode');
 });

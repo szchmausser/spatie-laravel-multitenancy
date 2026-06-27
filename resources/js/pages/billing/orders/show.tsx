@@ -56,12 +56,6 @@ type Order = {
     payments: OrderPayment[];
 };
 
-type PaymentConfig = {
-    phone: string;
-    bank: string;
-    rif: string;
-};
-
 type PaymentMethodConfig = {
     id: number;
     type: string;
@@ -76,7 +70,6 @@ type PaymentMethodConfig = {
 
 type OrderShowProps = {
     order: Order;
-    paymentConfig: PaymentConfig;
     paymentMethodConfigs: PaymentMethodConfig[];
 };
 
@@ -86,7 +79,7 @@ const breadcrumbs: BreadcrumbItem[] = [
     { title: 'Detalle', href: '#' },
 ];
 
-export default function OrderShow({ order, paymentConfig, paymentMethodConfigs }: OrderShowProps) {
+export default function OrderShow({ order, paymentMethodConfigs }: OrderShowProps) {
     const { url } = usePage();
     const hasReloaded = useRef(false);
     const [reference, setReference] = useState('');
@@ -332,7 +325,7 @@ export default function OrderShow({ order, paymentConfig, paymentMethodConfigs }
                             <form onSubmit={handleReportPayment} className="space-y-4">
                                 <input type="hidden" name="payment_method" value={selectedMethod} />
                                 <div className="space-y-2">
-                                    <Label htmlFor="amount">Monto pagado (USD)</Label>
+                                    <Label htmlFor="amount">Monto pagado (Bs.)</Label>
                                     <Input
                                         id="amount"
                                         type="number"

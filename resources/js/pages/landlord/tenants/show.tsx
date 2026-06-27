@@ -237,7 +237,7 @@ return;
                                 )}
                                 {availablePlans.map((p) => (
                                     <option key={p.id} value={p.id}>
-                                        {p.name} — ${(p.price_cents / 100).toFixed(2)}
+                                        {p.name} — Bs. {(p.price_cents / 100).toFixed(2)}
                                     </option>
                                 ))}
                             </select>

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\CancellationType;
 use App\Enums\PaymentStatus;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -26,6 +27,7 @@ class Payment extends Model
         'verified_by',
         'verified_at',
         'cancellation_reason',
+        'cancellation_type',
         'cancelled_by',
         'cancelled_at',
         'metadata',
@@ -35,6 +37,7 @@ class Payment extends Model
     {
         return [
             'status' => PaymentStatus::class,
+            'cancellation_type' => CancellationType::class,
             'amount_cents' => 'integer',
             'verified_at' => 'datetime',
             'cancelled_at' => 'datetime',
@@ -75,6 +78,11 @@ class Payment extends Model
     public function bankTransferDetail(): HasOne
     {
         return $this->hasOne(BankTransferDetail::class);
+    }
+
+    public function paymentMatch(): HasOne
+    {
+        return $this->hasOne(PaymentMatch::class)->latestOfMany();
     }
 
     /**

@@ -40,6 +40,7 @@ export function PlanForm({
         defaults?.features ?? Object.fromEntries(FEATURE_CATALOG.map((f) => [f.key, false]))
     );
     const [isActive, setIsActive] = useState(defaults?.is_active ?? true);
+    const [priceBs, setPriceBs] = useState(defaults?.price_cents ? defaults.price_cents / 100 : 0);
 
     const toggleFeature = (key: FeatureKey, checked: boolean) => {
         setFeatures((prev) => ({ ...prev, [key]: checked }));
@@ -62,6 +63,7 @@ export function PlanForm({
 
             <input type="hidden" name="features" value={JSON.stringify(features)} />
             <input type="hidden" name="is_active" value={isActive ? '1' : '0'} />
+            <input type="hidden" name="price_cents" value={Math.round(priceBs * 100)} />
 
             <div className="space-y-4">
                 <Card>
@@ -109,19 +111,19 @@ export function PlanForm({
                             <InputError message={errors.description} />
                         </div>
                         <div className="grid gap-2">
-                            <Label htmlFor="price_cents">Price (cents)</Label>
+                            <Label htmlFor="price_bs">Price (Bs.)</Label>
                             <Input
-                                id="price_cents"
-                                name="price_cents"
+                                id="price_bs"
                                 data-testid="input-price"
                                 type="number"
                                 min={0}
                                 step={1}
-                                defaultValue={defaults?.price_cents ?? 0}
-                                placeholder={mode === 'create' ? '2900' : undefined}
+                                value={priceBs}
+                                placeholder={mode === 'create' ? '29' : undefined}
+                                onChange={(e) => setPriceBs(Number(e.target.value || 0))}
                             />
                             <p className="text-xs text-muted-foreground">
-                                Price in cents (e.g. 2900 = $29.00/month).
+                                Ingresá el precio en bolívares (e.g. 29 = Bs. 29.00/month).
                             </p>
                             <InputError message={errors.price_cents} />
                         </div>

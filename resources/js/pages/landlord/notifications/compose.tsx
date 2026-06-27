@@ -37,7 +37,7 @@ interface ComposeProps {
 
 const breadcrumbs: BreadcrumbItem[] = [
     { title: 'Admin', href: '/admin' },
-    { title: 'Notifications', href: '#' },
+    { title: 'Anuncios', href: '#' },
 ];
 
 const AVAILABLE_ROLES = [

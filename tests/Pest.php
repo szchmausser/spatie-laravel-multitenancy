@@ -18,6 +18,9 @@ pest()->extend(TestCase::class)->in('Feature');
 pest()->extend(BrowserTestCase::class)->in('Browser');
 pest()->extend(TestCase::class)->in('Unit/Services');
 pest()->extend(TestCase::class)->in('Unit/Models');
+pest()->extend(TestCase::class)->in('Unit/Helpers');
+pest()->extend(TestCase::class)->in('Unit/Notifications');
+pest()->extend(TestCase::class)->in('Unit/Listeners');
 
 /*
 |--------------------------------------------------------------------------

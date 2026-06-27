@@ -69,5 +69,3 @@ test('history shows empty state when no changes', function () {
         ->assertSee('No subscription history entries yet.')
         ->assertNoJavaScriptErrors();
 });
-
-

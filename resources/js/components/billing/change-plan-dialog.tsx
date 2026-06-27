@@ -130,7 +130,7 @@ export function ChangePlanDialog({
                                     <CircleCheck className="h-4 w-4 text-muted-foreground" />
                                     {plan.name}
                                 </CardTitle>
-                                <Badge variant="outline">${formatPrice(plan.price_cents)} / month</Badge>
+                                <Badge variant="outline">{formatPrice(plan.price_cents)} / month</Badge>
                             </div>
                             {plan.description && (
                                 <CardDescription>{plan.description}</CardDescription>

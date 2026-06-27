@@ -17,10 +17,12 @@ class TenantFactory extends Factory
      */
     public function definition(): array
     {
+        $number = fake()->unique()->numberBetween(1, 99999);
+
         return [
-            'name' => fake()->company(),
-            'domain' => fake()->unique()->domainName(),
-            'database' => 'tenant_'.fake()->unique()->randomNumber(5),
+            'name' => 'Tenant '.$number,
+            'domain' => "tenant{$number}.spatie-laravel-multitenancy.test",
+            'database' => "tenant{$number}-spatie-laravel-multitenancy",
         ];
     }
 

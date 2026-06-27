@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Tenant;
 
 use App\Enums\OrderStatus;
+use App\Enums\PaymentStatus;
 use App\Http\Controllers\Controller;
 use App\Models\Order;
 use App\Models\Payment;
@@ -57,7 +58,6 @@ class PaymentController extends Controller
 
         return Inertia::render('billing/orders/show', [
             'order' => $order,
-            'paymentConfig' => config('payment.pago_movil'),
             'paymentMethodConfigs' => $paymentMethodConfigs,
         ]);
     }
@@ -184,11 +184,20 @@ class PaymentController extends Controller
             $validated['payment_method'],
             $validated['payment_method_config_id'] ?? null,
             $gatewayData,
+            $validated['reference'],  // transaction_id — normalized inside recordPayment
         );
 
-        // Store the reference
-        $payment->update(['transaction_id' => $validated['reference']]);
+        // Dispatch any pending events accumulated during reverse match
+        // (e.g. PaymentVerified from auto-verification)
+        foreach ($this->paymentService->getPendingEvents() as $event) {
+            event($event);
+        }
 
-        return redirect()->route('billing.orders.show', $order);
+        // Check if the payment was auto-verified by reverse match
+        $autoVerified = $payment->fresh()->status === PaymentStatus::Verified;
+
+        return redirect()
+            ->route('billing.orders.show', $order)
+            ->with('auto_verified', $autoVerified);
     }
 }

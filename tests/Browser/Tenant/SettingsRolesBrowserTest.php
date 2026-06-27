@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\Auth\Role;
 use App\Models\Tenant;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
@@ -124,7 +125,7 @@ test('admin can view a role detail page', function () {
         $tenant->makeCurrent();
 
         // Get the owner role ID to visit its detail page
-        $role = \App\Models\Auth\Role::on('tenant')->where('name', 'owner')->first();
+        $role = Role::on('tenant')->where('name', 'owner')->first();
 
         $this->actingAs($admin)
             ->visit("/settings/roles/{$role->id}")
@@ -158,7 +159,7 @@ test('role detail shows assigned permissions', function () {
         $this->fakeTenantFinderForTest($tenant);
         $tenant->makeCurrent();
 
-        $role = \App\Models\Auth\Role::on('tenant')->where('name', 'owner')->first();
+        $role = Role::on('tenant')->where('name', 'owner')->first();
 
         $this->actingAs($admin)
             ->visit("/settings/roles/{$role->id}")
@@ -170,5 +171,3 @@ test('role detail shows assigned permissions', function () {
         $this->cleanupTenantConnection($previousDefault);
     }
 });
-
-

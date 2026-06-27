@@ -28,6 +28,15 @@ type BankTransferDetail = {
     concept?: string | null;
 };
 
+type PaymentMatch = {
+    id: number;
+    match_status: string;
+    matched_at: string | null;
+    parsed_reference: string | null;
+    parsed_amount_cents: number;
+    parsed_sender_phone_last4: string | null;
+};
+
 type Payment = {
     id: number;
     amount_cents: number;
@@ -35,9 +44,14 @@ type Payment = {
     payment_method: string;
     transaction_id?: string | null;
     created_at: string;
+    verified_by?: number | null;
+    verifier?: { id: number; name: string; email: string } | null;
+    verified_at?: string | null;
+    cancellation_type?: string | null;
     cancellation_reason?: string | null;
     pago_movil_detail?: PagoMovilDetail | null;
     bank_transfer_detail?: BankTransferDetail | null;
+    payment_match?: PaymentMatch | null;
 };
 
 type PaymentDetailsCardProps = {
@@ -80,6 +94,34 @@ function PagoMovilDetails({ detail }: { detail: PagoMovilDetail }) {
             </div>
         </>
     );
+}
+
+function CancellationTypeBadge({ cancellationType }: { cancellationType: string }) {
+    const config: Record<string, { label: string; className: string }> = {
+        manual: {
+            label: 'Cancelado manualmente',
+            className: 'rounded-lg bg-destructive/10 p-3 text-sm text-destructive',
+        },
+        system_duplicate: {
+            label: 'Cancelado: duplicado',
+            className: 'rounded-lg bg-amber-50 p-3 text-sm text-amber-700 border border-amber-300',
+        },
+        system_expired: {
+            label: 'Cancelado: expirado',
+            className: 'rounded-lg bg-muted p-3 text-sm text-muted-foreground',
+        },
+        method_changed: {
+            label: 'Cambio de método',
+            className: 'rounded-lg bg-blue-50 p-3 text-sm text-blue-700 border border-blue-300',
+        },
+    };
+
+    const badge = config[cancellationType] ?? {
+        label: cancellationType,
+        className: 'rounded-lg bg-destructive/10 p-3 text-sm text-destructive',
+    };
+
+    return <div className={badge.className}>{badge.label}</div>;
 }
 
 function BankTransferDetails({ detail }: { detail: BankTransferDetail }) {
@@ -157,6 +199,26 @@ export function PaymentDetailsCard({ payment, title = 'Detalles del Pago', showC
                 </div>
                 <Separator />
 
+                {/* Verification info */}
+                {(payment.verifier || payment.verified_at) && (
+                    <>
+                        <div>
+                            <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Verificación</div>
+                            <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+                                <span className="text-muted-foreground">Verificado por</span>
+                                <span>{payment.verifier?.name ?? 'Automático'}</span>
+                                {payment.verified_at && (
+                                    <>
+                                        <span className="text-muted-foreground">Verificado el día</span>
+                                        <span>{formatDateTime(payment.verified_at)}</span>
+                                    </>
+                                )}
+                            </div>
+                        </div>
+                        <Separator />
+                    </>
+                )}
+
                 {/* Gateway-specific details */}
                 {payment.payment_method === 'pago_movil' && payment.pago_movil_detail && (
                     <PagoMovilDetails detail={payment.pago_movil_detail} />
@@ -166,11 +228,43 @@ export function PaymentDetailsCard({ payment, title = 'Detalles del Pago', showC
                     <BankTransferDetails detail={payment.bank_transfer_detail} />
                 )}
 
-                {/* Cancellation reason */}
-                {showCancellation && payment.cancellation_reason && (
-                    <div className="rounded-lg bg-destructive/10 p-3 text-sm text-destructive">
-                        Cancelado: {payment.cancellation_reason}
+                {/* Cancellation badge + reason */}
+                {showCancellation && (payment.cancellation_type || payment.cancellation_reason) && (
+                    <div className="space-y-2">
+                        {payment.cancellation_type && (
+                            <CancellationTypeBadge cancellationType={payment.cancellation_type} />
+                        )}
+                        {payment.cancellation_reason && (
+                            <p className="text-sm text-muted-foreground">{payment.cancellation_reason}</p>
+                        )}
                     </div>
+                )}
+
+                {/* Payment match data */}
+                {payment.payment_match && (
+                    <>
+                        <Separator />
+                        <div>
+                            <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Conciliación</div>
+                            <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+                                <span className="text-muted-foreground">Estado de conciliación</span>
+                                <span className="font-medium capitalize">{payment.payment_match.match_status}</span>
+                                {payment.payment_match.matched_at && (
+                                    <>
+                                        <span className="text-muted-foreground">Conciliado el día</span>
+                                        <span>{formatDateTime(payment.payment_match.matched_at)}</span>
+                                    </>
+                                )}
+                                {payment.payment_match.parsed_reference && (
+                                    <DetailRow label="Referencia" value={payment.payment_match.parsed_reference} mono />
+                                )}
+                                <DetailRow label="Monto" value={formatPrice(payment.payment_match.parsed_amount_cents)} />
+                                {payment.payment_match.parsed_sender_phone_last4 && (
+                                    <DetailRow label="Últ. 4 díg. teléfono" value={payment.payment_match.parsed_sender_phone_last4} mono />
+                                )}
+                            </div>
+                        </div>
+                    </>
                 )}
             </CardContent>
         </Card>

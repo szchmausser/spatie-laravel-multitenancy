@@ -1,5 +1,7 @@
 <?php
 
+use App\Models\Plan;
+use App\Models\SubscriptionHistory;
 use App\Models\Tenant;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
@@ -55,13 +57,13 @@ test('history shows subscription history page with events', function () {
         $user->assignRole('tenant-admin');
 
         // Create subscription with history
-        $plan = \App\Models\Plan::factory()->create(['name' => 'Test Plan']);
+        $plan = Plan::factory()->create(['name' => 'Test Plan']);
         $subscription = $tenant->subscription()->create([
             'plan_id' => $plan->id,
             'status' => 'active',
         ]);
 
-        \App\Models\SubscriptionHistory::create([
+        SubscriptionHistory::create([
             'subscription_id' => $subscription->id,
             'tenant_id' => $tenant->id,
             'event_type' => 'subscription_created',
@@ -132,13 +134,13 @@ test('history page loads correctly with content', function () {
         $user->assignRole('tenant-admin');
 
         // Create subscription and history with specific content to verify
-        $plan = \App\Models\Plan::factory()->create(['name' => 'Pro Plan', 'price_cents' => 5000]);
+        $plan = Plan::factory()->create(['name' => 'Pro Plan', 'price_cents' => 5000]);
         $subscription = $tenant->subscription()->create([
             'plan_id' => $plan->id,
             'status' => 'active',
         ]);
 
-        $historyEntry = \App\Models\SubscriptionHistory::create([
+        $historyEntry = SubscriptionHistory::create([
             'subscription_id' => $subscription->id,
             'tenant_id' => $tenant->id,
             'event_type' => 'subscription_created',

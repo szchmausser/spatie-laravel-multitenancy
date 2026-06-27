@@ -59,9 +59,12 @@ class BrowserTestCase extends TestCase
 
         // Child tables first (foreign keys reference parent tables)
         $landlord->table('subscription_history')->delete();
+        $landlord->table('payment_matches')->delete();
         $landlord->table('payments')->delete();
         $landlord->table('orders')->delete();
         $landlord->table('payment_method_configs')->delete();
+        $landlord->table('system_configs')->delete();
+        $landlord->table('payment_notifications')->delete();
         $landlord->table('entitlements')->delete();
 
         // Parent tables

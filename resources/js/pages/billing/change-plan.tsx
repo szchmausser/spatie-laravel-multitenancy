@@ -140,7 +140,7 @@ export default function ChangePlan({
                                         </Badge>
                                     )}
                                     <Badge variant="outline">
-                                        ${formatPrice(currentPlan.price_cents)}{' '}
+                                        {formatPrice(currentPlan.price_cents)}{' '}
                                         / month
                                     </Badge>
                                 </div>
@@ -264,7 +264,7 @@ export default function ChangePlan({
                                             {plan.name}
                                         </CardTitle>
                                         <Badge variant="outline">
-                                            ${formatPrice(plan.price_cents)}{' '}
+                                            {formatPrice(plan.price_cents)}{' '}
                                             / month
                                         </Badge>
                                     </div>

@@ -2,6 +2,7 @@
 
 use App\Models\Tenant;
 use App\Models\User;
+use App\Notifications\ManualNotification;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Tests\Browser\Concerns\TenantConnectionHelpers;
@@ -116,7 +117,7 @@ test('page shows notification list when notifications exist', function () {
 
         // Create a database notification for the user
         $user->notify(
-            new \App\Notifications\ManualNotification(
+            new ManualNotification(
                 'This is a test notification message',
                 'Test Notification'
             )

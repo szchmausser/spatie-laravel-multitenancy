@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\Landlord;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Str;
 
@@ -49,7 +50,7 @@ test('reset password page renders with valid token', function () {
         ->table('password_reset_tokens')
         ->insert([
             'email' => $this->admin->email,
-            'token' => \Illuminate\Support\Facades\Hash::make($token),
+            'token' => Hash::make($token),
             'created_at' => now(),
         ]);
 
@@ -70,7 +71,7 @@ test('reset password form submits and redirects', function () {
         ->table('password_reset_tokens')
         ->insert([
             'email' => $this->admin->email,
-            'token' => \Illuminate\Support\Facades\Hash::make($token),
+            'token' => Hash::make($token),
             'created_at' => now(),
         ]);
 
@@ -87,7 +88,7 @@ test('reset password form submits and redirects', function () {
 
     // Verify the password was actually changed in DB
     $adminFresh = Landlord::query()->find($this->admin->id);
-    expect(\Illuminate\Support\Facades\Hash::check($newPassword, $adminFresh->password))->toBeTrue();
+    expect(Hash::check($newPassword, $adminFresh->password))->toBeTrue();
 });
 
 test('reset password with invalid token shows error', function () {

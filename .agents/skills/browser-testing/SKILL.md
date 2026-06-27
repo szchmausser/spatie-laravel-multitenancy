@@ -1,13 +1,11 @@
 ---
 name: browser-testing
 description: >
-model: openrouter/deepseek/deepseek-v4-flash:free
     Guía completa de browser tests con Pest + Playwright en proyectos Laravel + Inertia + React.
     Cubre dos contextos: (1) escribir nuevos tests desde cero con criterio, estructura correcta
     y cobertura estratégica; (2) reparar tests existentes rotos después de un rediseño o
     refactor de UI. Los principios fundamentales aplican a ambos contextos.
 license: MIT
-compatibility: opencode
 metadata:
     stack: laravel,inertia,react,tailwind,pest,playwright
     trigger: >
@@ -488,14 +486,7 @@ superficie de fallo y mayor costo de mantenimiento. No todo debe tener un browse
 
 ### 2.3 Configuración del entorno
 
-> **Regla de oro:** la configuración de testing debe respetar la arquitectura real del
-> proyecto, no al revés. Esta sección da una guía general; **adaptala al setup que ya
-> existe en el `TestCase` del proyecto**. Si el proyecto usa multitenancy, conexiones
-> múltiples, o un motor de BD distinto al de desarrollo, el browser test tiene que
-> usar esa misma configuración — sino, los tests pasan localmente pero fallan en CI o
-> divergen del comportamiento de producción.
-
-#### Setup por defecto (proyectos Laravel simples)
+Los browser tests necesitan un servidor HTTP corriendo y una base de datos separada.
 
 **`.env.testing`** — nunca apuntes a la base de datos de desarrollo:
 
@@ -528,44 +519,6 @@ abstract class BrowserTestCase extends TestCase
     use RefreshDatabase;
 }
 ```
-
-#### Setup para proyectos con multitenancy o conexiones múltiples
-
-Si el proyecto tiene un `TestCase` con un trait custom (por ejemplo
-`RefreshLandlordDatabase`) que maneja múltiples conexiones, migraciones en paths
-separados, o BD física compartida entre conexiones lógicas, **los browser tests deben
-usar exactamente el mismo `TestCase` y la misma config BD que los feature tests**.
-
-Razones:
-
-- El mismo `TestCase` ya resolvió problemas no obvios de visibilidad entre
-  conexiones (por ejemplo, dos conexiones apuntando a la misma BD física que
-  necesitan compartir el PDO para verse entre sí dentro de una transacción).
-- Replicar la lógica de migraciones o de dual-connection en el browser test crea
-  divergencia: el browser test pasa con su config, pero la feature suite falla con
-  la otra.
-- El servidor que levantás para el browser test (con `php artisan serve` o el plugin
-  automático) usa el `.env` activo; si querés que use la config de testing, tenés
-  que pasárselo explícitamente.
-
-**Convención en este tipo de proyectos:**
-
-```php
-// tests/Browser/BrowserTestCase.php
-abstract class BrowserTestCase extends TestCase  // mismo TestCase que feature tests
-{
-    // Heredá todo: conexiones a transar, migraciones, refresh, PDO sharing, etc.
-    // NO dupliques la lógica de BD acá.
-}
-```
-
-```bash
-# Servidor con la config del proyecto (no asumás sqlite si el proyecto usa postgres)
-php artisan serve --env=testing
-```
-
-Si el proyecto usa el plugin automático de servidor, asegurate de que el plugin
-respete el `.env.testing` del proyecto (no el de la skill).
 
 ---
 
@@ -748,17 +701,16 @@ Siempre diagnostica primero. Nunca reescribas selectores a ciegas.
 ### 3.2 Establecer la línea base — capturar todos los fallos
 
 ```bash
-# Ejecutar un solo archivo de browser tests
-php artisan test --compact --filter=Browser/LoginTest.php
+# Ejecutar solo el suite de browser tests y capturar el output
+php artisan test --filter=Browser 2>&1 | tee /tmp/browser-failures.txt
 
-# Ejecutar un solo test por nombre
-php artisan test --compact --filter="el usuario puede iniciar sesión"
+# O si los tests están en una ruta específica
+./vendor/bin/pest tests/Browser 2>&1 | tee /tmp/browser-failures.txt
 ```
 
-**RESTRICCIÓN IMPORTANTE:** Ejecutar SOLO los tests acotados al cambio.
-NUNCA ejecutar `php artisan test --compact` (suite completa) desde un subagente —
-causa timeouts. Si se necesita la suite completa, solicitar al usuario que la ejecute
-manualmente.
+Lee `/tmp/browser-failures.txt` completo antes de tocar cualquier archivo.
+Agrupa los fallos por tipo de error: elemento no encontrado, timeout, URL inesperada,
+aserción fallida.
 
 ---
 
@@ -935,7 +887,7 @@ interface Props extends React.HTMLAttributes<HTMLDivElement> {
 ```
 1. Leer el archivo de test completo
 2. Ejecutar SOLO ese archivo:
-   php artisan test --compact --filter=Browser/LoginTest.php
+   ./vendor/bin/pest tests/Browser/LoginTest.php --verbose
 3. Leer el error: ¿qué selector o aserción falló?
 4. Encontrar el componente React: resources/js/pages/...
 5. Identificar el selector correcto (sección 3.4 - 3.5)
@@ -949,26 +901,7 @@ ejecútalo, luego continúa. Evita perseguir fallos fantasma.
 
 ---
 
-## PARTE 4 — Ejecución y depuración
-
-```bash
-# Ejecutar un solo archivo de browser tests
-php artisan test --compact --filter=Browser/LoginTest.php
-
-# Ejecutar un solo test por nombre
-php artisan test --compact --filter="el usuario puede iniciar sesión"
-
-# Capturar screenshot en un punto específico del test
-$browser->screenshot('estado-antes-de-guardar');
-```
-
-**RESTRICCIÓN:** Nunca ejecutar la suite completa (`php artisan test --compact`)
-desde un subagente — causa timeouts. Ejecutar SOLO tests acotados al cambio.
-Si se necesita la suite completa, solicitar al usuario que la ejecute manualmente.
-
----
-
-## PARTE 5 — Checklist
+## PARTE 4 — Checklist
 
 ### Al crear un test nuevo
 
@@ -997,9 +930,9 @@ Si se necesita la suite completa, solicitar al usuario que la ejecute manualment
       aprovecha la reparación para fortalecerlo con verificaciones sobre el resultado concreto
 - [ ] No quedan selectores por clase CSS en el código de los tests
 - [ ] Los `data-testid` nuevos están commiteados junto con los tests
-- [ ] El test pasa ejecutado de forma aislada: `php artisan test --compact --filter=Browser/ElTest.php`
-- [ ] Todos los browser tests pasan: ejecutar manualmente `php artisan test --compact --filter=Browser`
-- [ ] Todos los feature y unit tests siguen en verde: solicitar al usuario ejecutar `php artisan test --compact`
+- [ ] El test pasa ejecutado de forma aislada: `./vendor/bin/pest tests/Browser/ElTest.php`
+- [ ] Todos los browser tests pasan: `php artisan test --filter=Browser`
+- [ ] Todos los feature y unit tests siguen en verde: `php artisan test`
 - [ ] Si es un feature test que hace POST/PUT/DELETE, incluye
       `$this->withoutMiddleware(ValidateCsrfToken::class)` en el `setUp`/`beforeEach`
 
@@ -1013,7 +946,7 @@ Si se necesita la suite completa, solicitar al usuario que la ejecute manualment
 
 ---
 
-## PARTE 6 — Referencia rápida de métodos
+## PARTE 5 — Referencia rápida de métodos
 
 | Qué se quiere hacer                  | Método                                            |
 | ------------------------------------ | ------------------------------------------------- |

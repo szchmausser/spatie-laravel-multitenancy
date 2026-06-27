@@ -17,12 +17,11 @@ class PagoMovilGateway implements PaymentGatewayInterface
      * in a single database transaction to guarantee atomicity.
      *
      * The receiving account (phone, bank, rif) is resolved from the
-     * PaymentMethodConfig table using payment_method_config_id when
-     * provided, falling back to the global config otherwise.
+     * PaymentMethodConfig table using payment_method_config_id.
      *
      * @param  array{
      *     amount_cents: int,
-     *     payment_method_config_id: ?int,
+     *     payment_method_config_id: int,
      *     sender_bank: string,
      *     sender_phone: string,
      *     sender_id: ?string,
@@ -32,7 +31,9 @@ class PagoMovilGateway implements PaymentGatewayInterface
      */
     public function recordPayment(Order $order, array $data): Payment
     {
-        return DB::transaction(function () use ($order, $data) {
+        $config = $this->resolveReceivingAccount($data['payment_method_config_id'] ?? null);
+
+        return DB::transaction(function () use ($order, $data, $config) {
             $payment = Payment::create([
                 'tenant_id' => $order->tenant_id,
                 'order_id' => $order->id,
@@ -42,9 +43,6 @@ class PagoMovilGateway implements PaymentGatewayInterface
                 'payment_method_config_id' => $data['payment_method_config_id'] ?? null,
                 'status' => PaymentStatus::Pending,
             ]);
-
-            // Resolve the receiving account from PaymentMethodConfig or global config
-            $config = $this->resolveReceivingAccount($data['payment_method_config_id'] ?? null);
 
             $payment->pagoMovilDetail()->create([
                 'phone' => $config['phone'],
@@ -64,30 +62,26 @@ class PagoMovilGateway implements PaymentGatewayInterface
     /**
      * Resolve receiving account details for Pago Móvil.
      *
-     * If a config ID is provided, looks it up from PaymentMethodConfig.
-     * Otherwise falls back to the global payment.pago_movil config.
+     * Always requires a valid PaymentMethodConfig record.
+     * Aborts with 422 if config is missing or inactive.
+     *
+     * @return array{phone: string, bank: string, rif: string}
      */
     private function resolveReceivingAccount(?int $configId): array
     {
-        if ($configId !== null) {
-            $config = PaymentMethodConfig::query()
-                ->where('id', $configId)
-                ->where('type', 'pago_movil')
-                ->first();
+        abort_if($configId === null, 422, 'Se requiere una configuración de método de pago para Pago Móvil.');
 
-            if ($config) {
-                return [
-                    'phone' => $config->account_number,
-                    'bank' => $config->bank_name,
-                    'rif' => $config->holder_id,
-                ];
-            }
-        }
+        $config = PaymentMethodConfig::query()
+            ->where('id', $configId)
+            ->where('type', 'pago_movil')
+            ->first();
+
+        abort_if(! $config, 422, 'No hay cuenta PagoMóvil activa configurada.');
 
         return [
-            'phone' => config('payment.pago_movil.phone'),
-            'bank' => config('payment.pago_movil.bank'),
-            'rif' => config('payment.pago_movil.rif'),
+            'phone' => $config->account_number,
+            'bank' => $config->bank_name,
+            'rif' => $config->holder_id,
         ];
     }
 

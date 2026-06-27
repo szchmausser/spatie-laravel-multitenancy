@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\Order;
+use App\Models\PaymentMethodConfig;
 use App\Models\Plan;
 use App\Models\Resource;
 use App\Models\Tenant;
@@ -96,7 +97,7 @@ test('orders show pago movil payment flow', function () {
         $user->assignRole('tenant-admin');
 
         // Create payment method config for pago_movil
-        \App\Models\PaymentMethodConfig::create([
+        PaymentMethodConfig::create([
             'type' => 'pago_movil',
             'label' => 'Pago Móvil Test',
             'bank_name' => 'Banco de Venezuela',

@@ -43,17 +43,30 @@ type BankTransferDetail = {
     concept: string | null;
 };
 
+type PaymentMatch = {
+    id: number;
+    match_status: string;
+    matched_at: string | null;
+    parsed_reference: string | null;
+    parsed_amount_cents: number;
+    parsed_sender_phone_last4: string | null;
+};
+
 type Payment = {
     id: number;
     amount_cents: number;
     status: string;
     payment_method: string;
     transaction_id: string | null;
+    verified_by: number | null;
+    verifier: { id: number; name: string; email: string } | null;
     verified_at: string | null;
+    cancellation_type: string | null;
     cancellation_reason: string | null;
     created_at: string;
     pago_movil_detail: PagoMovilDetail | null;
     bank_transfer_detail: BankTransferDetail | null;
+    payment_match: PaymentMatch | null;
 };
 
 type Tenant = {

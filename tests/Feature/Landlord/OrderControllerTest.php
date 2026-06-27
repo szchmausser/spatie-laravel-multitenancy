@@ -3,6 +3,8 @@
 use App\Enums\OrderStatus;
 use App\Models\Landlord;
 use App\Models\Order;
+use App\Models\Payment;
+use App\Models\PaymentMatch;
 use App\Models\Plan;
 use App\Models\Tenant;
 use App\Models\User;
@@ -173,4 +175,39 @@ test('order detail returns 404 for non-existent order', function () {
     $response = $this->get(route('landlord.orders.show', 999999));
 
     $response->assertNotFound();
+});
+
+test('order detail loads verifier and paymentMatch relationships', function () {
+    $tenant = Tenant::factory()->createQuietly(['database' => $this->testDatabase]);
+    $plan = Plan::factory()->createQuietly();
+    $verifier = Landlord::factory()->createQuietly();
+
+    $order = Order::factory()->createQuietly([
+        'tenant_id' => $tenant->id,
+        'plan_id' => $plan->id,
+    ]);
+
+    $payment = Payment::factory()->createQuietly([
+        'tenant_id' => $tenant->id,
+        'order_id' => $order->id,
+        'verified_by' => $verifier->id,
+        'verified_at' => now(),
+    ]);
+
+    PaymentMatch::factory()->createQuietly([
+        'payment_id' => $payment->id,
+        'match_status' => 'matched',
+    ]);
+
+    $response = $this->get(route('landlord.orders.show', $order));
+
+    $response->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->component('admin/orders/show')
+            ->has('order.payments', 1)
+            ->has('order.payments.0.verifier')
+            ->where('order.payments.0.verifier.name', $verifier->name)
+            ->has('order.payments.0.payment_match')
+            ->where('order.payments.0.payment_match.match_status', 'matched')
+        );
 });

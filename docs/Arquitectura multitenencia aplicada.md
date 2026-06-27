@@ -2118,6 +2118,116 @@ nslookup tenant1.spatie-laravel-multitenancy.test
 
 > **Gotcha de sesiones:** Después de este reset, las cookies viejas del navegador apuntan a IDs de sesión que ya no existen. El síntoma típico es un redirect loop al `/login` o un error 419. Solución: cerrar sesión explícita antes del reset, o usar ventana incógnita.
 
+### 18.3 Reset completo con configuración del sistema
+
+> ⚠️ **Por qué esta sección existe:** La sección 18.1 documenta un reset con una configuración mínima de seeders que quedó desactualizada tras la evolución del proyecto. Esta sección **reemplaza funcionalmente** a la 18.1 para el flujo de desarrollo actual, ya que incluye todos los seeders que el sistema necesita para estar operativo: admin, planes, tenants, métodos de pago, configuración del sistema, y datos por tenant (roles, permisos, usuarios owner).
+
+Este flujo dropea y recrea las BDs, corre migraciones, y siembra **todos los datos** incluyendo landlord admin, planes, 10 tenants, métodos de pago, configuraciones del sistema, permisos/roles por tenant, y un usuario owner por tenant.
+
+> **Pre-flight:** Laragon (o tu dev stack) corriendo con PostgreSQL activo. Credenciales del `.env` funcionando. Usá ventana incógnita del navegador (las cookies viejas causan 419). Si escribís al archivo `hosts`, necesitás permisos de Administrador (Windows) o `sudo` (Linux/macOS).
+
+**Cuándo usar este flujo:** cuando querés un estado completo del sistema con todos los datos de configuración para desarrollo o testing integral.
+
+```bash
+# 0. Pre-requisito: verificar PostgreSQL
+#     Ajustá la ruta de psql según tu instalación.
+$env:PGPASSWORD = "postgres"
+
+# ──────────────────────────────────────────────
+# 1. Drop todas las BDs (landlord + testing + 10 tenants)
+# ──────────────────────────────────────────────
+& "C:\Program Files\PostgreSQL\18\bin\psql.exe" -U postgres -h 127.0.0.1 -d postgres -q `
+  -c 'DROP DATABASE IF EXISTS "spatie-laravel-multitenancy";' `
+  -c 'DROP DATABASE IF EXISTS "spatie-laravel-multitenancy-testing";' `
+  -c 'DROP DATABASE IF EXISTS "tenant1-spatie-laravel-multitenancy";' `
+  -c 'DROP DATABASE IF EXISTS "tenant2-spatie-laravel-multitenancy";' `
+  -c 'DROP DATABASE IF EXISTS "tenant3-spatie-laravel-multitenancy";' `
+  -c 'DROP DATABASE IF EXISTS "tenant4-spatie-laravel-multitenancy";' `
+  -c 'DROP DATABASE IF EXISTS "tenant5-spatie-laravel-multitenancy";' `
+  -c 'DROP DATABASE IF EXISTS "tenant6-spatie-laravel-multitenancy";' `
+  -c 'DROP DATABASE IF EXISTS "tenant7-spatie-laravel-multitenancy";' `
+  -c 'DROP DATABASE IF EXISTS "tenant8-spatie-laravel-multitenancy";' `
+  -c 'DROP DATABASE IF EXISTS "tenant9-spatie-laravel-multitenancy";' `
+  -c 'DROP DATABASE IF EXISTS "tenant10-spatie-laravel-multitenancy";'
+
+# ──────────────────────────────────────────────
+# 2. Recrear landlord + testing
+# ──────────────────────────────────────────────
+& "C:\Program Files\PostgreSQL\18\bin\psql.exe" -U postgres -h 127.0.0.1 -d postgres -q `
+  -c 'CREATE DATABASE "spatie-laravel-multitenancy";' `
+  -c 'CREATE DATABASE "spatie-laravel-multitenancy-testing";'
+
+# ──────────────────────────────────────────────
+# 3. Migraciones landlord
+# ──────────────────────────────────────────────
+#    3a. Tablas shared (users, sessions, cache, jobs, media, permissions, notifications)
+php artisan migrate
+
+#    3b. Tablas específicas de landlord (tenants, plans, subscriptions, resources,
+#        entitlements, orders, payments, payment_method_configs, system_configs, etc.)
+php artisan migrate --path=database/migrations/landlord --database=landlord
+
+# ──────────────────────────────────────────────
+# 4. Seed datos del landlord (en orden)
+# ──────────────────────────────────────────────
+php artisan db:seed --class=LandlordUserSeeder        # Admin: admin@example.test / password
+php artisan db:seed --class=PlansSeeder                # Planes: free, basic, premium
+php artisan db:seed --class=TenantsSeeder              # 10 tenants → crea BDs físicas + suscripciones
+php artisan db:seed --class=PaymentMethodConfigSeeder  # Métodos de pago: BDV + BNC (PagoMóvil + Transferencia)
+php artisan db:seed --class=SystemConfigSeeder         # Config del sistema: payment, reconciliation, device, regex
+
+# ──────────────────────────────────────────────
+# 5. Migrar y seedear cada tenant
+# ──────────────────────────────────────────────
+#    Corre migraciones (users, cache, jobs, media, permissions, notifications)
+#    + TenantPermissionsSeeder (roles: owner, member, tenant-admin)
+#    + TenantUsersSeeder (1 usuario owner por tenant)
+php artisan tenants:artisan "migrate --database=tenant --seed"
+
+# ──────────────────────────────────────────────
+# 6. Limpiar caché de config
+# ──────────────────────────────────────────────
+php artisan config:clear
+```
+
+#### Seeders ejecutados (orden y dependencias)
+
+| Orden | Seeder | Conexión | Crea |
+|-------|--------|----------|------|
+| 1 | `LandlordUserSeeder` | landlord | Admin del sistema (`admin@example.test`) |
+| 2 | `PlansSeeder` | landlord | 3 planes: free (Bs.0), basic (Bs.8.000), premium (Bs.15.000) |
+| 3 | `TenantsSeeder` | landlord | 10 tenants + BDs físicas + suscripciones (3 free + 6 basic + 1 premium) |
+| 4 | `PaymentMethodConfigSeeder` | landlord | 4 métodos de pago: BDV y BNC (PagoMóvil + Transferencia) |
+| 5 | `SystemConfigSeeder` | landlord | 7 configs: gateway, expiry, heartbeat, regex BDV/BNC |
+| 6 | `TenantPermissionsSeeder` | tenant (x10) | Roles: owner, member, tenant-admin + permiso `change-plan` |
+| 7 | `TenantUsersSeeder` | tenant (x10) | 1 usuario owner por tenant con password fijo |
+
+> **Nota de idempotencia:** Todos los seeders usan `updateOrCreate` o chequean existencia previa, por lo que re-ejecutarlos no duplica registros. El `TenantsSeeder` es idempotente porque `createDatabase()` chequea `pg_database` antes de crear.
+
+#### Consideraciones para producción
+
+| Seeder | ¿Correr en producción? | Explicación |
+|--------|------------------------|-------------|
+| `PlansSeeder` | ✅ Sí | Los planes (free, basic, premium) son datos fijos del sistema. Su `updateOrCreate` por slug los hace seguros de ejecutar. |
+| `TenantsSeeder` | ✅ Sí (ajustado) | En producción no se crean 10 tenants de prueba. El seeding de tenants reales se hace desde el panel admin o una migración de datos reales. El seeder como está es solo para dev. |
+| `PaymentMethodConfigSeeder` | ✅ Sí | Las cuentas bancarias de la empresa son datos fijos de configuración. |
+| `SystemConfigSeeder` | ✅ Sí | Las configs del sistema (regex, gateway, tiempos) son necesarias para que el sistema funcione. |
+| `LandlordUserSeeder` | ❌ No | Crea un admin por defecto con password conocido. En producción el admin se crea manualmente con credenciales seguras. |
+| `TenantUsersSeeder` | ❌ No | Crea usuarios de prueba con password fijo (`password`). En producción los usuarios se registran solos o se importan. |
+| `TenantPermissionsSeeder` | ⚠️ Según caso | Los roles y permisos base se seedean una vez al crear el tenant (ya sea desde este seeder o desde el callback `created` del modelo si se reactiva). En producción se ejecuta una vez por tenant nuevo, no en cada reset. |
+
+#### Credenciales resultantes
+
+| Dominio | Usuario | Password | Rol |
+|---------|---------|----------|-----|
+| `spatie-laravel-multitenancy.test` (landlord) | `admin@example.test` | `password` | — |
+| `tenant1.spatie-laravel-multitenancy.test` | `tenant1@tenant1.spatie-laravel-multitenancy.test` | `password` | owner |
+| `tenant2.spatie-laravel-multitenancy.test` | `tenant2@tenant2.spatie-laravel-multitenancy.test` | `password` | owner |
+| ... | ... | ... | owner |
+| `tenant10.spatie-laravel-multitenancy.test` | `tenant10@tenant10.spatie-laravel-multitenancy.test` | `password` | owner |
+
+> **Recordá:** cada tenant requiere su entrada en el archivo `hosts` antes de poder acceder a su subdominio en el navegador (ver §17.2 para los scripts `add-host.php` / `remove-host.php`).
+
 ---
 
 ## 19. Configuración tenant-aware de cache, session, queue, filesystem y logging
@@ -3443,21 +3553,24 @@ export default function TenantEdit({ tenant }: { tenant: { id: number; name: str
 ### Cómo correr los tests
 
 | Objetivo | Comando |
-|---|---|
-| Feature + Unit (default) | `php artisan test` |
-| Solo Feature (HTTP simulado) | `php artisan test tests\Feature` |
-| Solo Browser (Playwright real) | `php artisan test tests\Browser` |
-| Un archivo específico | `php artisan test tests\Browser\Tenant\TenantCrudBrowserTest.php` |
-| Todo completo | `php artisan test tests\Feature tests\Browser` |
+|---|---|---|
+| Feature + Unit + Browser (default) | `php artisan test --compact` |
+| Feature + Unit (sin browser) | `php artisan test --compact tests/Feature/ tests/Unit/` |
+| Solo Feature (HTTP simulado) | `php artisan test --compact tests/Feature/` |
+| Solo Browser (navegador real) | `php artisan test --compact tests/Browser/` |
+| Solo Unit | `php artisan test --compact tests/Unit/` |
+| Un archivo específico | `php artisan test --compact tests/Browser/Landlord/ReconciliationDashboardBrowserTest.php` |
+| Un test por nombre | `php artisan test --compact --filter="shadow mode toggle"` |
+| Feature + Unit + Browser (todo) | `php artisan test --compact tests/Feature/ tests/Unit/ tests/Browser/` |
 
 ### Categorías y resumen
 
 | Capa | Tests | Stack | Estado |
-|---|---|---|---|
-| **Feature** | ~61 | Pest, HTTP simulado, PostgreSQL | ✅ ~58 pass, 3 skip* |
-| **Browser** | 9 | Pest + Playwright, Chromium real | ✅ 9 pass |
+|---|---|---|---|---|
+| **Feature** | ~74 | Pest, HTTP simulado, PostgreSQL | ✅ ~71 pass, 3 skip* |
+| **Browser** | ~17 | Pest + Playwright, Chromium real | ✅ 17 pass |
 | **Unit** | 1 | Pest | ✅ 1 pass |
-| **Total** | **~70** | | ✅ **~67 pass, 3 skip** |
+| **Total** | **~92** | | ✅ **~89 pass, 3 skip** |
 
 \* Los 3 skipped corresponden a `SecurityTest` — dependen de `Features::twoFactorAuthentication()` que no está habilitado en `config/fortify.php`.
 

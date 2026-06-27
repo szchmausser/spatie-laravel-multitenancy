@@ -111,7 +111,7 @@ class ActivateSubscription
                 'new_plan_features' => $newPlan?->features,
                 'new_status' => $subscription->status->value,
                 'amount_cents' => $order->total_cents,
-                'currency' => 'USD',
+                'currency' => 'VES',
                 'billing_period_start' => now(),
                 'billing_period_end' => now()->addMonth(),
                 'correlation_id' => Str::uuid(),

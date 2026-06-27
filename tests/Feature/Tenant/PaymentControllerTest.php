@@ -34,6 +34,9 @@ beforeEach(function () {
 
     $this->actingAs($this->user);
 
+    // Create PaymentMethodConfig for pago_movil
+    $this->pagoMovilConfig = PaymentMethodConfig::factory()->ofPagoMovil()->createQuietly();
+
     // Default sender fields for pago_movil tests
     $this->senderData = [
         'amount_cents' => $this->plan->price_cents,
@@ -56,6 +59,7 @@ test('tenant can report payment reference for a pending order', function () {
     $response = $this->post(route('billing.orders.payments.store', $order), array_merge([
         'reference' => '1234567',
         'payment_method' => 'pago_movil',
+        'payment_method_config_id' => $this->pagoMovilConfig->id,
     ], $this->senderData));
 
     $response->assertRedirect();
@@ -86,12 +90,14 @@ test('tenant cannot report duplicate reference for same tenant', function () {
     $this->post(route('billing.orders.payments.store', $order1), array_merge([
         'reference' => '1234567',
         'payment_method' => 'pago_movil',
+        'payment_method_config_id' => $this->pagoMovilConfig->id,
     ], $this->senderData));
 
     // Second payment with same reference should fail
     $response = $this->post(route('billing.orders.payments.store', $order2), array_merge([
         'reference' => '1234567',
         'payment_method' => 'pago_movil',
+        'payment_method_config_id' => $this->pagoMovilConfig->id,
     ], $this->senderData));
 
     $response->assertSessionHasErrors('reference');
@@ -127,6 +133,7 @@ test('tenant cannot report duplicate reference from another tenant', function ()
     $response = $this->post(route('billing.orders.payments.store', $order), array_merge([
         'reference' => '1234567',
         'payment_method' => 'pago_movil',
+        'payment_method_config_id' => $this->pagoMovilConfig->id,
     ], $this->senderData));
 
     $response->assertSessionHasErrors('reference');
@@ -143,6 +150,7 @@ test('tenant cannot report payment for non-pending order', function () {
     $response = $this->post(route('billing.orders.payments.store', $order), array_merge([
         'reference' => '1234567',
         'payment_method' => 'pago_movil',
+        'payment_method_config_id' => $this->pagoMovilConfig->id,
     ], $this->senderData));
 
     $response->assertSessionHasErrors('order_id');
@@ -159,6 +167,7 @@ test('tenant cannot report payment for expired order', function () {
     $response = $this->post(route('billing.orders.payments.store', $order), array_merge([
         'reference' => '1234567',
         'payment_method' => 'pago_movil',
+        'payment_method_config_id' => $this->pagoMovilConfig->id,
     ], $this->senderData));
 
     $response->assertSessionHasErrors('order_id');
@@ -175,6 +184,7 @@ test('reference must be numeric', function () {
     $response = $this->post(route('billing.orders.payments.store', $order), array_merge([
         'reference' => 'abc123',
         'payment_method' => 'pago_movil',
+        'payment_method_config_id' => $this->pagoMovilConfig->id,
     ], $this->senderData));
 
     $response->assertSessionHasErrors('reference');
@@ -192,6 +202,7 @@ test('reference must be between 6 and 10 digits', function () {
     $response = $this->post(route('billing.orders.payments.store', $order), array_merge([
         'reference' => '12345',
         'payment_method' => 'pago_movil',
+        'payment_method_config_id' => $this->pagoMovilConfig->id,
     ], $this->senderData));
     $response->assertSessionHasErrors('reference');
 
@@ -199,6 +210,7 @@ test('reference must be between 6 and 10 digits', function () {
     $response = $this->post(route('billing.orders.payments.store', $order), array_merge([
         'reference' => '12345678901',
         'payment_method' => 'pago_movil',
+        'payment_method_config_id' => $this->pagoMovilConfig->id,
     ], $this->senderData));
     $response->assertSessionHasErrors('reference');
 });
@@ -245,6 +257,7 @@ test('payment is created with the correct payment method', function () {
     $this->post(route('billing.orders.payments.store', $order), array_merge([
         'reference' => '1234567',
         'payment_method' => 'pago_movil',
+        'payment_method_config_id' => $this->pagoMovilConfig->id,
     ], $this->senderData));
 
     $payment = Payment::where('order_id', $order->id)->first();
@@ -322,7 +335,7 @@ test('pago_movil payment uses config from payment_method_config_id when provided
     expect($detail->concept)->toBe($this->senderData['concept']);
 });
 
-test('pago_movil payment falls back to global config when no config_id', function () {
+test('pago_movil payment uses PaymentMethodConfig', function () {
     $order = Order::factory()->createQuietly([
         'tenant_id' => $this->tenant->id,
         'plan_id' => $this->plan->id,
@@ -333,14 +346,15 @@ test('pago_movil payment falls back to global config when no config_id', functio
     $this->post(route('billing.orders.payments.store', $order), array_merge([
         'reference' => '1234567',
         'payment_method' => 'pago_movil',
+        'payment_method_config_id' => $this->pagoMovilConfig->id,
     ], $this->senderData));
 
     $payment = Payment::where('order_id', $order->id)->first();
     $detail = $payment->pagoMovilDetail;
     expect($detail)->not->toBeNull();
-    expect($detail->phone)->toBe(config('payment.pago_movil.phone'));
-    expect($detail->bank)->toBe(config('payment.pago_movil.bank'));
-    expect($detail->rif)->toBe(config('payment.pago_movil.rif'));
+    expect($detail->phone)->toBe($this->pagoMovilConfig->account_number);
+    expect($detail->bank)->toBe($this->pagoMovilConfig->bank_name);
+    expect($detail->rif)->toBe($this->pagoMovilConfig->holder_id);
     expect($detail->sender_bank)->toBe($this->senderData['sender_bank']);
     expect($detail->sender_phone)->toBe($this->senderData['sender_phone']);
 });
@@ -356,6 +370,7 @@ test('idempotency returns existing payment when same method used', function () {
     $this->post(route('billing.orders.payments.store', $order), array_merge([
         'reference' => '1234567',
         'payment_method' => 'pago_movil',
+        'payment_method_config_id' => $this->pagoMovilConfig->id,
     ], $this->senderData));
 
     $firstPayment = Payment::where('order_id', $order->id)->first();
@@ -363,6 +378,7 @@ test('idempotency returns existing payment when same method used', function () {
     $this->post(route('billing.orders.payments.store', $order), array_merge([
         'reference' => '7654321',
         'payment_method' => 'pago_movil',
+        'payment_method_config_id' => $this->pagoMovilConfig->id,
     ], $this->senderData));
 
     $secondPayment = Payment::where('order_id', $order->id)->first();
@@ -384,6 +400,7 @@ test('idempotency cancels old payment when method changes', function () {
     $this->post(route('billing.orders.payments.store', $order), array_merge([
         'reference' => '1234567',
         'payment_method' => 'pago_movil',
+        'payment_method_config_id' => $this->pagoMovilConfig->id,
     ], $this->senderData));
 
     $oldPayment = Payment::where('order_id', $order->id)->first();
@@ -424,6 +441,7 @@ test('sender_bank is required for pago_movil', function () {
     $response = $this->post(route('billing.orders.payments.store', $order), [
         'reference' => '1234567',
         'payment_method' => 'pago_movil',
+        'payment_method_config_id' => $this->pagoMovilConfig->id,
         'sender_phone' => '0414-1234567',
         'payment_date' => now()->format('Y-m-d'),
     ]);
@@ -442,6 +460,7 @@ test('sender_phone is required for pago_movil', function () {
     $response = $this->post(route('billing.orders.payments.store', $order), [
         'reference' => '1234567',
         'payment_method' => 'pago_movil',
+        'payment_method_config_id' => $this->pagoMovilConfig->id,
         'sender_bank' => 'Banco Mercantil',
         'payment_date' => now()->format('Y-m-d'),
     ]);
@@ -460,6 +479,7 @@ test('payment_date is required for pago_movil', function () {
     $response = $this->post(route('billing.orders.payments.store', $order), [
         'reference' => '1234567',
         'payment_method' => 'pago_movil',
+        'payment_method_config_id' => $this->pagoMovilConfig->id,
         'sender_bank' => 'Banco Mercantil',
         'sender_phone' => '0414-1234567',
     ]);
@@ -480,6 +500,7 @@ test('payment_date cannot be in the future for pago_movil', function () {
         [
             'reference' => '1234567',
             'payment_method' => 'pago_movil',
+            'payment_method_config_id' => $this->pagoMovilConfig->id,
             'payment_date' => now()->addDay()->format('Y-m-d'),
         ],
     ));
@@ -507,6 +528,7 @@ test('pago_movil payment is created with correct sender fields', function () {
     $this->post(route('billing.orders.payments.store', $order), array_merge([
         'reference' => '1234567',
         'payment_method' => 'pago_movil',
+        'payment_method_config_id' => $this->pagoMovilConfig->id,
     ], $senderData));
 
     $payment = Payment::where('order_id', $order->id)->first();
@@ -532,6 +554,7 @@ test('concept is optional for pago_movil', function () {
         'amount_cents' => $order->total_cents,
         'reference' => '1234567',
         'payment_method' => 'pago_movil',
+        'payment_method_config_id' => $this->pagoMovilConfig->id,
         'sender_bank' => 'Banco Mercantil',
         'sender_phone' => '0414-1234567',
         'sender_id' => 'V-12345678',
