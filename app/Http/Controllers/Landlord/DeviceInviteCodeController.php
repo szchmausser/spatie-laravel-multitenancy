@@ -58,6 +58,8 @@ class DeviceInviteCodeController extends Controller
             'created_by' => $request->user()?->id,
         ]);
 
+        $code->load('tenant:id,name');
+
         return redirect()->route('landlord.invite-codes.index')
             ->with('flash', [
                 'success' => "Código {$code->code} generado para {$code->tenant->name}.",

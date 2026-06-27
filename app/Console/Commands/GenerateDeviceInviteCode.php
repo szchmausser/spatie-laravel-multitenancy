@@ -10,7 +10,8 @@ class GenerateDeviceInviteCode extends Command
 {
     protected $signature = 'device:generate-invite
         {tenant : The tenant ID or domain to scope the invite code to}
-        {--days=7 : Number of days until the code expires (0 = never)}';
+        {--days=7 : Number of days until the code expires (0 = never)}
+        {--created-by= : Optional Landlord user ID who created this code}';
 
     protected $description = 'Generate a single-use device invite code for a tenant';
 
@@ -36,6 +37,7 @@ class GenerateDeviceInviteCode extends Command
             'tenant_id' => $tenant->id,
             'code' => DeviceInviteCode::generate(),
             'expires_at' => $expiresAt,
+            'created_by' => $this->option('created-by') ? (int) $this->option('created-by') : null,
         ]);
 
         $this->info("Invite code generated for tenant [{$tenant->name}] ({$tenant->domain}):");

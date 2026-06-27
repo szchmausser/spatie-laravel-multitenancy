@@ -128,7 +128,6 @@ export type DeviceInviteCode = {
     created_at: string;
     tenant?: { id: number; name: string; domain: string } | null;
     device?: { id: number; name: string } | null;
-    created_by_user?: { id: number; name: string } | null;
 };
 
 export type DeviceHeartbeat = {
