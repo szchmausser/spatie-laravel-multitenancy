@@ -18,15 +18,13 @@ class DeviceController extends Controller
     /**
      * Register a new device using a single-use invite code.
      *
-     * The invite code is scoped to a tenant. On successful validation:
+     * On successful validation:
      * - The code is consumed (marked as used, cannot be reused)
      * - The device is created with is_active = true
-     * - The device is associated with the tenant that owns the code
      *
      * If an android_device_id is provided and a device with that ID
      * already exists, the existing device is reused (new token issued,
-     * reactivated, tenant_id updated if the new code belongs to a
-     * different tenant). This handles app reinstalls.
+     * reactivated). This handles app reinstalls.
      */
     public function register(Request $request): JsonResponse
     {
@@ -61,7 +59,6 @@ class DeviceController extends Controller
             $device->update([
                 'name' => $validated['name'],
                 'token' => Str::random(64),
-                'tenant_id' => $inviteCode->tenant_id,
                 'is_active' => true,
             ]);
         } else {
@@ -69,7 +66,6 @@ class DeviceController extends Controller
                 'name' => $validated['name'],
                 'token' => Str::random(64),
                 'android_device_id' => $validated['android_device_id'] ?? null,
-                'tenant_id' => $inviteCode->tenant_id,
                 'is_active' => true,
             ]);
         }
@@ -82,7 +78,6 @@ class DeviceController extends Controller
             'token' => $device->token,
             'name' => $device->name,
             'is_active' => $device->is_active,
-            'tenant_id' => $device->tenant_id,
         ], 201);
     }
 

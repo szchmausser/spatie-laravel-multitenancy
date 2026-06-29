@@ -54,7 +54,7 @@ export default function InviteCodeIndex({ codes }: PageProps) {
                     <div>
                         <h1 className="text-2xl font-bold">Códigos de Invitación</h1>
                         <p className="mt-1 text-sm text-muted-foreground">
-                            Códigos de un solo uso para registro de dispositivos Android, scoped por tenant.
+                            Códigos de un solo uso para registro de dispositivos Android.
                         </p>
                     </div>
                     <Button asChild>
@@ -85,7 +85,6 @@ export default function InviteCodeIndex({ codes }: PageProps) {
                                     <thead>
                                         <tr className="border-b text-left text-muted-foreground">
                                             <th className="px-6 py-3 font-medium">Código</th>
-                                            <th className="px-6 py-3 font-medium">Tenant</th>
                                             <th className="px-6 py-3 font-medium">Creado</th>
                                             <th className="px-6 py-3 font-medium">Expira</th>
                                             <th className="px-6 py-3 font-medium">Estado</th>
@@ -99,14 +98,6 @@ export default function InviteCodeIndex({ codes }: PageProps) {
                                             <tr key={code.id} className="hover:bg-muted/40">
                                                 <td className="px-6 py-4 font-mono text-xs font-semibold">
                                                     {code.code}
-                                                </td>
-                                                <td className="px-6 py-4">
-                                                    <span
-                                                        className="text-sm"
-                                                        title={code.tenant?.domain ?? ''}
-                                                    >
-                                                        {code.tenant?.name ?? `Tenant #${code.tenant_id}`}
-                                                    </span>
                                                 </td>
                                                 <td className="px-6 py-4 text-xs text-muted-foreground">
                                                     {formatDateTime(code.created_at)}

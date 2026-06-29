@@ -8,17 +8,16 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Spatie\Multitenancy\Models\Concerns\UsesLandlordConnection;
 
 /**
- * Single-use invite code scoped to a tenant.
+ * Single-use invite code for device registration.
  *
  * Each code allows exactly one device to register and be automatically
- * activated for that tenant. Once used, the code cannot be reused.
+ * activated. Once used, the code cannot be reused.
  */
 class DeviceInviteCode extends Model
 {
     use HasFactory, UsesLandlordConnection;
 
     protected $fillable = [
-        'tenant_id',
         'code',
         'used_at',
         'expires_at',
@@ -32,14 +31,6 @@ class DeviceInviteCode extends Model
             'used_at' => 'datetime',
             'expires_at' => 'datetime',
         ];
-    }
-
-    /**
-     * The tenant that owns this invite code.
-     */
-    public function tenant(): BelongsTo
-    {
-        return $this->belongsTo(Tenant::class);
     }
 
     /**

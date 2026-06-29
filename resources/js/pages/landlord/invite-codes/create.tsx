@@ -3,13 +3,6 @@ import { X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from '@/components/ui/select';
 import type { BreadcrumbItem } from '@/types/navigation';
 
 const breadcrumbs: BreadcrumbItem[] = [
@@ -18,15 +11,8 @@ const breadcrumbs: BreadcrumbItem[] = [
     { title: 'Nuevo Código', href: '/admin/invite-codes/create' },
 ];
 
-type TenantOption = {
-    id: number;
-    name: string;
-    domain: string;
-};
-
-export default function InviteCodeCreate({ tenants }: { tenants: TenantOption[] }) {
+export default function InviteCodeCreate() {
     const { data, setData, post, processing, errors, reset } = useForm({
-        tenant_id: '',
         expires_days: '30',
     });
 
@@ -58,29 +44,6 @@ export default function InviteCodeCreate({ tenants }: { tenants: TenantOption[] 
                 </div>
 
                 <form onSubmit={handleSubmit} className="space-y-8 max-w-2xl">
-                    {/* Tenant */}
-                    <div className="space-y-2">
-                        <Label htmlFor="tenant_id">Tenant</Label>
-                        <Select
-                            value={data.tenant_id}
-                            onValueChange={(value) => setData('tenant_id', value)}
-                        >
-                            <SelectTrigger id="tenant_id">
-                                <SelectValue placeholder="Seleccionar tenant..." />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {tenants.map((tenant) => (
-                                    <SelectItem key={tenant.id} value={String(tenant.id)}>
-                                        {tenant.name} ({tenant.domain})
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                        {errors.tenant_id && (
-                            <p className="text-sm text-destructive">{errors.tenant_id}</p>
-                        )}
-                    </div>
-
                     {/* Expiration */}
                     <div className="space-y-2">
                         <Label htmlFor="expires_days">Expiración (días)</Label>

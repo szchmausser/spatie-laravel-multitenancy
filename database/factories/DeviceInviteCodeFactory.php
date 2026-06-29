@@ -3,7 +3,6 @@
 namespace Database\Factories;
 
 use App\Models\DeviceInviteCode;
-use App\Models\Tenant;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
@@ -13,32 +12,13 @@ class DeviceInviteCodeFactory extends Factory
 {
     protected $model = DeviceInviteCode::class;
 
-    /**
-     * NOTE: Tests must set tenant_id explicitly (use createQuietly
-     * for Tenant to avoid triggering database provisioning).
-     */
     public function definition(): array
     {
         return [
-            'tenant_id' => '', // Must be overridden via state() in tests
             'code' => DeviceInviteCode::generate(),
             'used_at' => null,
             'expires_at' => null,
         ];
-    }
-
-    /**
-     * Scope the invite code to a specific tenant.
-     *
-     * Use this instead of passing 'tenant_id' manually in tests.
-     * The tenant is created with createQuietly to avoid triggering
-     * database provisioning events.
-     */
-    public function forTenant(?Tenant $tenant = null): static
-    {
-        $tenant ??= Tenant::factory()->createQuietly();
-
-        return $this->state(['tenant_id' => $tenant->id]);
     }
 
     /**

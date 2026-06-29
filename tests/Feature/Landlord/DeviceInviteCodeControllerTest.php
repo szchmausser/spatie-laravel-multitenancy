@@ -44,9 +44,7 @@ it('returns 403 for non-admin tenant users', function () {
 });
 
 it('lists invite codes on the index page', function () {
-    $tenant = makeTenant();
     DeviceInviteCode::factory()
-        ->forTenant($tenant)
         ->count(3)
         ->create();
 
@@ -67,64 +65,54 @@ it('shows empty state when no invite codes exist', function () {
         );
 });
 
-it('shows the create form with tenants list', function () {
-    $tenant = makeTenant();
-
+it('shows the create form without tenant data', function () {
     $this->get(route('landlord.invite-codes.create'))
         ->assertOk()
         ->assertInertia(fn (AssertableInertia $page) => $page
             ->component('landlord/invite-codes/create')
-            ->has('tenants', 1)
+            ->missing('tenants')
         );
 });
 
-it('creates a new invite code with valid data', function () {
-    $tenant = makeTenant();
-
+it('creates a new invite code without requiring a tenant', function () {
     $this->post(route('landlord.invite-codes.store'), [
-        'tenant_id' => $tenant->id,
         'expires_days' => 30,
     ])->assertRedirect(route('landlord.invite-codes.index'));
 
     $this->assertDatabaseHas('device_invite_codes', [
-        'tenant_id' => $tenant->id,
         'created_by' => $this->admin->id,
     ]);
 });
 
 it('creates an invite code without expiration when days is 0', function () {
-    $tenant = makeTenant();
-
     $this->post(route('landlord.invite-codes.store'), [
-        'tenant_id' => $tenant->id,
         'expires_days' => 0,
     ])->assertRedirect();
 
-    $code = DeviceInviteCode::where('tenant_id', $tenant->id)->first();
+    $code = DeviceInviteCode::first();
 
     expect($code)->not->toBeNull();
     expect($code->expires_at)->toBeNull();
 });
 
-it('fails to create an invite code with invalid tenant', function () {
-    $this->post(route('landlord.invite-codes.store'), [
-        'tenant_id' => 99999,
-        'expires_days' => 30,
-    ])->assertSessionHasErrors('tenant_id');
+it('creates an invite code with default values when no payload is given', function () {
+    $this->post(route('landlord.invite-codes.store'), [])
+        ->assertRedirect();
+
+    $this->assertDatabaseHas('device_invite_codes', [
+        'expires_at' => null,
+        'created_by' => $this->admin->id,
+    ]);
 });
 
 it('fails to create an invite code with out-of-range expiration', function () {
-    $tenant = makeTenant();
-
     $this->post(route('landlord.invite-codes.store'), [
-        'tenant_id' => $tenant->id,
         'expires_days' => 999,
     ])->assertSessionHasErrors('expires_days');
 });
 
 it('shows the edit form with code details', function () {
-    $tenant = makeTenant();
-    $code = DeviceInviteCode::factory()->forTenant($tenant)->create();
+    $code = DeviceInviteCode::factory()->create();
 
     $this->get(route('landlord.invite-codes.edit', $code))
         ->assertOk()
@@ -135,8 +123,7 @@ it('shows the edit form with code details', function () {
 });
 
 it('updates the expiration of an invite code', function () {
-    $tenant = makeTenant();
-    $code = DeviceInviteCode::factory()->forTenant($tenant)
+    $code = DeviceInviteCode::factory()
         ->expiresIn(7)
         ->create();
 
@@ -152,8 +139,7 @@ it('updates the expiration of an invite code', function () {
 });
 
 it('removes expiration when updating to expires_days 0', function () {
-    $tenant = makeTenant();
-    $code = DeviceInviteCode::factory()->forTenant($tenant)
+    $code = DeviceInviteCode::factory()
         ->expiresIn(7)
         ->create();
 
@@ -167,8 +153,7 @@ it('removes expiration when updating to expires_days 0', function () {
 });
 
 it('deletes an invite code', function () {
-    $tenant = makeTenant();
-    $code = DeviceInviteCode::factory()->forTenant($tenant)->create();
+    $code = DeviceInviteCode::factory()->create();
 
     $this->delete(route('landlord.invite-codes.destroy', $code))
         ->assertRedirect(route('landlord.invite-codes.index'));

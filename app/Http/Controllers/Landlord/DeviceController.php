@@ -46,7 +46,6 @@ class DeviceController extends Controller
             'name' => $request->name,
             'token' => Str::random(64),
             'is_active' => $request->boolean('is_active', true),
-            'tenant_id' => $request->tenant_id,
         ]);
 
         return redirect()->route('landlord.devices.index')

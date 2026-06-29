@@ -34,7 +34,6 @@ export default function InviteCodeEdit({ code }: { code: DeviceInviteCode }) {
                         <h1 className="text-2xl font-bold">Editar Código de Invitación</h1>
                         <p className="mt-1 text-sm text-muted-foreground">
                             Código: <span className="font-mono font-semibold">{code.code}</span>
-                            &nbsp;— {code.tenant?.name ?? `Tenant #${code.tenant_id}`}
                         </p>
                     </div>
                     <Button variant="outline" asChild>

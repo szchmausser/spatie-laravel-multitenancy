@@ -16,7 +16,6 @@ class StoreDeviceRequest extends FormRequest
         return [
             'name' => ['required', 'string', 'max:255'],
             'is_active' => ['nullable', 'boolean'],
-            'tenant_id' => ['nullable', 'integer', 'exists:App\Models\Tenant,id'],
         ];
     }
 }

@@ -6,15 +6,13 @@ use App\Models\Tenant;
 
 /**
  * Helper to create a tenant (without provisioning events) and
- * a valid invite code scoped to it.
+ * a valid invite code.
  */
 function makeInviteCode(?Tenant $tenant = null): DeviceInviteCode
 {
     $tenant ??= Tenant::factory()->createQuietly();
 
-    return DeviceInviteCode::factory()->create([
-        'tenant_id' => $tenant->id,
-    ]);
+    return DeviceInviteCode::factory()->create();
 }
 
 it('rejects registration when no invite_code is provided', function () {
@@ -38,9 +36,7 @@ it('rejects registration with a non-existent invite code', function () {
 
 it('rejects registration with an already used invite code', function () {
     $tenant = Tenant::factory()->createQuietly();
-    $inviteCode = DeviceInviteCode::factory()->used()->create([
-        'tenant_id' => $tenant->id,
-    ]);
+    $inviteCode = DeviceInviteCode::factory()->used()->create();
 
     $response = $this->postJson('/api/device/register', [
         'name' => 'Test Device',
@@ -54,9 +50,7 @@ it('rejects registration with an already used invite code', function () {
 
 it('rejects registration with an expired invite code', function () {
     $tenant = Tenant::factory()->createQuietly();
-    $inviteCode = DeviceInviteCode::factory()->expired()->create([
-        'tenant_id' => $tenant->id,
-    ]);
+    $inviteCode = DeviceInviteCode::factory()->expired()->create();
 
     $response = $this->postJson('/api/device/register', [
         'name' => 'Test Device',
@@ -82,13 +76,13 @@ it('creates a new active device when no android_device_id is provided', function
         'token',
         'name',
         'is_active',
-        'tenant_id',
     ]);
+
+    $response->assertJsonMissing(['tenant_id']);
 
     $this->assertDatabaseHas('devices', [
         'name' => 'Test Device',
         'is_active' => true,
-        'tenant_id' => $tenant->id,
     ]);
 });
 
@@ -108,7 +102,6 @@ it('creates a new active device when android_device_id is novel', function () {
         'android_device_id' => 'unique-android-id-123',
         'name' => 'Test Device',
         'is_active' => true,
-        'tenant_id' => $tenant->id,
     ]);
 });
 
@@ -154,7 +147,6 @@ it('reuses existing device when android_device_id already exists', function () {
         'name' => 'Old Name',
         'token' => 'old-token-value',
         'is_active' => false,
-        'tenant_id' => $tenant->id,
     ]);
 
     $response = $this->postJson('/api/device/register', [
@@ -175,7 +167,6 @@ it('reuses existing device when android_device_id already exists', function () {
         'id' => $existing->id,
         'name' => 'New Name',
         'is_active' => true,
-        'tenant_id' => $tenant->id,
     ]);
 
     // Token was regenerated
@@ -189,7 +180,6 @@ it('reactivates a previously inactive device on re-registration', function () {
 
     $existing = Device::factory()->inactive()->create([
         'android_device_id' => 'zombie-device',
-        'tenant_id' => $tenant->id,
     ]);
 
     $response = $this->postJson('/api/device/register', [
@@ -216,13 +206,11 @@ it('does not affect other devices when reusing one', function () {
     $deviceA = Device::factory()->create([
         'android_device_id' => 'device-a',
         'name' => 'Device A',
-        'tenant_id' => $tenant->id,
     ]);
 
     $deviceB = Device::factory()->create([
         'android_device_id' => 'device-b',
         'name' => 'Device B',
-        'tenant_id' => $tenant->id,
     ]);
 
     $this->postJson('/api/device/register', [
@@ -239,4 +227,22 @@ it('requires name field', function () {
     $response = $this->postJson('/api/device/register', []);
 
     $response->assertUnprocessable()->assertJsonValidationErrors('name');
+});
+
+it('can register a device with an invite code that has no tenant', function () {
+    $inviteCode = DeviceInviteCode::factory()->create();
+
+    $response = $this->postJson('/api/device/register', [
+        'name' => 'No Tenant Device',
+        'invite_code' => $inviteCode->code,
+    ]);
+
+    $response->assertCreated();
+
+    $this->assertDatabaseHas('devices', [
+        'name' => 'No Tenant Device',
+        'is_active' => true,
+    ]);
+
+    $response->assertJsonMissing(['tenant_id']);
 });
