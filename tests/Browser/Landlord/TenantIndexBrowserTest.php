@@ -46,11 +46,11 @@ test('tenants index page lists every tenant with its plan and status', function 
         // Plan name shows up next to every tenant
         ->assertSee('Basic Plan')
         // Status badges are rendered for both subscriptions
-        ->assertSeeIn(`@tenant-sub-status-{$tenant1->id}`, 'active')
-        ->assertSeeIn(`@tenant-sub-status-{$tenant2->id}`, 'cancelled')
+        ->assertSeeIn("@tenant-sub-status-{$tenant1->id}", 'active')
+        ->assertSeeIn("@tenant-sub-status-{$tenant2->id}", 'cancelled')
         // Expiration date is human-readable (Jan 15, 2027) for tenant1,
         // and the "No expiry" fallback is shown for tenant2
-        ->assertSeeIn(`@tenant-sub-ends-{$tenant1->id}`, 'Jan 15, 2027')
-        ->assertSeeIn(`@tenant-sub-ends-{$tenant2->id}`, 'No expiry')
+        ->assertSeeIn("@tenant-sub-ends-{$tenant1->id}", 'Jan 15, 2027')
+        ->assertSeeIn("@tenant-sub-ends-{$tenant2->id}", 'Sin expiración')
         ->assertNoJavaScriptErrors();
 });

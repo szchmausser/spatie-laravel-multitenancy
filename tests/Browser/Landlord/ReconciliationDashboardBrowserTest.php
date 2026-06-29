@@ -26,7 +26,7 @@ beforeEach(function () {
 /**
  * Create a Payment with its dependency chain without firing Tenant events.
  */
-function createPaymentForTest(array $attributes = []): Payment
+function createPaymentForBrowserTest(array $attributes = []): Payment
 {
     $tenant = Tenant::factory()->createQuietly();
     $plan = Plan::factory()->createQuietly();
@@ -107,7 +107,7 @@ test('orphan notifications table shows unmatched records', function () {
 
 test('kpi cards show autoverified and alert counts', function () {
     // Create verified payments (autoverified today)
-    $payment = createPaymentForTest([
+    $payment = createPaymentForBrowserTest([
         'verified_at' => now(),
         'verified_by' => null,
     ]);

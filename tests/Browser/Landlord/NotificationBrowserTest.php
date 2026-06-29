@@ -17,7 +17,13 @@ beforeEach(function () {
     DB::purge('tenant');
 
     // Ensure Spatie permission tables exist on the tenant connection
+    // Drop in reverse FK order: child tables first, then parents
+    Schema::connection('tenant')->dropIfExists('model_has_permissions');
+    Schema::connection('tenant')->dropIfExists('role_has_permissions');
+    Schema::connection('tenant')->dropIfExists('model_has_roles');
     Schema::connection('tenant')->dropIfExists('permissions');
+    Schema::connection('tenant')->dropIfExists('roles');
+
     Schema::connection('tenant')->create('permissions', function (Blueprint $table) {
         $table->id();
         $table->string('name');
@@ -26,7 +32,6 @@ beforeEach(function () {
         $table->unique(['name', 'guard_name']);
     });
 
-    Schema::connection('tenant')->dropIfExists('roles');
     Schema::connection('tenant')->create('roles', function (Blueprint $table) {
         $table->id();
         $table->string('name');
@@ -35,7 +40,6 @@ beforeEach(function () {
         $table->unique(['name', 'guard_name']);
     });
 
-    Schema::connection('tenant')->dropIfExists('model_has_roles');
     Schema::connection('tenant')->create('model_has_roles', function (Blueprint $table) {
         $table->foreignId('role_id')->constrained()->cascadeOnDelete();
         $table->string('model_type');
@@ -44,7 +48,6 @@ beforeEach(function () {
         $table->index(['model_id', 'model_type']);
     });
 
-    Schema::connection('tenant')->dropIfExists('model_has_permissions');
     Schema::connection('tenant')->create('model_has_permissions', function (Blueprint $table) {
         $table->foreignId('permission_id')->constrained()->cascadeOnDelete();
         $table->string('model_type');
@@ -53,12 +56,14 @@ beforeEach(function () {
         $table->index(['model_id', 'model_type']);
     });
 
-    Schema::connection('tenant')->dropIfExists('role_has_permissions');
     Schema::connection('tenant')->create('role_has_permissions', function (Blueprint $table) {
         $table->foreignId('role_id')->constrained()->cascadeOnDelete();
         $table->foreignId('permission_id')->constrained()->cascadeOnDelete();
         $table->primary(['role_id', 'permission_id']);
     });
+
+    // Seed the owner role so assignRole works
+    \Spatie\Permission\Models\Role::on('tenant')->create(['name' => 'owner', 'guard_name' => 'web']);
 
     // Create a tenant with a user for testing
     $this->tenant = Tenant::factory()->createQuietly(['name' => 'Acme Corp', 'database' => $testDatabase]);

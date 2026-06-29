@@ -115,7 +115,6 @@ class HandleInertiaRequests extends Middleware
                 ->exists(),
             'has_entitlements' => Entitlement::query()
                 ->where('tenant_id', $current->id)
-                ->where('user_id', auth()->id())
                 ->exists(),
             'has_premium_zone' => $current->hasFeature('premium-zone'),
         ];

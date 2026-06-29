@@ -54,8 +54,8 @@ class PaymentNotificationParser
     private function getDateFormat(string $bankCode): string
     {
         return match ($bankCode) {
-            'bdv' => 'd/m/Y H:i',
-            'bnc' => 'd/m/Y H:i',
+            'bdv' => 'd-m-y H:i',
+            'bnc' => 'd/m/y H:i',
             default => 'd/m/Y H:i',
         };
     }
@@ -100,8 +100,10 @@ class PaymentNotificationParser
 
         $full = $time ? "{$date} {$time}" : $date;
 
-        $parsed = Carbon::createFromFormat($format, $full);
-
-        return $parsed !== false ? $parsed->timezone('America/Caracas') : null;
+        try {
+            return Carbon::createFromFormat($format, $full)->timezone('America/Caracas');
+        } catch (\Throwable) {
+            return null;
+        }
     }
 }

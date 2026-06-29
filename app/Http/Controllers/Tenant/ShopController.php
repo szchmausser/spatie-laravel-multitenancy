@@ -16,7 +16,6 @@ class ShopController extends Controller
     public function index(Request $request): InertiaResponse
     {
         $tenant = Tenant::current();
-        $user = $request->user();
         $subscription = $tenant?->subscription;
         $currentPlan = $subscription?->plan;
 
@@ -28,11 +27,10 @@ class ShopController extends Controller
         $resources = Resource::query()
             ->active()
             ->get()
-            ->map(function (Resource $r) use ($tenant, $user) {
-                $hasEntitlement = $tenant && $user
+            ->map(function (Resource $r) use ($tenant) {
+                $hasEntitlement = $tenant
                     ? Entitlement::query()
                         ->where('tenant_id', $tenant->id)
-                        ->where('user_id', $user->getKey())
                         ->where('resource_id', $r->id)
                         ->where(function ($q) {
                             $q->whereNull('expires_at')

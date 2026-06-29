@@ -122,40 +122,25 @@ class ActivateSubscription
     }
 
     /**
-     * Grant entitlement to all users of the tenant for the purchased resource.
+     * Grant entitlement to the tenant for the purchased resource.
      *
-     * Resource orders are tenant-level purchases — when a tenant buys a
-     * resource, all its users should have access. The user_id on the
-     * entitlement is a logical FK to the tenant's User table.
+     * Resource orders are tenant-level purchases — one entitlement row
+     * per (tenant, resource) grants access to ALL users of that tenant.
+     * No user loop needed.
      */
     private function grantResourceEntitlement(Order $order): void
     {
-        $tenant = Tenant::on('landlord')->find($order->tenant_id);
-
-        if (! $tenant) {
-            Log::warning('Tenant not found for resource entitlement', ['tenant_id' => $order->tenant_id]);
-
-            return;
-        }
-
-        $tenant->makeCurrent();
-
-        $users = User::query()->get();
-
-        foreach ($users as $user) {
-            Entitlement::updateOrCreate(
-                [
-                    'tenant_id' => $order->tenant_id,
-                    'user_id' => $user->getKey(),
-                    'resource_id' => $order->resource_id,
-                ],
-                [
-                    'granted_via' => EntitlementGrantVia::Purchase,
-                    'granted_at' => now(),
-                    'expires_at' => null,
-                ],
-            );
-        }
+        Entitlement::updateOrCreate(
+            [
+                'tenant_id' => $order->tenant_id,
+                'resource_id' => $order->resource_id,
+            ],
+            [
+                'granted_via' => EntitlementGrantVia::Purchase,
+                'granted_at' => now(),
+                'expires_at' => null,
+            ],
+        );
     }
 
     /**

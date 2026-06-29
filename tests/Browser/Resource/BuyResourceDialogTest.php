@@ -211,7 +211,7 @@ test('buy dialog shows correct price for premium resource', function () {
             ->click('[data-testid="resource-buy-btn-price-check-resource"]')
             ->waitForText('Review the resource details and proceed to payment.')
             ->assertVisible('[data-testid="buy-dialog-price-price-check-resource"]')
-            ->assertSeeIn('[data-testid="buy-dialog-price-price-check-resource"]', '$99.99')
+            ->assertSeeIn('[data-testid="buy-dialog-price-price-check-resource"]', 'Bs. 99.99')
             ->assertNoJavaScriptErrors();
     } finally {
         $this->cleanupTenantConnection($previousDefault);

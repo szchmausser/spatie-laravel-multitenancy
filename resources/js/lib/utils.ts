@@ -21,6 +21,7 @@ export function formatDate(date: string): string {
         month: 'short',
         day: 'numeric',
         year: 'numeric',
+        timeZone: 'America/Caracas',
     });
 }
 
@@ -32,6 +33,7 @@ export function formatDateTime(date: string): string {
         year: 'numeric',
         hour: 'numeric',
         minute: '2-digit',
+        timeZone: 'America/Caracas',
     });
 }
 

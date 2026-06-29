@@ -245,7 +245,6 @@ test('download streams a premium resource when an explicit entitlement exists', 
 
     Entitlement::factory()->create([
         'tenant_id' => $tenant->id,
-        'user_id' => $user->getKey(),
         'resource_id' => $resource->id,
     ]);
 
@@ -311,7 +310,6 @@ test('download is granted by the plan even when an explicit entitlement is expir
 
     Entitlement::factory()->expired()->create([
         'tenant_id' => $tenant->id,
-        'user_id' => $user->getKey(),
         'resource_id' => $resource->id,
     ]);
 
@@ -394,9 +392,7 @@ function makePaidTenant(string $planSlug): Tenant
  * property access, so no avatar query happens.
  *
  * The id is `tenant->id * 1000 + a small offset` so different
- * tenants produce different ids, which keeps the
- * `entitlements(tenant_id, user_id, resource_id)` UNIQUE constraint
- * happy when one test exercises multiple tenants in sequence.
+ * tenants produce different ids.
  */
 function makeUserFor(Tenant $tenant): Authenticatable
 {
@@ -664,7 +660,6 @@ test('free-tier tenant CAN download a premium resource after full payment flow',
     // which requires a real tenant DB, not available in this test env)
     Entitlement::query()->create([
         'tenant_id' => $tenant->id,
-        'user_id' => $user->getKey(),
         'resource_id' => $resource->id,
         'granted_via' => EntitlementGrantVia::Purchase,
         'granted_at' => now(),

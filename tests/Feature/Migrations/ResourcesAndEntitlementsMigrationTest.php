@@ -45,7 +45,6 @@ test('entitlements table has the expected columns', function () {
 
     expect($columns)->toContain('id')
         ->toContain('tenant_id')
-        ->toContain('user_id')
         ->toContain('resource_id')
         ->toContain('granted_via')
         ->toContain('granted_at')
@@ -59,12 +58,9 @@ test('entitlements has the dedup unique constraint', function () {
 
     $hasUnique = $indexes->contains(function ($idx) {
         $cols = $idx['columns'] ?? [];
-        sort($cols);
-        $expected = ['resource_id', 'tenant_id', 'user_id'];
-        $sorted = $expected;
-        sort($sorted);
 
-        return $cols === $sorted && ($idx['unique'] ?? false) === true;
+        return $cols === ['tenant_id', 'resource_id']
+            && ($idx['unique'] ?? false) === true;
     });
 
     expect($hasUnique)->toBeTrue();

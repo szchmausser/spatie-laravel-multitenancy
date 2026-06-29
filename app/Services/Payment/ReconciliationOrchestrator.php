@@ -20,18 +20,28 @@ class ReconciliationOrchestrator
      *
      * Must be called inside a DB::transaction for SELECT FOR UPDATE to work.
      * Steps executed in order:
+     *   0. Duplicate detection — verified payment already exists with same ref
      *   1. Normal matching — pending payment with same ref + amount + window
      *   2. One candidate → verified (or shadow)
      *   3. Multiple candidates → manual review queue
      *   4. No candidates → unmatched
-     *
-     * Note: duplicate detection is handled by the UNIQUE constraint on
-     * payments.transaction_id — no additional code needed.
      */
     public function run(PaymentMatch $match): ReconciliationResult
     {
         // Guard: if not unmatched anymore, skip
         if ($match->match_status !== 'unmatched') {
+            return new ReconciliationResult;
+        }
+
+        // Paso 0: Duplicate detection — a verified payment already exists with this reference
+        $duplicateExists = Payment::where('status', PaymentStatus::Verified)
+            ->where('transaction_id', $match->parsed_reference)
+            ->where('amount_cents', $match->parsed_amount_cents)
+            ->exists();
+
+        if ($duplicateExists) {
+            $match->update(['match_status' => 'duplicate_attempt']);
+
             return new ReconciliationResult;
         }
 
@@ -62,7 +72,7 @@ class ReconciliationOrchestrator
                 return $result;
             }
 
-            $shadowMode = SystemConfig::get('reconciliation.shadow_mode_enabled', true);
+            $shadowMode = SystemConfig::get('reconciliation.shadow_mode_enabled', false);
 
             if ($shadowMode) {
                 $match->update([
@@ -120,7 +130,7 @@ class ReconciliationOrchestrator
         // Link payment to the match
         $match->update(['payment_id' => $payment->id]);
 
-        $shadowMode = SystemConfig::get('reconciliation.shadow_mode_enabled', true);
+        $shadowMode = SystemConfig::get('reconciliation.shadow_mode_enabled', false);
         $result = new ReconciliationResult;
 
         if ($shadowMode) {

@@ -38,7 +38,8 @@ export default function PaymentNotificationsIndex({
     notifications,
     filters,
     bank_codes,
-}: PaymentNotificationPageProps) {
+    flash,
+}: PaymentNotificationPageProps & { flash?: { success?: string; error?: string } }) {
     const [parseStatus, setParseStatus] = useState(filters.parse_status ?? '');
     const [bankCode, setBankCode] = useState(filters.bank_code ?? '');
     const [reference, setReference] = useState(filters.reference ?? '');
@@ -103,6 +104,18 @@ export default function PaymentNotificationsIndex({
                     Monitorear notificaciones bancarias entrantes del sistema de
                     conciliación.
                 </p>
+
+                {flash?.success && (
+                    <div className="rounded-md bg-green-50 border border-green-200 p-4 text-sm text-green-800">
+                        {flash.success}
+                    </div>
+                )}
+
+                {flash?.error && (
+                    <div className="rounded-md bg-red-50 border border-red-200 p-4 text-sm text-red-800">
+                        {flash.error}
+                    </div>
+                )}
 
                 {/* Filters */}
                 <Card>

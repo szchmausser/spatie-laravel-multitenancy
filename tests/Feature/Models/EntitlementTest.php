@@ -21,7 +21,6 @@ test('granted_via is cast to the enum', function () {
         'granted_via' => 'purchase',
         'resource_id' => $resource->id,
         'tenant_id' => $tenant->id,
-        'user_id' => 42,
     ]);
 
     expect($entitlement->granted_via)->toBeInstanceOf(EntitlementGrantVia::class)
@@ -35,14 +34,13 @@ test('grant_via factories map to the right enum cases', function () {
     $plan = Entitlement::factory()->viaPlan()->create([
         'resource_id' => $resource->id,
         'tenant_id' => $tenant->id,
-        'user_id' => 1,
     ]);
-    // Different user_id so the UNIQUE(tenant_id, user_id, resource_id)
+    // Different resource so the UNIQUE(tenant_id, resource_id)
     // constraint does not collide with the previous insert.
+    $otherResource = Resource::factory()->create();
     $admin = Entitlement::factory()->viaAdmin()->create([
-        'resource_id' => $resource->id,
+        'resource_id' => $otherResource->id,
         'tenant_id' => $tenant->id,
-        'user_id' => 2,
     ]);
 
     expect($plan->granted_via)->toBe(EntitlementGrantVia::Plan);

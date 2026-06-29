@@ -27,7 +27,6 @@ class EntitlementFactory extends Factory
     {
         return [
             'tenant_id' => Tenant::factory(),
-            'user_id' => fake()->numberBetween(1, 1_000),
             'resource_id' => Resource::factory(),
             'granted_via' => EntitlementGrantVia::Purchase,
             'granted_at' => now(),
@@ -49,16 +48,6 @@ class EntitlementFactory extends Factory
     public function viaAdmin(): static
     {
         return $this->state(['granted_via' => EntitlementGrantVia::Admin]);
-    }
-
-    /**
-     * Pin the tenant_id and user_id together. Useful when the test
-     * has already created a tenant and a user and wants the
-     * entitlement to belong to that exact pair.
-     */
-    public function forTenantAndUser(int $tenantId, int $userId): static
-    {
-        return $this->state(compact('tenant_id', 'user_id'));
     }
 
     /**

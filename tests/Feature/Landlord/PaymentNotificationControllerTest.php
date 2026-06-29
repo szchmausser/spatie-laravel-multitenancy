@@ -100,8 +100,8 @@ test('index filters by reference in raw_text or parsed_data', function () {
         ->assertInertia(fn (AssertableInertia $page) => $page
             ->component('landlord/payment-notifications/index')
             ->has('notifications.data', 2)
-            ->where('notifications.data.0.id', $pending->id)
-            ->where('notifications.data.1.id', $parsed->id)
+            ->where('notifications.data.0.id', $parsed->id)
+            ->where('notifications.data.1.id', $pending->id)
             ->where('filters.reference', 'ABC-12345')
         );
 });

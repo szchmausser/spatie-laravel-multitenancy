@@ -65,14 +65,13 @@ class ResourceController extends Controller
     public function index(Request $request): InertiaResponse
     {
         $tenant = Tenant::current();
-        $user = $request->user();
 
         $resources = Resource::query()
             ->active()
             ->orderBy('is_premium') // free first, premium last
             ->orderBy('name')
             ->get()
-            ->map(fn (Resource $r): array => $this->serializeResource($r, $tenant, $user))
+            ->map(fn (Resource $r): array => $this->serializeResource($r, $tenant))
             ->all();
 
         return Inertia::render('resources/index', [
@@ -91,7 +90,6 @@ class ResourceController extends Controller
     public function show(Request $request, string $slug): InertiaResponse
     {
         $tenant = Tenant::current();
-        $user = $request->user();
 
         $resource = Resource::query()
             ->active()
@@ -99,7 +97,7 @@ class ResourceController extends Controller
             ->firstOrFail();
 
         return Inertia::render('resources/show', [
-            'resource' => $this->serializeResource($resource, $tenant, $user),
+            'resource' => $this->serializeResource($resource, $tenant),
         ]);
     }
 
@@ -115,7 +113,7 @@ class ResourceController extends Controller
      * `BuyResourceDialog` React component (frontend).
      *
      * `updateOrCreate` keeps double-clicks idempotent; the
-     * UNIQUE(tenant_id, user_id, resource_id) constraint is the
+     * UNIQUE(tenant_id, resource_id) constraint is the
      * second layer of defence. The flash message gives the UI
      * something to display after the dialog closes.
      */
@@ -153,14 +151,13 @@ class ResourceController extends Controller
     public function download(Request $request, string $slug): StreamedResponse
     {
         $tenant = Tenant::current();
-        $user = $request->user();
 
         $resource = Resource::query()
             ->active()
             ->where('slug', $slug)
             ->firstOrFail();
 
-        if (! $this->userCanAccess($tenant, $user, $resource)) {
+        if (! $this->userCanAccess($tenant, $resource)) {
             abort(403, 'You do not have access to this resource.');
         }
 
@@ -180,16 +177,15 @@ class ResourceController extends Controller
      * Rules (evaluated in order, short-circuit on first true):
      *  1. The resource is not premium — anyone authenticated can
      *     download it.
-     *  2. The user's tenant's plan includes the `premium-content`
-     *     feature — the plan grants blanket access.
-     *  3. The user has an explicit (non-expired) entitlement row
+     *  2. The tenant's plan includes the `premium-content` feature
+     *     — the plan grants blanket access.
+     *  3. The tenant has an explicit (non-expired) entitlement row
      *     for the resource — the per-resource purchase grants
-     *     access.
+     *     access to ALL users of that tenant.
      *
-     * Anything else (no tenant, no user, expired entitlement) is
-     * denied.
+     * Anything else (no tenant, expired entitlement) is denied.
      */
-    private function userCanAccess(?Tenant $tenant, mixed $user, Resource $resource): bool
+    private function userCanAccess(?Tenant $tenant, Resource $resource): bool
     {
         if (! $resource->is_premium) {
             return true;
@@ -199,23 +195,22 @@ class ResourceController extends Controller
             return true;
         }
 
-        return $this->userHasExplicitEntitlement($tenant, $user, $resource);
+        return $this->tenantHasExplicitEntitlement($tenant, $resource);
     }
 
     /**
-     * Whether the user has a non-expired entitlement row for the
-     * resource. Used both for the "has explicit grant" UI signal
-     * and as the third rule in userCanAccess.
+     * Whether the tenant has a non-expired entitlement row for the
+     * resource. Entitlements are tenant-level — one row per
+     * (tenant, resource) grants access to ALL users of that tenant.
      */
-    private function userHasExplicitEntitlement(?Tenant $tenant, mixed $user, Resource $resource): bool
+    private function tenantHasExplicitEntitlement(?Tenant $tenant, Resource $resource): bool
     {
-        if (! $tenant || ! $user) {
+        if (! $tenant) {
             return false;
         }
 
         return Entitlement::query()
             ->where('tenant_id', $tenant->id)
-            ->where('user_id', $user->getKey())
             ->where('resource_id', $resource->id)
             ->where(function ($q) {
                 $q->whereNull('expires_at')->orWhere('expires_at', '>', now());
@@ -229,7 +224,7 @@ class ResourceController extends Controller
      * Single source of truth for the resource array shape.
      * Used by both index() (via map) and show() (single item).
      */
-    private function serializeResource(Resource $r, ?Tenant $tenant, mixed $user): array
+    private function serializeResource(Resource $r, ?Tenant $tenant): array
     {
         return [
             'id' => $r->id,
@@ -241,8 +236,8 @@ class ResourceController extends Controller
             'file_size_bytes' => $r->file_size_bytes,
             'formatted_file_size' => $r->formattedFileSize(),
             'mime_type' => $r->mime_type,
-            'can_download' => $this->userCanAccess($tenant, $user, $r),
-            'has_explicit_entitlement' => $this->userHasExplicitEntitlement($tenant, $user, $r),
+            'can_download' => $this->userCanAccess($tenant, $r),
+            'has_explicit_entitlement' => $this->tenantHasExplicitEntitlement($tenant, $r),
         ];
     }
 

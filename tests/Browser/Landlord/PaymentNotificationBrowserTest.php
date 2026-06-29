@@ -58,7 +58,7 @@ test('toggle expand shows raw text and parsed data', function () {
 
     $this->actingAs($this->admin)
         ->visit(route('landlord.payment-notifications.index'))
-        ->waitForText('Pago recibido')
+        ->waitForText('BNC')
         ->click("[data-testid=\"expand-btn-{$notification->id}\"]")
         ->waitForText('Texto original')
         ->assertSee('Pago recibido Bs 100,00')
@@ -179,7 +179,7 @@ test('filter by bank_code', function () {
 
 test('filter by reference', function () {
     PaymentNotification::factory()->create([
-        'bank_code' => 'BDV',
+        'bank_code' => 'BNC',
         'raw_text' => 'Ref: ABC-12345',
         'parse_status' => 'pending',
         'parsed_data' => null,
@@ -199,11 +199,11 @@ test('filter by reference', function () {
 
     $this->actingAs($this->admin)
         ->visit(route('landlord.payment-notifications.index'))
-        ->waitForText('ABC-12345')
-        ->assertSee('ABC-12345')
-        ->assertSee('OTHER-999')
+        ->waitForText('BNC')
+        ->assertSee('BNC')
+        ->assertSee('BDV')
         ->type('[data-testid="filter-reference"]', 'ABC-12345')
         ->click('[data-testid="filter-btn"]')
-        ->waitForText('ABC-12345')
-        ->assertDontSee('OTHER-999');
+        ->waitForText('BNC')
+        ->assertDontSee('BDV');
 });

@@ -10,18 +10,15 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Spatie\Multitenancy\Models\Concerns\UsesLandlordConnection;
 
 /**
- * Records that a specific (tenant, user) pair is allowed to download
- * a specific resource.
+ * Records that a specific tenant is allowed to download a specific
+ * resource.
  *
- * The row is the explicit proof of access for premium resources —
- * without it, a user on a plan that does NOT include
- * `premium-content` cannot download. With it, the user can download
- * even if their plan later downgrades.
+ * Entitlements are tenant-level: one row per (tenant, resource)
+ * grants access to ALL users of that tenant. Any authenticated user
+ * of the tenant can download a resource the tenant owns.
  *
- * The `user_id` column is a logical foreign key (NOT enforced as a
- * DB-level FK) because the `User` model lives in the tenant's
- * database. The tenant_id is enforced and cascades on tenant
- * deletion, so wiping a tenant also wipes their entitlements.
+ * The tenant_id is enforced and cascades on tenant deletion, so
+ * wiping a tenant also wipes their entitlements.
  *
  * See EntitlementGrantVia for the meaning of the granted_via value.
  */
@@ -34,7 +31,6 @@ class Entitlement extends Model
 
     protected $fillable = [
         'tenant_id',
-        'user_id',
         'resource_id',
         'granted_via',
         'granted_at',

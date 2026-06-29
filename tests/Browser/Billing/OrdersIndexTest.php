@@ -77,7 +77,7 @@ test('orders index shows order list', function () {
             ->assertVisible("[data-testid=\"order-row-{$order->id}\"]")
             ->assertSee($plan->name)
             ->assertSee('Pendiente')
-            ->assertSeeIn("[data-testid=\"order-row-{$order->id}\"]", '29')
+            ->assertSee('Bs. 29.00')
             ->assertNoJavaScriptErrors();
     } finally {
         $this->cleanupTenantConnection($previousDefault);

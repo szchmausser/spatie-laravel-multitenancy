@@ -75,7 +75,7 @@ class IngestPaymentNotification implements NotTenantAware, ShouldQueue
     private function dispatchPostCommitEvents(ReconciliationResult $result): void
     {
         if ($result->verifiedPayment !== null) {
-            $shadowMode = (bool) SystemConfig::get('reconciliation.shadow_mode_enabled', true);
+            $shadowMode = (bool) SystemConfig::get('reconciliation.shadow_mode_enabled', false);
 
             if (! $shadowMode) {
                 event(new PaymentVerified($result->verifiedPayment));

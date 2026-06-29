@@ -2,6 +2,8 @@
 
 namespace App\Providers;
 
+use App\Events\PaymentVerified;
+use App\Listeners\ActivateSubscription;
 use App\Services\Payment\BankTransferGateway;
 use App\Services\Payment\PagoMovilGateway;
 use App\Services\Payment\PaymentGatewayInterface;
@@ -10,6 +12,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Validation\Rules\Password;
 
@@ -42,6 +45,8 @@ class AppServiceProvider extends ServiceProvider
         Auth::provider('multi-tenant', function ($app, array $config) {
             return new MultiTenantUserProvider($app['hash'], $config['model']);
         });
+
+        Event::listen(PaymentVerified::class, ActivateSubscription::class);
     }
 
     /**

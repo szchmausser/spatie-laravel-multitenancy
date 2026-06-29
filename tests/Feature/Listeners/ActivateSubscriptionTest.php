@@ -10,6 +10,7 @@ use App\Models\Entitlement;
 use App\Models\Order;
 use App\Models\Payment;
 use App\Models\Plan;
+use App\Models\Resource;
 use App\Models\Subscription;
 use App\Models\Tenant;
 use App\Models\User;
@@ -202,14 +203,15 @@ test('payment verified for resource order grants entitlement to all tenant users
         ->first();
     expect($subscription)->toBeNull();
 
-    // Should create an entitlement for the tenant user
-    $entitlement = Entitlement::query()
+    // Should create exactly one entitlement per tenant+resource (no user loop)
+    $entitlements = Entitlement::query()
         ->where('tenant_id', $tenant->id)
-        ->where('user_id', $tenantUser->getKey())
         ->where('resource_id', $resource->id)
-        ->first();
+        ->get();
 
-    expect($entitlement)->not->toBeNull();
+    expect($entitlements)->toHaveCount(1);
+
+    $entitlement = $entitlements->first();
     expect($entitlement->granted_via->value)->toBe('purchase');
     expect($entitlement->expires_at)->toBeNull();
 
@@ -218,4 +220,56 @@ test('payment verified for resource order grants entitlement to all tenant users
         [$tenantUser],
         PaymentVerifiedNotification::class,
     );
+});
+
+test('PaymentVerified event dispatch triggers entitlement grant via event wiring', function () {
+    // Point tenant connection to landlord DB so makeCurrent() works in tests
+    $testDatabase = config('database.connections.landlord.database');
+    config(['database.connections.tenant.database' => $testDatabase]);
+    DB::purge('tenant');
+
+    $tenant = Tenant::factory()->createQuietly();
+    $tenant->updateQuietly(['database' => $testDatabase]);
+
+    $resource = App\Models\Resource::factory()->createQuietly();
+
+    $order = Order::factory()->forResource()->createQuietly([
+        'tenant_id' => $tenant->id,
+        'resource_id' => $resource->id,
+        'total_cents' => 1000,
+        'status' => OrderStatus::Pending,
+    ]);
+
+    Payment::factory()->createQuietly([
+        'order_id' => $order->id,
+        'tenant_id' => $tenant->id,
+        'amount_cents' => 1000,
+        'status' => PaymentStatus::Verified,
+    ]);
+
+    $payment = Payment::where('order_id', $order->id)->first();
+
+    // Dispatch the event — verifies AppServiceProvider registered the listener
+    event(new PaymentVerified($payment));
+
+    // Order should be paid
+    $order->refresh();
+    expect($order->status)->toBe(OrderStatus::Paid);
+
+    // Should create exactly one entitlement per tenant+resource (no user loop)
+    $entitlements = Entitlement::query()
+        ->where('tenant_id', $tenant->id)
+        ->where('resource_id', $resource->id)
+        ->get();
+
+    expect($entitlements)->toHaveCount(1);
+
+    $entitlement = $entitlements->first();
+    expect($entitlement->granted_via->value)->toBe('purchase');
+
+    // Should NOT create a subscription
+    $subscription = Subscription::on('landlord')
+        ->where('tenant_id', $tenant->id)
+        ->first();
+    expect($subscription)->toBeNull();
 });
