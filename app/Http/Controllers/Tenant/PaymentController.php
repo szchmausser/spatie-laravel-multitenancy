@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Tenant;
 
 use App\Enums\OrderStatus;
 use App\Enums\PaymentStatus;
+use App\Exceptions\DuplicatePaymentReferenceException;
 use App\Http\Controllers\Controller;
 use App\Models\Order;
 use App\Models\Payment;
@@ -178,14 +179,20 @@ class PaymentController extends Controller
         }
 
         // Record payment against the EXISTING order (not a new one)
-        $payment = $this->paymentService->recordPayment(
-            $order,
-            $validated['amount_cents'],
-            $validated['payment_method'],
-            $validated['payment_method_config_id'] ?? null,
-            $gatewayData,
-            $validated['reference'],  // transaction_id — normalized inside recordPayment
-        );
+        try {
+            $payment = $this->paymentService->recordPayment(
+                $order,
+                $validated['amount_cents'],
+                $validated['payment_method'],
+                $validated['payment_method_config_id'] ?? null,
+                $gatewayData,
+                $validated['reference'],  // transaction_id — normalized inside recordPayment
+            );
+        } catch (DuplicatePaymentReferenceException $e) {
+            return back()->withErrors([
+                'reference' => $e->getMessage(),
+            ])->withInput();
+        }
 
         // Dispatch any pending events accumulated during reverse match
         // (e.g. PaymentVerified from auto-verification)

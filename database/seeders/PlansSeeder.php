@@ -8,9 +8,15 @@ use Illuminate\Database\Seeder;
 /**
  * Seeds the landlord database with the three pricing tiers.
  *
- * Run before TenantsSeeder — the auto-assign-free plan behavior in
- * Tenant::created() looks up the 'free' plan by slug, so it must
- * exist before any tenant is created.
+ * Run before ResourcesSeeder and TenantsSeeder:
+ *   1. PlansSeeder creates the plans
+ *   2. ResourcesSeeder creates resources and attaches them to plans
+ *      via the plan_resource pivot
+ *   3. TenantsSeeder creates tenants and assigns subscriptions
+ *
+ * The auto-assign-free plan behavior in Tenant::created() looks up
+ * the 'free' plan by slug, so it must exist before any tenant is
+ * created.
  *
  * The slugs are part of the public contract: assigning a plan in
  * TenantsSeeder, in the admin UI, or in tests is done by slug, not
@@ -20,7 +26,7 @@ class PlansSeeder extends Seeder
 {
     public function run(): void
     {
-        Plan::query()->updateOrCreate(
+        $free = Plan::query()->updateOrCreate(
             ['slug' => 'free'],
             [
                 'name' => 'Free',
@@ -37,14 +43,13 @@ class PlansSeeder extends Seeder
             ],
         );
 
-        Plan::query()->updateOrCreate(
+        $basic = Plan::query()->updateOrCreate(
             ['slug' => 'basic'],
             [
                 'name' => 'Basic',
                 'description' => 'Reportes avanzados, soporte por email y acceso al catálogo premium.',
                 'features' => [
                     'premium-zone' => false,
-                    'premium-content' => true,
                     'advanced-reports' => true,
                     'api-access' => false,
                     'priority-support' => false,
@@ -55,14 +60,13 @@ class PlansSeeder extends Seeder
             ],
         );
 
-        Plan::query()->updateOrCreate(
+        $premium = Plan::query()->updateOrCreate(
             ['slug' => 'premium'],
             [
                 'name' => 'Premium',
                 'description' => 'Todas las features: zona premium, API, soporte prioritario y branding.',
                 'features' => [
                     'premium-zone' => true,
-                    'premium-content' => true,
                     'advanced-reports' => true,
                     'api-access' => true,
                     'priority-support' => true,
@@ -72,5 +76,6 @@ class PlansSeeder extends Seeder
                 'is_active' => true,
             ],
         );
+
     }
 }

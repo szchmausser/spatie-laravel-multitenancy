@@ -19,7 +19,7 @@ test('admin can create a plan', function () {
         'name' => 'Pro Plan',
         'slug' => 'pro',
         'description' => 'Professional plan',
-        'features' => ['premium-zone' => true, 'premium-content' => true],
+        'features' => ['premium-zone' => true, 'advanced-reports' => true],
         'price_cents' => 1999,
         'is_active' => true,
     ];

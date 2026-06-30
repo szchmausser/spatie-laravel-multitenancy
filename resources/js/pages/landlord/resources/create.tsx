@@ -3,7 +3,7 @@ import { X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ResourceForm } from '@/components/landlord/resource-form';
 import { index, store } from '@/routes/landlord/resources';
-import type {BreadcrumbItem} from '@/types';
+import type {BreadcrumbItem, Plan} from '@/types';
 
 const breadcrumbs: BreadcrumbItem[] = [
     { title: 'Admin', href: '/admin' },
@@ -18,7 +18,7 @@ const breadcrumbs: BreadcrumbItem[] = [
  * `multipart/form-data` and lets the backend reach the uploaded
  * file via `$request->file('file')`.
  */
-export default function ResourcesCreate() {
+export default function ResourcesCreate({ plans }: { plans: Plan[] }) {
     return (
         <Form {...(store as any).form()} options={{ forceFormData: true }}>
             {({ processing, errors }) => (
@@ -26,6 +26,7 @@ export default function ResourcesCreate() {
                     mode="create"
                     processing={processing}
                     errors={errors}
+                    plans={plans}
                     onCancel={
                         <Button variant="outline" asChild>
                             <Link href={index().url}>

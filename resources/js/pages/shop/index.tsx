@@ -214,22 +214,43 @@ export default function ShopIndex({ currentPlan, plans, resources }: ShopProps) 
                                             <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
                                             {resource.name}
                                         </CardTitle>
-                                        {resource.is_premium ? (
-                                            <Badge
-                                                variant="default"
-                                                data-testid={`shop-resource-premium-badge-${resource.slug}`}
-                                            >
-                                                <Sparkles className="mr-1 h-3 w-3" />
-                                                Premium
-                                            </Badge>
-                                        ) : (
-                                            <Badge
-                                                variant="outline"
-                                                data-testid={`shop-resource-free-badge-${resource.slug}`}
-                                            >
-                                                Gratis
-                                            </Badge>
-                                        )}
+                                        <div className="flex flex-wrap items-start gap-1">
+                                            {resource.is_premium ? (
+                                                <Badge
+                                                    variant="default"
+                                                    data-testid={`shop-resource-premium-badge-${resource.slug}`}
+                                                >
+                                                    <Sparkles className="mr-1 h-3 w-3" />
+                                                    Premium
+                                                </Badge>
+                                            ) : (
+                                                <Badge
+                                                    variant="outline"
+                                                    data-testid={`shop-resource-free-badge-${resource.slug}`}
+                                                >
+                                                    Gratis
+                                                </Badge>
+                                            )}
+                                            {resource.has_entitlement && (
+                                                <Badge
+                                                    variant="secondary"
+                                                    data-testid={`shop-resource-acquired-badge-${resource.slug}`}
+                                                >
+                                                    <CircleCheck className="mr-1 h-3 w-3" />
+                                                    Adquirido
+                                                </Badge>
+                                            )}
+                                            {!resource.has_entitlement && resource.is_included_in_plan && (
+                                                <Badge
+                                                    variant="secondary"
+                                                    className="bg-green-100 text-green-700 hover:bg-green-100"
+                                                    data-testid={`shop-resource-plan-badge-${resource.slug}`}
+                                                >
+                                                    <CircleCheck className="mr-1 h-3 w-3" />
+                                                    Incluido
+                                                </Badge>
+                                            )}
+                                        </div>
                                     </div>
                                     {resource.description && (
                                         <CardDescription className="line-clamp-3">
@@ -251,14 +272,17 @@ export default function ShopIndex({ currentPlan, plans, resources }: ShopProps) 
                                     )}
                                 </CardContent>
                                 <CardFooter>
-                                    {resource.has_entitlement ? (
-                                        <div
-                                            className="inline-flex w-full items-center justify-center gap-1 rounded-md bg-muted px-3 py-2 text-sm font-medium text-muted-foreground"
-                                            data-testid={`shop-resource-acquired-badge-${resource.slug}`}
+                                    {resource.can_download ? (
+                                        <Button
+                                            asChild
+                                            className="w-full"
+                                            data-testid={`shop-resource-download-btn-${resource.slug}`}
                                         >
-                                            <CircleCheck className="h-3.5 w-3.5" />
-                                            Adquirido
-                                        </div>
+                                            <a href={`/resources/${resource.slug}/download`} rel="nofollow">
+                                                <Download className="h-4 w-4" />
+                                                Download
+                                            </a>
+                                        </Button>
                                     ) : resource.is_premium && resource.price_cents > 0 ? (
                                         <Button
                                             type="button"
@@ -270,18 +294,7 @@ export default function ShopIndex({ currentPlan, plans, resources }: ShopProps) 
                                             <ShoppingBag className="h-4 w-4" />
                                             Comprar
                                         </Button>
-                                    ) : (
-                                        <Button
-                                            asChild
-                                            className="w-full"
-                                            data-testid={`shop-resource-download-btn-${resource.slug}`}
-                                        >
-                                            <a href={`/resources/${resource.slug}/download`} rel="nofollow">
-                                                <Download className="h-4 w-4" />
-                                                Download
-                                            </a>
-                                        </Button>
-                                    )}
+                                    ) : null}
                                 </CardFooter>
                             </Card>
                         ))}

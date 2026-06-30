@@ -13,6 +13,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { FEATURE_CATALOG, type FeatureKey } from '@/lib/features';
+import type { Resource } from '@/types';
 
 type PlanFormProps = {
     mode: 'create' | 'edit';
@@ -27,6 +28,10 @@ type PlanFormProps = {
         price_cents?: number;
         is_active?: boolean;
     };
+    /** Available resources for multi-select assignment. */
+    resources?: Resource[];
+    /** Resource IDs currently assigned to this plan (for edit mode). */
+    selectedResourceIds?: number[];
 };
 
 export function PlanForm({
@@ -35,12 +40,21 @@ export function PlanForm({
     errors,
     onCancel,
     defaults,
+    resources = [],
+    selectedResourceIds = [],
 }: PlanFormProps) {
     const [features, setFeatures] = useState<Record<string, boolean>>(
         defaults?.features ?? Object.fromEntries(FEATURE_CATALOG.map((f) => [f.key, false]))
     );
     const [isActive, setIsActive] = useState(defaults?.is_active ?? true);
     const [priceBs, setPriceBs] = useState(defaults?.price_cents ? defaults.price_cents / 100 : 0);
+    const [selectedResourceIdsState, setSelectedResourceIdsState] = useState<number[]>(selectedResourceIds);
+
+    const toggleResource = (id: number, checked: boolean) => {
+        setSelectedResourceIdsState((prev) =>
+            checked ? [...prev, id] : prev.filter((rid) => rid !== id)
+        );
+    };
 
     const toggleFeature = (key: FeatureKey, checked: boolean) => {
         setFeatures((prev) => ({ ...prev, [key]: checked }));
@@ -181,6 +195,49 @@ export function PlanForm({
                         <InputError message={errors.features} />
                     </CardContent>
                 </Card>
+
+                {resources.length > 0 && (
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>Included Resources</CardTitle>
+                            <CardDescription>
+                                Select premium resources that tenants on this plan
+                                can download without purchasing individually.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-3">
+                            {resources.map((resource) => {
+                                const inputId = `plan-resource-${resource.id}`;
+
+                                return (
+                                    <div
+                                        key={resource.id}
+                                        className="flex items-start gap-3 p-3 rounded-md border hover:bg-muted/30"
+                                        data-testid={`plan-resource-row-${resource.id}`}
+                                    >
+                                        <Checkbox
+                                            id={inputId}
+                                            data-testid={`input-plan-resource-${resource.id}`}
+                                            checked={selectedResourceIdsState.includes(resource.id)}
+                                            onCheckedChange={(checked) =>
+                                                toggleResource(resource.id, checked === true)
+                                            }
+                                            className="mt-1"
+                                        />
+                                        <label htmlFor={inputId} className="cursor-pointer flex-1">
+                                            <div className="font-medium">{resource.name}</div>
+                                            <div className="text-sm text-muted-foreground">
+                                                {resource.formatted_file_size}
+                                                {resource.mime_type ? ` · ${resource.mime_type}` : ''}
+                                            </div>
+                                        </label>
+                                    </div>
+                                );
+                            })}
+                            <InputError message={errors.resource_ids} />
+                        </CardContent>
+                    </Card>
+                )}
             </div>
         </div>
     );

@@ -2120,9 +2120,9 @@ nslookup tenant1.spatie-laravel-multitenancy.test
 
 ### 18.3 Reset completo con configuración del sistema
 
-> ⚠️ **Por qué esta sección existe:** La sección 18.1 documenta un reset con una configuración mínima de seeders que quedó desactualizada tras la evolución del proyecto. Esta sección **reemplaza funcionalmente** a la 18.1 para el flujo de desarrollo actual, ya que incluye todos los seeders que el sistema necesita para estar operativo: admin, planes, tenants, métodos de pago, configuración del sistema, y datos por tenant (roles, permisos, usuarios owner).
+> ⚠️ **Por qué esta sección existe:** La sección 18.1 documenta un reset con una configuración mínima de seeders que quedó desactualizada tras la evolución del proyecto. Esta sección **reemplaza funcionalmente** a la 18.1 para el flujo de desarrollo actual, ya que incluye todos los seeders que el sistema necesita para estar operativo: admin, planes, **recursos premium**, tenants, métodos de pago, configuración del sistema, y datos por tenant (roles, permisos, usuarios owner).
 
-Este flujo dropea y recrea las BDs, corre migraciones, y siembra **todos los datos** incluyendo landlord admin, planes, 10 tenants, métodos de pago, configuraciones del sistema, permisos/roles por tenant, y un usuario owner por tenant.
+Este flujo dropea y recrea las BDs, corre migraciones, y siembra **todos los datos** incluyendo landlord admin, planes, **3 recursos de prueba (1 free + 2 premium con distintas asignaciones a planes)**, 10 tenants, métodos de pago, configuraciones del sistema, permisos/roles por tenant, y un usuario owner por tenant.
 
 > **Pre-flight:** Laragon (o tu dev stack) corriendo con PostgreSQL activo. Credenciales del `.env` funcionando. Usá ventana incógnita del navegador (las cookies viejas causan 419). Si escribís al archivo `hosts`, necesitás permisos de Administrador (Windows) o `sudo` (Linux/macOS).
 
@@ -2134,7 +2134,7 @@ Este flujo dropea y recrea las BDs, corre migraciones, y siembra **todos los dat
 #     Si la BD principal tiene conexiones activas, terminarlas antes del drop:
 #     SELECT pg_terminate_backend(pid) FROM pg_stat_activity
 #     WHERE datname = 'spatie-laravel-multitenancy' AND pid <> pg_backend_pid();
-$env:PGPASSWORD = "0"
+$env:PGPASSWORD = "postgres"
 
 # ──────────────────────────────────────────────
 # 1. Drop todas las BDs (landlord + testing + 10 tenants)
@@ -2180,11 +2180,12 @@ php artisan migrate --path=database/migrations/landlord --database=landlord
 # ──────────────────────────────────────────────
 # 4. Seed datos del landlord (en orden)
 # ──────────────────────────────────────────────
-php artisan db:seed --class=LandlordUserSeeder        # Admin: admin@example.test / password
-php artisan db:seed --class=PlansSeeder                # Planes: free, basic, premium
-php artisan db:seed --class=TenantsSeeder              # 10 tenants → crea BDs físicas + suscripciones
-php artisan db:seed --class=PaymentMethodConfigSeeder  # Métodos de pago: BDV + BNC (PagoMóvil + Transferencia)
-php artisan db:seed --class=SystemConfigSeeder         # Config del sistema: payment, reconciliation, device, regex
+php artisan db:seed --class=LandlordUserSeeder        # 1 Admin: admin@example.test / password
+php artisan db:seed --class=PlansSeeder                # 2 Planes: free, basic, premium
+php artisan db:seed --class=ResourcesSeeder            # 3 Recursos: guide (free), advanced-pdf (+video course premium)
+php artisan db:seed --class=TenantsSeeder              # 4 10 tenants → crea BDs físicas + suscripciones
+php artisan db:seed --class=PaymentMethodConfigSeeder  # 5 Métodos de pago: BDV + BNC (PagoMóvil + Transferencia)
+php artisan db:seed --class=SystemConfigSeeder         # 6 Config del sistema: payment, reconciliation, device, regex
 
 # ──────────────────────────────────────────────
 # 5. Migrar y seedear cada tenant
@@ -2198,30 +2199,6 @@ php artisan tenants:artisan "migrate --database=tenant --seed"
 # 6. Limpiar caché de config
 # ──────────────────────────────────────────────
 php artisan config:clear
-
-# ──────────────────────────────────────────────
-# 7. (Opcional) Generar códigos de invitación para dispositivos
-# ──────────────────────────────────────────────
-#    Los dispositivos Android se registran usando códigos de un solo uso
-#    scoped al tenant. Cada código permite registrar EXACTAMENTE UN
-#    dispositivo con is_active = true (sin aprobación manual del admin).
-#
-#    Forma A — Por Artisan (ideal para setup automatizado):
-php artisan device:generate-invite 1 --days=30
-#    → INV-3YY9QHUJ (código para Tenant1, expira en 30 días)
-#
-#    Sin expiración: php artisan device:generate-invite tenant1 --days=0
-#    Por domain:     php artisan device:generate-invite tenant1.spatie-laravel-multitenancy.test
-#
-#    Forma B — Por UI del admin (ideal para test manual):
-#    1. Entrá a /admin/invite-codes
-#    2. Click "Nuevo Código"
-#    3. Seleccioná el tenant del dropdown
-#    4. Ajustá los días de expiración (0 = no expira)
-#    5. Click "Generar Código"
-#    El código aparece en la tabla con estado "Válido", listo para usar.
-#
-#    Más info en §20.2 (Registro de dispositivos Android)
 ```
 
 #### Seeders ejecutados (orden y dependencias)
@@ -2230,11 +2207,12 @@ php artisan device:generate-invite 1 --days=30
 |-------|--------|----------|------|
 | 1 | `LandlordUserSeeder` | landlord | Admin del sistema (`admin@example.test`) |
 | 2 | `PlansSeeder` | landlord | 3 planes: free (Bs.0), basic (Bs.8.000), premium (Bs.15.000) |
-| 3 | `TenantsSeeder` | landlord | 10 tenants + BDs físicas + suscripciones (3 free + 6 basic + 1 premium) |
-| 4 | `PaymentMethodConfigSeeder` | landlord | 4 métodos de pago: BDV y BNC (PagoMóvil + Transferencia) |
-| 5 | `SystemConfigSeeder` | landlord | 7 configs: gateway, expiry, heartbeat, shadow mode, regex BDV/BNC |
-| 6 | `TenantPermissionsSeeder` | tenant (x10) | Roles: owner, member, tenant-admin + permiso `change-plan` |
-| 7 | `TenantUsersSeeder` | tenant (x10) | 1 usuario owner por tenant con password fijo |
+| 3 | `ResourcesSeeder` | landlord | 3 recursos de prueba: Getting Started Guide (free), Advanced PDF (premium, incluido en basic+premium), Video Course (premium, no asignado a ningún plan → buy-only) |
+| 4 | `TenantsSeeder` | landlord | 10 tenants + BDs físicas + suscripciones (3 free + 6 basic + 1 premium) |
+| 5 | `PaymentMethodConfigSeeder` | landlord | 4 métodos de pago: BDV y BNC (PagoMóvil + Transferencia) |
+| 6 | `SystemConfigSeeder` | landlord | 7 configs: gateway, expiry, heartbeat, shadow mode, regex BDV/BNC |
+| 7 | `TenantPermissionsSeeder` | tenant (x10) | Roles: owner, member, tenant-admin + permiso `change-plan` |
+| 8 | `TenantUsersSeeder` | tenant (x10) | 1 usuario owner por tenant con password fijo |
 
 > **Nota de idempotencia:** Todos los seeders usan `updateOrCreate` o chequean existencia previa, por lo que re-ejecutarlos no duplica registros. El `TenantsSeeder` es idempotente porque `createDatabase()` chequea `pg_database` antes de crear.
 

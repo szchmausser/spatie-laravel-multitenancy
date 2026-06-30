@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Landlord;
 
 use App\Http\Controllers\Controller;
 use App\Models\Plan;
+use App\Models\Resource;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 
@@ -14,7 +15,7 @@ class PlanController extends Controller
      */
     public function index()
     {
-        $plans = Plan::all();
+        $plans = Plan::withCount('resources')->get();
 
         return Inertia::render('landlord/plans/index', [
             'plans' => $plans,
@@ -26,7 +27,11 @@ class PlanController extends Controller
      */
     public function create()
     {
-        return Inertia::render('landlord/plans/create');
+        $resources = Resource::all();
+
+        return Inertia::render('landlord/plans/create', [
+            'resources' => $resources,
+        ]);
     }
 
     /**
@@ -43,9 +48,12 @@ class PlanController extends Controller
             'features' => 'required|array',
             'price_cents' => 'required|integer|min:0',
             'is_active' => 'required|boolean',
+            'resource_ids' => ['nullable', 'array'],
+            'resource_ids.*' => ['exists:resources,id'],
         ]);
 
-        Plan::create($validated);
+        $plan = Plan::create($validated);
+        $plan->resources()->sync($validated['resource_ids'] ?? []);
 
         return redirect()->route('landlord.plans.index');
     }
@@ -55,8 +63,12 @@ class PlanController extends Controller
      */
     public function edit(Plan $plan)
     {
+        $plan->load('resources');
+        $resources = Resource::all();
+
         return Inertia::render('landlord/plans/edit', [
             'plan' => $plan,
+            'resources' => $resources,
         ]);
     }
 
@@ -74,9 +86,12 @@ class PlanController extends Controller
             'features' => 'required|array',
             'price_cents' => 'required|integer|min:0',
             'is_active' => 'required|boolean',
+            'resource_ids' => ['nullable', 'array'],
+            'resource_ids.*' => ['exists:resources,id'],
         ]);
 
         $plan->update($validated);
+        $plan->resources()->sync($validated['resource_ids'] ?? []);
 
         return redirect()->route('landlord.plans.index');
     }

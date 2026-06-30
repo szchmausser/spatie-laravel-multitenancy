@@ -79,7 +79,7 @@ const breadcrumbs: BreadcrumbItem[] = [
     { title: 'Detalle', href: '#' },
 ];
 
-export default function OrderShow({ order, paymentMethodConfigs }: OrderShowProps) {
+export default function OrderShow({ order, paymentMethodConfigs, errors }: OrderShowProps & { errors?: Record<string, string> }) {
     const { url } = usePage();
     const hasReloaded = useRef(false);
     const [reference, setReference] = useState('');
@@ -115,7 +115,6 @@ export default function OrderShow({ order, paymentMethodConfigs }: OrderShowProp
     const hasMultipleMethods = pagoMovilConfigs.length > 0 && bankTransferConfigs.length > 0;
 
     const activeConfigs = selectedMethod === 'pago_movil' ? pagoMovilConfigs : bankTransferConfigs;
-    const selectedConfig = activeConfigs.find((c) => c.id === selectedConfigId) ?? activeConfigs[0];
 
     // Auto-select first config when method changes
     useEffect(() => {
@@ -173,22 +172,20 @@ export default function OrderShow({ order, paymentMethodConfigs }: OrderShowProp
                     </div>
                 </div>
 
-                <OrderDetailsCard order={order} paidCents={paidCents} />
-
-                {/* Payment Instructions + Reference (only for pending unpaid orders) */}
+                {/* Payment Method + Bank Info (only for pending unpaid orders) */}
                 {order.status === 'pending' && !isPaid && (
-                    <Card data-testid="payment-section">
+                    <Card data-testid="payment-method-section">
                         <CardHeader>
-                            <CardTitle>Realizar Pago</CardTitle>
+                            <CardTitle>¿Cómo quieres pagar?</CardTitle>
                             <CardDescription>
-                                Enviá el monto de <strong>{formatPrice(order.total_cents)}</strong> usando uno de los siguientes métodos:
+                                Elige el método de pago y revisa los datos de la cuenta destino.
                             </CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
                             {/* Payment Method Selector */}
                             {hasMultipleMethods && (
                                 <div className="space-y-3">
-                                    <Label>Método de pago</Label>
+                                    <Label>Formas de pago</Label>
                                     <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                                         {pagoMovilConfigs.length > 0 && (
                                             <button
@@ -246,122 +243,126 @@ export default function OrderShow({ order, paymentMethodConfigs }: OrderShowProp
                                 </div>
                             )}
 
-                            {/* Account Config Selector (if multiple accounts for same type) */}
-                            {activeConfigs.length > 1 && (
+                            {/* Account Destino */}
+                            {activeConfigs.length > 0 && (
                                 <div className="space-y-2">
-                                    <Label>Cuenta destino</Label>
-                                    <div className="space-y-2">
+                                    <Label>Realiza tu pago en cualquiera de estas cuentas</Label>
+                                    <div className="grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-3">
                                         {activeConfigs.map((config) => (
-                                            <button
+                                            <div
                                                 key={config.id}
-                                                type="button"
-                                                onClick={() => setSelectedConfigId(config.id)}
-                                                className={cn(
-                                                    'flex items-center space-x-3 rounded-lg border p-3 text-left w-full transition-colors',
-                                                    selectedConfig?.id === config.id
-                                                        ? 'border-primary bg-primary/5'
-                                                        : 'border-border hover:border-primary/50',
-                                                )}
-                                                data-testid={`config-${config.id}`}
+                                                className="rounded-lg border p-4 space-y-2"
                                             >
-                                                <div className="h-4 w-4 rounded-full border-2 border-primary flex items-center justify-center">
-                                                    {selectedConfig?.id === config.id && (
-                                                        <div className="h-2 w-2 rounded-full bg-primary" />
+                                                <div className="font-medium">{config.label}</div>
+                                                <div className="text-sm space-y-1">
+                                                    {selectedMethod === 'pago_movil' ? (
+                                                        <>
+                                                            <div className="flex justify-between gap-2">
+                                                                <span className="text-muted-foreground shrink-0">Banco</span>
+                                                                <span className="font-medium text-right">{config.bank_name}</span>
+                                                            </div>
+                                                            <div className="flex justify-between gap-2">
+                                                                <span className="text-muted-foreground shrink-0">Teléfono</span>
+                                                                <span className="font-mono text-right">{config.account_number}</span>
+                                                            </div>
+                                                            <div className="flex justify-between gap-2">
+                                                                <span className="text-muted-foreground shrink-0">RIF</span>
+                                                                <span className="font-mono text-right">{config.holder_id}</span>
+                                                            </div>
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <div className="flex justify-between gap-2">
+                                                                <span className="text-muted-foreground shrink-0">Banco</span>
+                                                                <span className="font-medium text-right">{config.bank_name}</span>
+                                                            </div>
+                                                            <div className="flex justify-between gap-2">
+                                                                <span className="text-muted-foreground shrink-0">Cuenta</span>
+                                                                <span className="font-mono text-right">{config.account_number}</span>
+                                                            </div>
+                                                            <div className="flex justify-between gap-2">
+                                                                <span className="text-muted-foreground shrink-0">Titular</span>
+                                                                <span className="font-medium text-right">{config.account_holder}</span>
+                                                            </div>
+                                                            <div className="flex justify-between gap-2">
+                                                                <span className="text-muted-foreground shrink-0">RIF/Cédula</span>
+                                                                <span className="font-mono text-right">{config.holder_id}</span>
+                                                            </div>
+                                                        </>
                                                     )}
                                                 </div>
-                                                <div>
-                                                    <div className="font-medium">{config.label}</div>
-                                                    <div className="text-xs text-muted-foreground">
-                                                        {config.bank_name} — {config.account_number}
-                                                    </div>
-                                                </div>
-                                            </button>
+                                            </div>
                                         ))}
                                     </div>
                                 </div>
                             )}
+                        </CardContent>
+                    </Card>
+                )}
 
-                            {/* Instructions Display */}
-                            {selectedConfig && (
-                                <div className="rounded-lg bg-muted p-4 space-y-2">
-                                    {selectedMethod === 'pago_movil' ? (
-                                        <>
-                                            <div className="flex justify-between text-sm">
-                                                <span className="text-muted-foreground">Teléfono</span>
-                                                <span className="font-mono font-medium">{selectedConfig.account_number}</span>
-                                            </div>
-                                            <div className="flex justify-between text-sm">
-                                                <span className="text-muted-foreground">Banco</span>
-                                                <span className="font-medium">{selectedConfig.bank_name}</span>
-                                            </div>
-                                            <div className="flex justify-between text-sm">
-                                                <span className="text-muted-foreground">RIF</span>
-                                                <span className="font-mono font-medium">{selectedConfig.holder_id}</span>
-                                            </div>
-                                        </>
-                                    ) : (
-                                        <>
-                                            <div className="flex justify-between text-sm">
-                                                <span className="text-muted-foreground">Banco</span>
-                                                <span className="font-medium">{selectedConfig.bank_name}</span>
-                                            </div>
-                                            <div className="flex justify-between text-sm">
-                                                <span className="text-muted-foreground">Cuenta</span>
-                                                <span className="font-mono font-medium">{selectedConfig.account_number}</span>
-                                            </div>
-                                            <div className="flex justify-between text-sm">
-                                                <span className="text-muted-foreground">Titular</span>
-                                                <span className="font-medium">{selectedConfig.account_holder}</span>
-                                            </div>
-                                            <div className="flex justify-between text-sm">
-                                                <span className="text-muted-foreground">RIF/Cédula</span>
-                                                <span className="font-mono font-medium">{selectedConfig.holder_id}</span>
-                                            </div>
-                                        </>
-                                    )}
+                <OrderDetailsCard order={order} paidCents={paidCents} />
+
+                {/* Report Payment Form (only for pending unpaid orders) */}
+                {order.status === 'pending' && !isPaid && (
+                    <Card data-testid="payment-section">
+                        <CardHeader>
+                            <CardTitle>Reporta tu pago</CardTitle>
+                            <CardDescription>
+                                Completa los datos del pago que realizaste por <strong>{formatPrice(order.total_cents)}</strong>.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            {errors?.order_id && (
+                                <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+                                    {errors.order_id}
                                 </div>
                             )}
 
                             <form onSubmit={handleReportPayment} className="space-y-4">
                                 <input type="hidden" name="payment_method" value={selectedMethod} />
-                                <div className="space-y-2">
-                                    <Label htmlFor="amount">Monto pagado (Bs.)</Label>
-                                    <Input
-                                        id="amount"
-                                        type="number"
-                                        step="0.01"
-                                        min="0.01"
-                                        max={(remainingCents / 100).toFixed(2)}
-                                        placeholder="Ej: 80.00"
-                                        value={amountCents}
-                                        onChange={(e) => setAmountCents(e.target.value)}
-                                        required
-                                    />
-                                    <p className="text-xs text-muted-foreground">
-                                        Indicá el monto exacto que pagaste. Restante: {formatPrice(remainingCents)}
-                                    </p>
-                                </div>
+                                <div className="grid gap-4 md:grid-cols-2">
+                                    <div className="space-y-2">
+                                        <Label htmlFor="amount">Monto pagado (Bs.)</Label>
+                                        <Input
+                                            id="amount"
+                                            type="number"
+                                            step="0.01"
+                                            min="0.01"
+                                            max={(remainingCents / 100).toFixed(2)}
+                                            placeholder="Ej: 80.00"
+                                            value={amountCents}
+                                            onChange={(e) => setAmountCents(e.target.value)}
+                                            required
+                                        />
+                                        <p className="text-xs text-muted-foreground">
+                                            Indica el monto exacto que pagaste. Restante: {formatPrice(remainingCents)}
+                                        </p>
+                                    </div>
 
-                                <div className="space-y-2">
-                                    <Label htmlFor="reference">Referencia de tu transferencia</Label>
-                                    <Input
-                                        id="reference"
-                                        type="text"
-                                        placeholder="Ej: 1234567890"
-                                        value={reference}
-                                        onChange={(e) => setReference(e.target.value)}
-                                        required
-                                        pattern="[0-9]{6,10}"
-                                        title="La referencia debe tener entre 6 y 10 dígitos"
-                                    />
-                                    <p className="text-xs text-muted-foreground">
-                                        Ingresá el número de referencia de 6-10 dígitos de tu comprobante bancario
-                                    </p>
+                                    <div className="space-y-2">
+                                        <Label htmlFor="reference">Referencia de tu transferencia</Label>
+                                        <Input
+                                            id="reference"
+                                            type="text"
+                                            placeholder="Ej: 1234567890"
+                                            value={reference}
+                                            onChange={(e) => setReference(e.target.value)}
+                                            required
+                                            pattern="[0-9]{6,10}"
+                                            title="La referencia debe tener entre 6 y 10 dígitos"
+                                        />
+                                        {errors?.reference && (
+                                            <p className="text-sm text-destructive">{errors.reference}</p>
+                                        )}
+                                        <p className="text-xs text-muted-foreground">
+                                            Ingresa el número de referencia de 6-10 dígitos de tu comprobante bancario
+                                        </p>
+                                    </div>
                                 </div>
 
                                 {/* Sender fields for Pago Móvil */}
                                 {selectedMethod === 'pago_movil' && (
-                                    <>
+                                    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                                         <div className="space-y-2">
                                             <Label htmlFor="sender_bank">Banco emisor</Label>
                                             <select
@@ -371,7 +372,7 @@ export default function OrderShow({ order, paymentMethodConfigs }: OrderShowProp
                                                 required
                                                 className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                                             >
-                                                <option value="">Seleccioná tu banco</option>
+                                                <option value="">Selecciona tu banco</option>
                                                 <option value="Banco de Venezuela">Banco de Venezuela</option>
                                                 <option value="Banco Mercantil">Banco Mercantil</option>
                                                 <option value="Banco Provincial">Banco Provincial</option>
@@ -440,12 +441,12 @@ export default function OrderShow({ order, paymentMethodConfigs }: OrderShowProp
                                                 maxLength={255}
                                             />
                                         </div>
-                                    </>
+                                    </div>
                                 )}
 
                                 {/* Sender fields for Bank Transfer */}
                                 {selectedMethod === 'bank_transfer' && (
-                                    <>
+                                    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                                         <div className="space-y-2">
                                             <Label htmlFor="sender_bank_bt">Banco emisor</Label>
                                             <select
@@ -455,7 +456,7 @@ export default function OrderShow({ order, paymentMethodConfigs }: OrderShowProp
                                                 required
                                                 className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                                             >
-                                                <option value="">Seleccioná tu banco</option>
+                                                <option value="">Selecciona tu banco</option>
                                                 <option value="Banco de Venezuela">Banco de Venezuela</option>
                                                 <option value="Banco Mercantil">Banco Mercantil</option>
                                                 <option value="Banco Provincial">Banco Provincial</option>
@@ -554,7 +555,7 @@ export default function OrderShow({ order, paymentMethodConfigs }: OrderShowProp
                                                 maxLength={255}
                                             />
                                         </div>
-                                    </>
+                                    </div>
                                 )}
 
                                 <Button
@@ -575,20 +576,25 @@ export default function OrderShow({ order, paymentMethodConfigs }: OrderShowProp
                     </Card>
                 )}
 
-                {/* Payment — only show if there's a reference */}
-                {order.payments.filter((p) => p.transaction_id).length === 0 ? (
-                    <Card>
-                        <CardContent className="py-8">
+                {/* Pagos de la orden */}
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Pagos de la orden</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        {order.payments.filter((p) => p.transaction_id).length === 0 ? (
                             <p className="text-sm text-muted-foreground text-center">
                                 Aún no has reportado ningún pago.
                             </p>
-                        </CardContent>
-                    </Card>
-                ) : (
-                    order.payments.filter((p) => p.transaction_id).map((payment) => (
-                        <PaymentDetailsCard key={payment.id} payment={payment} />
-                    ))
-                )}
+                        ) : (
+                            <div className="space-y-4">
+                                {order.payments.filter((p) => p.transaction_id).map((payment) => (
+                                    <PaymentDetailsCard key={payment.id} payment={payment} />
+                                ))}
+                            </div>
+                        )}
+                    </CardContent>
+                </Card>
             </div>
         </>
     );

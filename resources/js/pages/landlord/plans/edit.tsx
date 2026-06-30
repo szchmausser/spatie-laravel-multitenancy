@@ -3,7 +3,7 @@ import { X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { PlanForm } from '@/components/landlord/plan-form';
 import { index, update } from '@/routes/landlord/plans';
-import type {BreadcrumbItem, Plan} from '@/types';
+import type {BreadcrumbItem, Plan, Resource} from '@/types';
 
 const breadcrumbs: BreadcrumbItem[] = [
     { title: 'Admin', href: '/admin' },
@@ -11,7 +11,7 @@ const breadcrumbs: BreadcrumbItem[] = [
     { title: 'Edit', href: '#' },
 ];
 
-export default function PlansEdit({ plan }: { plan: Plan }) {
+export default function PlansEdit({ plan, resources }: { plan: Plan; resources: Resource[] }) {
     return (
         <Form {...(update as any).form(plan.id)}>
             {({ processing, errors }) => (
@@ -19,6 +19,8 @@ export default function PlansEdit({ plan }: { plan: Plan }) {
                     mode="edit"
                     processing={processing}
                     errors={errors}
+                    resources={resources}
+                    selectedResourceIds={plan.resources?.map((r: Resource) => r.id) ?? []}
                     defaults={{
                         name: plan.name,
                         slug: plan.slug,

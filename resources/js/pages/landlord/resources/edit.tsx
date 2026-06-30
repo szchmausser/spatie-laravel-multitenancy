@@ -3,7 +3,7 @@ import { X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ResourceForm } from '@/components/landlord/resource-form';
 import { index, update } from '@/routes/landlord/resources';
-import type {BreadcrumbItem, Resource} from '@/types';
+import type {BreadcrumbItem, Plan, Resource} from '@/types';
 
 const breadcrumbs: BreadcrumbItem[] = [
     { title: 'Admin', href: '/admin' },
@@ -18,7 +18,7 @@ const breadcrumbs: BreadcrumbItem[] = [
  * new file keeps the on-disk file intact. Submitting a new file
  * REPLACES the previous file on disk.
  */
-export default function ResourcesEdit({ resource }: { resource: Resource }) {
+export default function ResourcesEdit({ resource, plans }: { resource: Resource; plans: Plan[] }) {
     return (
         <Form {...(update as any).form(resource.id)} options={{ forceFormData: true }}>
             {({ processing, errors }) => (
@@ -26,6 +26,8 @@ export default function ResourcesEdit({ resource }: { resource: Resource }) {
                     mode="edit"
                     processing={processing}
                     errors={errors}
+                    plans={plans}
+                    selectedPlanIds={resource.plans?.map((p: Plan) => p.id) ?? []}
                     defaults={{
                         name: resource.name,
                         slug: resource.slug,

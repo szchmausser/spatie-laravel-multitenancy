@@ -2,6 +2,7 @@
 
 namespace App\Services\Payment;
 
+use App\Enums\CancellationType;
 use App\Enums\PaymentStatus;
 use App\Models\Payment;
 use App\Models\PaymentMatch;
@@ -41,6 +42,26 @@ class ReconciliationOrchestrator
 
         if ($duplicateExists) {
             $match->update(['match_status' => 'duplicate_attempt']);
+
+            // Cancelar cualquier pago pendiente con esta misma referencia
+            $pendingDuplicate = Payment::where('status', PaymentStatus::Pending)
+                ->where('transaction_id', $match->parsed_reference)
+                ->where('amount_cents', $match->parsed_amount_cents)
+                ->first();
+
+            if ($pendingDuplicate) {
+                $this->paymentService->cancelPayment(
+                    $pendingDuplicate,
+                    CancellationType::SystemDuplicate,
+                    'system',
+                    'Referencia ya verificada en otro pago.',
+                );
+
+                return new ReconciliationResult(
+                    cancelledPayment: $pendingDuplicate->fresh(),
+                    cancelledReason: 'Referencia ya verificada en otro pago.',
+                );
+            }
 
             return new ReconciliationResult;
         }

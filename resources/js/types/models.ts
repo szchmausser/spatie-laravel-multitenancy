@@ -24,6 +24,10 @@ export type Resource = {
     has_explicit_entitlement?: boolean;
     /** Tenant-only: whether the user has an active entitlement for this resource. */
     has_entitlement?: boolean;
+    /** Tenant-only: whether the resource is included in the current tenant's plan. */
+    is_included_in_plan?: boolean;
+    /** Plans that include this resource (loaded on edit). */
+    plans?: Plan[];
 };
 
 export type Plan = {
@@ -34,6 +38,10 @@ export type Plan = {
     price_cents: number;
     is_active: boolean;
     features: Record<string, boolean>;
+    /** Number of premium resources assigned to this plan. */
+    resources_count?: number;
+    /** Premium resources assigned to this plan (loaded on edit). */
+    resources?: Resource[];
 };
 
 export type Subscription = {

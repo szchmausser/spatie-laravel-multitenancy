@@ -104,7 +104,9 @@ test('index marks each resource with can_download for the current user', functio
     $free = Resource::factory()->create(['is_premium' => false]);
     $premium = Resource::factory()->premium()->create();
 
-    $tenant = makePaidTenant('basic'); // basic has premium-content
+    $tenant = makePaidTenant('basic');
+    // Attach the premium resource to the plan via the pivot
+    $tenant->subscription->plan->resources()->attach($premium->id);
     $user = makeUserFor($tenant);
 
     switchToTenant($tenant);
@@ -112,7 +114,7 @@ test('index marks each resource with can_download for the current user', functio
         ->get(route('resources.index'))
         ->assertInertia(fn (Assert $page) => $page
             ->where('resources.0.can_download', true)   // free resource
-            ->where('resources.1.can_download', true)   // premium, plan grants access
+            ->where('resources.1.can_download', true)   // premium, plan grants access via pivot
         );
 });
 
@@ -220,10 +222,12 @@ test('download streams a free resource for any authenticated user', function () 
     expect($response->streamedContent())->toBe($body);
 });
 
-test('download streams a premium resource when the plan has premium-content', function () {
+test('download streams a premium resource when the plan includes it', function () {
     $resource = Resource::factory()->withFile('resources/paid.pdf', 'application/pdf', 0)->premium()->create();
 
-    $tenant = makePaidTenant('premium'); // premium has premium-content
+    $tenant = makePaidTenant('premium');
+    // Attach the resource to the plan via the pivot
+    $tenant->subscription->plan->resources()->attach($resource->id);
     $user = makeUserFor($tenant);
     switchToTenant($tenant);
 
@@ -260,16 +264,16 @@ test('download streams a premium resource when an explicit entitlement exists', 
     expect($response->streamedContent())->toBe($body);
 });
 
-test('download returns 403 for a premium resource when the plan does not grant premium-content and no entitlement exists', function () {
+test('download returns 403 for a premium resource when the resource is not in the plan and no entitlement exists', function () {
     $resource = Resource::factory()->premium()->create();
 
     // Phase 1.5F: the slug is no longer secret. The 1.5D "treat as
     // non-existent" 404 was reverted because it made rule 3 of
     // userCanAccess() (explicit entitlement) unreachable from the
-    // frontend — the request() endpoint required the plan to ALREADY
-    // have premium-content. With the filters gone, the slug is open
-    // and the userCanAccess() check at the top of download() is what
-    // blocks the file with 403.
+    // frontend — the request() endpoint required the resource to
+    // already be included in the plan. With the filters gone, the
+    // slug is open and the userCanAccess() check at the top of
+    // download() is what blocks the file with 403.
     $starterPlan = Plan::factory()->createQuietly(['slug' => 'starter', 'name' => 'Starter']);
     Subscription::factory()->createQuietly([
         'tenant_id' => ($tenant = Tenant::factory()->createQuietly())->id,
@@ -300,12 +304,13 @@ test('download returns 404 when the file is missing from storage', function () {
 test('download is granted by the plan even when an explicit entitlement is expired', function () {
     $resource = Resource::factory()->withFile('resources/expired.pdf', 'application/pdf', 0)->premium()->create();
 
-    // The "basic" plan already includes premium-content, so the
+    // The plan includes this resource via the pivot, so the
     // plan-level rule (rule 2 of userCanAccess) grants the download
     // without ever consulting the per-resource entitlement row.
     // An expired entitlement is therefore irrelevant when the plan
-    // grants the feature: the user keeps access.
+    // grants access: the user keeps access.
     $tenant = makePaidTenant('basic');
+    $tenant->subscription->plan->resources()->attach($resource->id);
     $user = makeUserFor($tenant);
 
     Entitlement::factory()->expired()->create([
@@ -354,9 +359,9 @@ function makePaidTenant(string $planSlug): Tenant
     $plan = Plan::factory()->createQuietly(['slug' => $planSlug, 'name' => ucfirst($planSlug)]);
 
     $features = match ($planSlug) {
-        'premium' => ['premium-content' => true],
-        'basic' => ['premium-content' => true, 'advanced-reports' => true],
-        'starter-no-content' => ['advanced-reports' => true], // explicit: no premium-content
+        'premium' => ['premium-zone' => true],
+        'basic' => ['advanced-reports' => true],
+        'starter-no-content' => ['advanced-reports' => true],
         default => [],
     };
     if (! $plan->features || $plan->features === ['premium-zone' => false]) {
@@ -456,30 +461,23 @@ function makeUserFor(Tenant $tenant): Authenticatable
 // Free-tier behavior (added in 1.5C-fix, REWORKED in 1.5F)
 // =====================================================================
 //
-// Phase 1.5F: the 1.5D decision to hide premium slugs from free
-// tenants made rule 3 of userCanAccess() (explicit entitlement)
-// unreachable from the frontend — the request() endpoint required
-// the plan to ALREADY have premium-content. So the catalog now
-// shows every active resource to every authenticated tenant; the
-// `can_download` and `has_explicit_entitlement` flags drive the
+// Phase 1.5F: shows every active resource to every authenticated tenant;
+// the `can_download` and `has_explicit_entitlement` flags drive the
 // button state per resource. The download endpoint still 403s for
 // a free tenant with no entitlement — but the show page renders
 // for free tenants so they can hit "Buy".
 
 /**
- * Build a free-tier tenant (plan slug = "free", no premium-content
- * feature). Mirror of makePaidTenant but for the free path.
+ * Build a free-tier tenant (plan slug = "free").
+ * Mirror of makePaidTenant but for the free path.
  */
 function makeFreeTenant(): Tenant
 {
     $tenant = Tenant::factory()->createQuietly();
     $plan = Plan::factory()->createQuietly(['slug' => 'free', 'name' => 'Free']);
 
-    // Force-clear any default features so the plan truly does NOT
-    // grant premium-content. The Plan factory's default state
-    // produces ['premium-zone' => false] which already excludes it,
-    // but we re-assert it for clarity.
-    $plan->features = ['premium-zone' => false, 'premium-content' => false];
+    // Clear default features so the free plan has no premium features.
+    $plan->features = ['premium-zone' => false];
     $plan->save();
 
     Subscription::factory()->createQuietly([

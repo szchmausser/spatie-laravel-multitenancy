@@ -1,5 +1,5 @@
 import { Head, Link } from '@inertiajs/react';
-import { Banknote, Bell, Building, CreditCard, Download, KeyRound, LayoutDashboard, Settings, ShoppingCart, Smartphone, Users } from 'lucide-react';
+import { Banknote, Bell, Building, CreditCard, Download, KeyRound, LayoutDashboard, Settings, ShoppingCart, Smartphone, Users, Wallet } from 'lucide-react';
 import {
     Card,
     CardDescription,
@@ -44,6 +44,13 @@ const cards = [
         href: subscriptionsIndex().url,
         icon: Users,
         testId: 'admin-card-subscriptions',
+    },
+    {
+        title: 'Pagos',
+        description: 'Ver todos los pagos reportados por los tenants, sin entrar en cada orden.',
+        href: '/admin/payments',
+        icon: Wallet,
+        testId: 'admin-card-payments',
     },
     {
         title: 'Orders',

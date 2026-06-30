@@ -76,6 +76,9 @@ Route::middleware(['auth', 'verified', EnsureUserIsAdmin::class])->prefix('admin
     Route::get('orders', [OrderController::class, 'index'])->name('orders.index');
     Route::get('orders/{order}', [OrderController::class, 'show'])->name('orders.show');
 
+    // Payment list — all payments across all tenants (independent from orders)
+    Route::get('payments', [PaymentController::class, 'index'])->name('payments.index');
+
     // Payment actions (verify / cancel) — used from the Order detail page
     Route::post('payments/{payment}/verify', [PaymentController::class, 'verify'])->name('payments.verify');
     Route::post('payments/{payment}/cancel', [PaymentController::class, 'cancel'])->name('payments.cancel');

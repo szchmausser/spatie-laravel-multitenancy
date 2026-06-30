@@ -14,7 +14,7 @@ test('tenant without subscription has no features', function () {
 test('tenant with subscription has feature when plan has it', function () {
     $tenant = Tenant::factory()->createQuietly();
     $plan = Plan::factory()->createQuietly([
-        'features' => ['premium-zone' => true, 'premium-content' => false],
+        'features' => ['premium-zone' => true, 'advanced-reports' => false],
     ]);
 
     Subscription::factory()->createQuietly([
@@ -24,7 +24,7 @@ test('tenant with subscription has feature when plan has it', function () {
     ]);
 
     expect($tenant->hasFeature('premium-zone'))->toBeTrue();
-    expect($tenant->hasFeature('premium-content'))->toBeFalse();
+    expect($tenant->hasFeature('advanced-reports'))->toBeFalse();
 });
 
 test('tenant without subscription returns null for activeSubscription', function () {

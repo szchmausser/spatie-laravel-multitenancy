@@ -81,10 +81,9 @@ Route::middleware(['tenant', 'auth', 'verified'])->group(function () {
     //     authenticated tenant, including free tier. The catalog
     //     filters them in for free-tier tenants and shows them
     //     alongside premium for paid tenants.
-    //   - Premium resources: visible only when the tenant's plan
-    //     includes `premium-content` OR the user has an explicit
-    //     Entitlement row. Enforced by `userCanAccess()` and
-    //     `canSeePremium()` in App\Http\Controllers\Resource\ResourceController.
+    //   - Premium resources: visible to every authenticated tenant.
+    //     Access to the download endpoint is gated by `userCanAccess()`,
+    //     which checks the plan_resource pivot or explicit Entitlement row.
     //
     // The sidebar still hides the "Resources" link for free-tier
     // tenants that have no free resources to show, see

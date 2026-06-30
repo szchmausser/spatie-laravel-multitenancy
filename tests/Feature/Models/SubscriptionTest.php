@@ -109,19 +109,19 @@ test('subscription belongs to plan', function () {
 
 test('subscription features delegates to plan', function () {
     $plan = Plan::factory()->createQuietly([
-        'features' => ['premium-zone' => true, 'premium-content' => false],
+        'features' => ['premium-zone' => true, 'advanced-reports' => false],
     ]);
 
     $subscription = Subscription::factory()->createQuietly([
         'plan_id' => $plan->id,
     ]);
 
-    expect($subscription->features())->toBe(['premium-zone' => true, 'premium-content' => false]);
+    expect($subscription->features())->toBe(['premium-zone' => true, 'advanced-reports' => false]);
 });
 
 test('subscription hasFeature delegates to plan', function () {
     $plan = Plan::factory()->createQuietly([
-        'features' => ['premium-zone' => true, 'premium-content' => false],
+        'features' => ['premium-zone' => true, 'advanced-reports' => false],
     ]);
 
     $subscription = Subscription::factory()->createQuietly([
@@ -129,7 +129,7 @@ test('subscription hasFeature delegates to plan', function () {
     ]);
 
     expect($subscription->hasFeature('premium-zone'))->toBeTrue();
-    expect($subscription->hasFeature('premium-content'))->toBeFalse();
+    expect($subscription->hasFeature('advanced-reports'))->toBeFalse();
     expect($subscription->hasFeature('non-existent-feature'))->toBeFalse();
 });
 

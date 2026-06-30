@@ -3,7 +3,7 @@ import { X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { PlanForm } from '@/components/landlord/plan-form';
 import { index, store } from '@/routes/landlord/plans';
-import type {BreadcrumbItem} from '@/types';
+import type {BreadcrumbItem, Resource} from '@/types';
 
 const breadcrumbs: BreadcrumbItem[] = [
     { title: 'Admin', href: '/admin' },
@@ -11,7 +11,7 @@ const breadcrumbs: BreadcrumbItem[] = [
     { title: 'Create', href: '/admin/plans/create' },
 ];
 
-export default function PlansCreate() {
+export default function PlansCreate({ resources }: { resources: Resource[] }) {
     return (
         <Form {...(store as any).form()}>
             {({ processing, errors }) => (
@@ -19,6 +19,7 @@ export default function PlansCreate() {
                     mode="create"
                     processing={processing}
                     errors={errors}
+                    resources={resources}
                     onCancel={
                         <Button variant="outline" asChild>
                             <Link href={index().url}>

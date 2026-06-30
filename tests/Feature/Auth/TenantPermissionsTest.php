@@ -497,20 +497,20 @@ test('revoked permission returns false even with role', function () {
 //     is required for the downgrade case to work.
 // =====================================================================
 
-test('after premium to free plan change, premium-content feature gate returns 403', function () {
+test('after premium to free plan change, premium-zone feature gate returns 403', function () {
     $tenant = Tenant::factory()->createQuietly();
 
     $premiumPlan = Plan::factory()->create([
         'name' => 'Premium',
         'slug' => 'premium',
         'is_active' => true,
-        'features' => ['premium-zone' => true, 'premium-content' => true],
+        'features' => ['premium-zone' => true, 'advanced-reports' => true],
     ]);
     $freePlan = Plan::factory()->create([
         'name' => 'Free',
         'slug' => 'free',
         'is_active' => true,
-        'features' => ['premium-zone' => false, 'premium-content' => false],
+        'features' => ['premium-zone' => false, 'advanced-reports' => false],
     ]);
 
     $subscription = Subscription::factory()->create([

@@ -88,7 +88,7 @@ test('user with premium plan can download premium resource', function () {
         'name' => 'Premium Plan',
         'slug' => 'premium',
         'is_active' => true,
-        'features' => ['premium-content' => true],
+        'features' => ['premium-zone' => true],
     ]);
 
     $tenant->subscription()->create([
@@ -102,6 +102,9 @@ test('user with premium plan can download premium resource', function () {
         'is_premium' => true,
         'price_cents' => 2500,
     ]);
+
+    // Attach the resource to the plan via pivot
+    $premiumPlan->resources()->attach($premiumResource->id);
 
     $previousDefault = $this->setupTenantConnectionForTest();
 

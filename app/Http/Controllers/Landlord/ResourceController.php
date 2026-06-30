@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Landlord;
 
 use App\Http\Controllers\Controller;
+use App\Models\Plan;
 use App\Models\Resource;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -54,7 +55,11 @@ class ResourceController extends Controller
      */
     public function create(): InertiaResponse
     {
-        return Inertia::render('landlord/resources/create');
+        $plans = Plan::all();
+
+        return Inertia::render('landlord/resources/create', [
+            'plans' => $plans,
+        ]);
     }
 
     /**
@@ -77,7 +82,7 @@ class ResourceController extends Controller
             'local',
         );
 
-        Resource::create([
+        $resource = Resource::create([
             'name' => $validated['name'],
             'slug' => $validated['slug'],
             'description' => $validated['description'] ?? null,
@@ -89,6 +94,8 @@ class ResourceController extends Controller
             'is_active' => $validated['is_active'],
         ]);
 
+        $resource->plans()->sync($validated['plan_ids'] ?? []);
+
         return redirect()
             ->route('landlord.resources.index')
             ->with('success', "Resource \"{$validated['name']}\" published.");
@@ -99,8 +106,12 @@ class ResourceController extends Controller
      */
     public function edit(Resource $resource): InertiaResponse
     {
+        $resource->load('plans');
+        $plans = Plan::all();
+
         return Inertia::render('landlord/resources/edit', [
             'resource' => $resource,
+            'plans' => $plans,
         ]);
     }
 
@@ -141,6 +152,7 @@ class ResourceController extends Controller
         }
 
         $resource->update($updates);
+        $resource->plans()->sync($validated['plan_ids'] ?? []);
 
         return redirect()
             ->route('landlord.resources.index')
@@ -180,6 +192,8 @@ class ResourceController extends Controller
             'is_premium' => ['required', 'boolean'],
             'price_cents' => ['required_if:is_premium,1', 'integer', 'min:0'],
             'is_active' => ['required', 'boolean'],
+            'plan_ids' => ['nullable', 'array'],
+            'plan_ids.*' => ['exists:plans,id'],
         ];
     }
 
@@ -199,6 +213,8 @@ class ResourceController extends Controller
             'is_premium' => ['required', 'boolean'],
             'price_cents' => ['required_if:is_premium,1', 'integer', 'min:0'],
             'is_active' => ['required', 'boolean'],
+            'plan_ids' => ['nullable', 'array'],
+            'plan_ids.*' => ['exists:plans,id'],
         ];
     }
 }

@@ -106,6 +106,9 @@ export default function PlansIndex({ plans }: { plans: Plan[] }) {
                                         </div>
                                         <p className="text-sm text-muted-foreground">
                                             {plan.slug} · {formatPrice(plan.price_cents)}/mo
+                                            {plan.resources_count !== undefined && (
+                                                <span> · {plan.resources_count} {plan.resources_count === 1 ? 'resource' : 'resources'}</span>
+                                            )}
                                         </p>
                                         {plan.description && (
                                             <p className="text-sm text-muted-foreground max-w-2xl">

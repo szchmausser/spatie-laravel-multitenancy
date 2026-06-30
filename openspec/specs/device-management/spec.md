@@ -35,13 +35,6 @@ An authenticated landlord user MUST create invite codes without associating them
 - THEN the system creates the invite code
 - AND the tenant selector is absent from the page
 
-#### Scenario: Console generates invite code without tenant
-
-- GIVEN the `devices:generate-invite` Artisan command
-- WHEN invoked without a `--tenant` argument
-- THEN it outputs a valid invite code
-- AND the code is usable for device registration
-
 ### Requirement: Model Schema Constraints
 
 The `devices` and `device_invite_codes` tables MUST NOT have a `tenant_id` column or foreign key. The corresponding Eloquent models MUST NOT define a `tenant()` relationship or include `tenant_id` in `$fillable`.

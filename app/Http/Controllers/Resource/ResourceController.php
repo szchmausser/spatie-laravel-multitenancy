@@ -22,9 +22,9 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  *
  *   - Free resources (is_premium = false) are visible to every
  *     authenticated tenant, including free tier.
- *   - Premium resources are reachable when the tenant's plan has
- *     the `premium-content` feature, or when the user has an
- *     explicit (non-expired) Entitlement row.
+ *   - Premium resources are reachable when the tenant's plan
+ *     includes the resource in the `plan_resource` pivot, or when
+ *     the user has an explicit (non-expired) Entitlement row.
  *
  * Phase 1.5F: the catalog and show page show EVERY active resource
  * to every authenticated tenant. The `can_download` flag in the
@@ -32,8 +32,8 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  * `request()` endpoint is open to every authenticated tenant; the
  * Buy dialog posts there and the controller creates a
  * purchase-flavoured entitlement. The download endpoint then 403s
- * for tenants without an entitlement or premium-content plan
- * feature, but the slug is no longer secret — we want the user to
+ * for tenants without an entitlement or plan-included access,
+ * but the slug is no longer secret — we want the user to
  * be able to see premium entries and buy them.
  *
  * The sidebar stays in sync with the catalog via the
@@ -59,8 +59,8 @@ class ResourceController extends Controller
      *
      * Phase 1.5F: free-tier tenants see the same catalog as paid
      * tenants. Premium entries show with `can_download = false`
-     * (no entitlement, plan lacks premium-content), which the UI
-     * renders as a "Buy" button.
+     * (no entitlement, not in plan), which the UI renders as a
+     * "Buy" button.
      */
     public function index(Request $request): InertiaResponse
     {
@@ -177,8 +177,8 @@ class ResourceController extends Controller
      * Rules (evaluated in order, short-circuit on first true):
      *  1. The resource is not premium — anyone authenticated can
      *     download it.
-     *  2. The tenant's plan includes the `premium-content` feature
-     *     — the plan grants blanket access.
+     *  2. The tenant's current plan includes this specific resource
+     *     via the `plan_resource` pivot table.
      *  3. The tenant has an explicit (non-expired) entitlement row
      *     for the resource — the per-resource purchase grants
      *     access to ALL users of that tenant.
@@ -191,7 +191,8 @@ class ResourceController extends Controller
             return true;
         }
 
-        if ($tenant && $tenant->hasFeature('premium-content')) {
+        if ($tenant && $tenant->subscription?->plan?->resources()
+            ->where('resource_id', $resource->id)->exists()) {
             return true;
         }
 
@@ -238,6 +239,8 @@ class ResourceController extends Controller
             'mime_type' => $r->mime_type,
             'can_download' => $this->userCanAccess($tenant, $r),
             'has_explicit_entitlement' => $this->tenantHasExplicitEntitlement($tenant, $r),
+            'is_included_in_plan' => $tenant && $tenant->subscription?->plan?->resources()
+                ->where('resource_id', $r->id)->exists(),
         ];
     }
 

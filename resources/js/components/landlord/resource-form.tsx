@@ -12,6 +12,7 @@ import {
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import type { Plan } from '@/types';
 
 type ResourceFormProps = {
     mode: 'create' | 'edit';
@@ -28,6 +29,10 @@ type ResourceFormProps = {
     };
     /** Edit-only: current file info to display */
     currentFile?: { path: string; mime_type: string | null; formatted_file_size: string | null };
+    /** Available plans for multi-select assignment. */
+    plans?: Plan[];
+    /** Plan IDs currently assigned to this resource (for edit mode). */
+    selectedPlanIds?: number[];
 };
 
 const TEXTAREA_CLASS = 'flex min-h-20 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50';
@@ -39,9 +44,18 @@ export function ResourceForm({
     onCancel,
     defaults,
     currentFile,
+    plans = [],
+    selectedPlanIds = [],
 }: ResourceFormProps) {
     const [isPremium, setIsPremium] = useState(defaults?.is_premium ?? false);
     const [priceBs, setPriceBs] = useState(defaults?.price_cents ? defaults.price_cents / 100 : 0);
+    const [selectedPlanIdsState, setSelectedPlanIdsState] = useState<number[]>(selectedPlanIds);
+
+    const togglePlan = (id: number, checked: boolean) => {
+        setSelectedPlanIdsState((prev) =>
+            checked ? [...prev, id] : prev.filter((pid) => pid !== id)
+        );
+    };
 
     return (
         <div className="p-6">
@@ -161,9 +175,9 @@ export function ResourceForm({
                         <CardTitle>Access</CardTitle>
                         <CardDescription>
                             Who can download the file. Premium resources
-                            require the tenant&apos;s plan to include
-                            `premium-content` OR an explicit entitlement
-                            row.
+                            require the resource to be included in the
+                            tenant&apos;s plan (plan_resource pivot) OR
+                            have an explicit entitlement row.
                         </CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-4">
@@ -204,6 +218,49 @@ export function ResourceForm({
                         )}
                     </CardContent>
                 </Card>
+
+                {plans.length > 0 && (
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>Assign to Plans</CardTitle>
+                            <CardDescription>
+                                Select which plans should include this resource
+                                for automatic access.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-3">
+                            {plans.map((plan) => {
+                                const inputId = `resource-plan-${plan.id}`;
+
+                                return (
+                                    <div
+                                        key={plan.id}
+                                        className="flex items-start gap-3 p-3 rounded-md border hover:bg-muted/30"
+                                        data-testid={`resource-plan-row-${plan.id}`}
+                                    >
+                                        <Checkbox
+                                            id={inputId}
+                                            data-testid={`input-resource-plan-${plan.id}`}
+                                            checked={selectedPlanIdsState.includes(plan.id)}
+                                            onCheckedChange={(checked) =>
+                                                togglePlan(plan.id, checked === true)
+                                            }
+                                            className="mt-1"
+                                        />
+                                        <label htmlFor={inputId} className="cursor-pointer flex-1">
+                                            <div className="font-medium">{plan.name}</div>
+                                            <div className="text-sm text-muted-foreground">
+                                                {plan.is_active ? 'Active' : 'Inactive'}
+                                                {plan.price_cents > 0 ? ` · ${plan.price_cents / 100}/mo` : ''}
+                                            </div>
+                                        </label>
+                                    </div>
+                                );
+                            })}
+                            <InputError message={errors.plan_ids} />
+                        </CardContent>
+                    </Card>
+                )}
             </div>
         </div>
     );

@@ -5,11 +5,11 @@ namespace App\Enums;
 /**
  * How an entitlement was granted to a tenant+user+resource triple.
  *
- * Plan     - granted automatically by a plan that includes the
- *            `premium-content` feature. Lives in the seeders/plan
- *            definition; entitlement rows are bookkeeping so the
- *            UI can answer "do I have access?" without re-deriving
- *            it from the plan every time.
+ * Plan     - granted automatically because the resource is included
+ *            in the tenant's plan via the plan_resource pivot table.
+ *            Entitlement rows are bookkeeping so the UI can answer
+ *            "do I have access?" without re-deriving it from the plan
+ *            every time.
  *
  * Purchase - granted through the (Phase 1.5) auto-approve flow,
  *            which Phase 2 will replace with a real payment + webhook

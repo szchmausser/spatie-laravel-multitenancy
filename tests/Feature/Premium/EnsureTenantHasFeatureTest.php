@@ -7,11 +7,11 @@ use App\Models\Tenant;
 
 test('plan correctly resolves features', function () {
     $plan = Plan::factory()->createQuietly([
-        'features' => ['premium-zone' => true, 'premium-content' => false],
+        'features' => ['premium-zone' => true, 'advanced-reports' => false],
     ]);
 
     expect($plan->hasFeature('premium-zone'))->toBeTrue();
-    expect($plan->hasFeature('premium-content'))->toBeFalse();
+    expect($plan->hasFeature('advanced-reports'))->toBeFalse();
     expect($plan->hasFeature('nonexistent'))->toBeFalse();
 });
 
@@ -40,7 +40,7 @@ test('tenant without subscription has no features', function () {
 test('tenant with active subscription has features', function () {
     $tenant = Tenant::factory()->createQuietly();
     $plan = Plan::factory()->createQuietly([
-        'features' => ['premium-zone' => true, 'premium-content' => true],
+        'features' => ['premium-zone' => true, 'advanced-reports' => true],
     ]);
 
     Subscription::factory()->createQuietly([
@@ -50,7 +50,7 @@ test('tenant with active subscription has features', function () {
     ]);
 
     expect($tenant->hasFeature('premium-zone'))->toBeTrue();
-    expect($tenant->hasFeature('premium-content'))->toBeTrue();
+    expect($tenant->hasFeature('advanced-reports'))->toBeTrue();
 });
 
 test('tenant with cancelled subscription has no features', function () {

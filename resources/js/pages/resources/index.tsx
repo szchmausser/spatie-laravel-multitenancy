@@ -1,5 +1,5 @@
 import { Link } from '@inertiajs/react';
-import { Download, FileText, Lock, Package, Sparkles } from 'lucide-react';
+import { CircleCheck, Download, FileText, Lock, Package, Sparkles } from 'lucide-react';
 import { useState } from 'react';
 import { formatPrice } from '@/lib/utils';
 import {
@@ -137,21 +137,32 @@ export default function ResourcesIndex({
                                         </p>
                                     )}
                             </CardContent>
-                            <CardFooter>
+                            <CardFooter className="flex-col gap-2">
                                 {resource.can_download ? (
-                                    <Button
-                                        asChild
-                                        className="w-full"
-                                        data-testid={`resource-download-btn-${resource.slug}`}
-                                    >
-                                        <a
-                                            href={download(resource.slug).url}
-                                            rel="nofollow"
+                                    <>
+                                        {resource.is_included_in_plan && !resource.has_explicit_entitlement && (
+                                            <div
+                                                className="inline-flex w-full items-center justify-center gap-1 rounded-md bg-green-100 px-3 py-1.5 text-xs font-medium text-green-700"
+                                                data-testid={`resource-plan-badge-${resource.slug}`}
+                                            >
+                                                <CircleCheck className="h-3 w-3" />
+                                                Incluido en tu plan
+                                            </div>
+                                        )}
+                                        <Button
+                                            asChild
+                                            className="w-full"
+                                            data-testid={`resource-download-btn-${resource.slug}`}
                                         >
-                                            <Download className="h-4 w-4" />
-                                            Download
-                                        </a>
-                                    </Button>
+                                            <a
+                                                href={download(resource.slug).url}
+                                                rel="nofollow"
+                                            >
+                                                <Download className="h-4 w-4" />
+                                                Download
+                                            </a>
+                                        </Button>
+                                    </>
                                 ) : (
                                     <Button
                                         type="button"

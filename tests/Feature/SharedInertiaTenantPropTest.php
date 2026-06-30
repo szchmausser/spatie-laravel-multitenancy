@@ -149,7 +149,7 @@ test('shared tenant prop reports has_premium_zone=true when plan includes premiu
     $plan = Plan::factory()->createQuietly([
         'slug' => 'premium',
         'name' => 'Premium',
-        'features' => ['premium-zone' => true, 'premium-content' => true],
+        'features' => ['premium-zone' => true, 'advanced-reports' => true],
     ]);
 
     Subscription::factory()->createQuietly([
@@ -177,7 +177,7 @@ test('shared tenant prop reports has_premium_zone=false when plan lacks premium-
     $plan = Plan::factory()->createQuietly([
         'slug' => 'basic',
         'name' => 'Basic',
-        'features' => ['premium-zone' => false, 'premium-content' => true],
+        'features' => ['premium-zone' => false, 'advanced-reports' => true],
     ]);
 
     Subscription::factory()->createQuietly([

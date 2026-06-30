@@ -7,6 +7,7 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Schema;
+use Spatie\Permission\Models\Role;
 
 beforeEach(function () {
     $this->admin = Landlord::factory()->createQuietly();
@@ -63,7 +64,7 @@ beforeEach(function () {
     });
 
     // Seed the owner role so assignRole works
-    \Spatie\Permission\Models\Role::on('tenant')->create(['name' => 'owner', 'guard_name' => 'web']);
+    Role::on('tenant')->create(['name' => 'owner', 'guard_name' => 'web']);
 
     // Create a tenant with a user for testing
     $this->tenant = Tenant::factory()->createQuietly(['name' => 'Acme Corp', 'database' => $testDatabase]);

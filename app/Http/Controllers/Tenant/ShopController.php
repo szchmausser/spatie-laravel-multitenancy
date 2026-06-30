@@ -27,7 +27,7 @@ class ShopController extends Controller
         $resources = Resource::query()
             ->active()
             ->get()
-            ->map(function (Resource $r) use ($tenant) {
+            ->map(function (Resource $r) use ($tenant, $currentPlan) {
                 $hasEntitlement = $tenant
                     ? Entitlement::query()
                         ->where('tenant_id', $tenant->id)
@@ -38,6 +38,9 @@ class ShopController extends Controller
                         })
                         ->exists()
                     : false;
+
+                $isIncludedInPlan = $tenant && $currentPlan?->resources()
+                    ->where('resource_id', $r->id)->exists();
 
                 return [
                     'id' => $r->id,
@@ -50,6 +53,8 @@ class ShopController extends Controller
                     'formatted_file_size' => $r->formattedFileSize(),
                     'mime_type' => $r->mime_type,
                     'has_entitlement' => $hasEntitlement,
+                    'is_included_in_plan' => $isIncludedInPlan,
+                    'can_download' => $hasEntitlement || $isIncludedInPlan || ! $r->is_premium,
                 ];
             })
             ->all();

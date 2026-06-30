@@ -6,6 +6,7 @@ use Database\Factories\ResourceFactory;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Spatie\Multitenancy\Models\Concerns\UsesLandlordConnection;
 
@@ -14,9 +15,9 @@ use Spatie\Multitenancy\Models\Concerns\UsesLandlordConnection;
  *
  * Resources are global — they live in the landlord database and are
  * NOT scoped to any tenant. A tenant gains access to a resource
- * either implicitly (its plan includes the `premium-content`
- * feature) or explicitly (an `Entitlement` row exists for the
- * tenant+user+resource triple).
+ * either implicitly (its plan includes the resource in the
+ * `plan_resource` pivot) or explicitly (an `Entitlement` row
+ * exists for the tenant+user+resource triple).
  *
  * The `file_path` column stores a path relative to the landlord's
  * default storage disk; the controller uses `Storage::download()`
@@ -75,6 +76,14 @@ class Resource extends Model
     public function entitlements(): HasMany
     {
         return $this->hasMany(Entitlement::class);
+    }
+
+    /**
+     * The plans that include this resource.
+     */
+    public function plans(): BelongsToMany
+    {
+        return $this->belongsToMany(Plan::class);
     }
 
     /**

@@ -6,6 +6,7 @@ use App\Enums\CancellationType;
 use App\Enums\OrderStatus;
 use App\Enums\PaymentStatus;
 use App\Events\PaymentVerified;
+use App\Exceptions\DuplicatePaymentReferenceException;
 use App\Models\Landlord;
 use App\Models\Order;
 use App\Models\Payment;
@@ -165,6 +166,21 @@ class PaymentService
         array $gatewayData = [],
         ?string $transactionId = null,
     ): Payment {
+        // EARLY GUARD: reject duplicate reference already verified
+        if ($transactionId !== null) {
+            $normalized = normalizeRef($transactionId);
+            $existingVerified = Payment::where('status', PaymentStatus::Verified)
+                ->where('transaction_id', $normalized)
+                ->first();
+
+            if ($existingVerified) {
+                throw new DuplicatePaymentReferenceException(
+                    reference: $transactionId,
+                    existingPaymentId: $existingVerified->id,
+                );
+            }
+        }
+
         // Check for existing pending payment — idempotency guard
         $existingPayment = $order->payments()
             ->where('status', PaymentStatus::Pending)

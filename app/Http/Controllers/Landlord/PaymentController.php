@@ -17,6 +17,47 @@ class PaymentController extends Controller
     ) {}
 
     /**
+     * List all payments with tenant, order, and payment details.
+     *
+     * Supports optional status and date-range filtering.
+     */
+    public function index(Request $request)
+    {
+        $validated = $request->validate([
+            'status' => ['nullable', 'string', 'in:pending,verified,cancelled'],
+            'from' => ['nullable', 'date'],
+            'to' => ['nullable', 'date'],
+        ]);
+
+        $query = Payment::with([
+            'tenant',
+            'order.plan',
+            'order.resource',
+            'pagoMovilDetail',
+            'bankTransferDetail',
+            'verifier',
+        ]);
+
+        if ($request->filled('status')) {
+            $query->where('status', $request->status);
+        }
+
+        if ($request->filled('from')) {
+            $query->whereDate('created_at', '>=', $request->from);
+        }
+
+        if ($request->filled('to')) {
+            $query->whereDate('created_at', '<=', $request->to);
+        }
+
+        $payments = $query->orderByDesc('created_at')->get();
+
+        return inertia('admin/payments/index', [
+            'payments' => $payments,
+        ]);
+    }
+
+    /**
      * Verify a pending payment.
      *
      * Dispatches PaymentVerified AFTER the DB transaction has committed
