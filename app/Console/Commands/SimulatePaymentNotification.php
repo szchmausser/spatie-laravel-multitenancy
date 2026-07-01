@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Enums\BankCode;
 use App\Models\PaymentNotification;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
@@ -23,11 +24,6 @@ class SimulatePaymentNotification extends Command
     protected $description = 'Simulate a bank payment notification for testing';
 
     /**
-     * Valid bank codes.
-     */
-    private const VALID_BANKS = ['bdv', 'bnc'];
-
-    /**
      * Execute the console command.
      */
     public function handle(): int
@@ -43,8 +39,11 @@ class SimulatePaymentNotification extends Command
             return Command::FAILURE;
         }
 
-        if (! in_array($bank, self::VALID_BANKS, true)) {
-            $this->error("Invalid bank code [{$bank}]. Valid: ".implode(', ', self::VALID_BANKS));
+        $validCodes = array_map(fn (BankCode $c) => $c->value, BankCode::cases());
+
+        if (! in_array($bank, $validCodes, true)) {
+            $display = implode(', ', array_map(fn (BankCode $c) => $c->value, BankCode::cases()));
+            $this->error("Invalid bank code [{$bank}]. Valid: {$display}");
 
             return Command::FAILURE;
         }

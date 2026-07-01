@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Services\Payment\ParsedPayment;
+use App\Services\Payment\PaymentNotificationParser;
 use Database\Factories\PaymentNotificationFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -40,10 +41,17 @@ class PaymentNotification extends Model
 
     /**
      * Compute a deterministic dedup hash for bank_code + raw_text.
+     *
+     * Delegates field normalization to PaymentNotificationParser so that
+     * semantically identical payments from different sources (masked vs full
+     * phone, 2 vs 4 digit dates) produce the same hash.
      */
     public static function computeDedupHash(string $bankCode, string $rawText): string
     {
-        return hash('sha256', $bankCode.'|'.$rawText);
+        $normalized = app(PaymentNotificationParser::class)
+            ->normalizeForDedup($bankCode, $rawText);
+
+        return hash('sha256', $bankCode.$normalized);
     }
 
     /**

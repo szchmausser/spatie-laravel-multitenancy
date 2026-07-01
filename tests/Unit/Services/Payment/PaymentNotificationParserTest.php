@@ -131,6 +131,83 @@ test('extractLast4 handles short string', function () {
     expect($this->parser->extractLast4('12'))->toBe('12');
 });
 
+// --- canonicalPhone Tests ---
+
+test('canonicalPhone returns first4+last4 for full digits', function () {
+    expect($this->parser->canonicalPhone('04121234567'))->toBe('04124567');
+});
+
+test('canonicalPhone returns first4+last4 for masked phone', function () {
+    expect($this->parser->canonicalPhone('0416***9503'))->toBe('04169503');
+});
+
+test('canonicalPhone returns empty string for no digits', function () {
+    expect($this->parser->canonicalPhone('***-***'))->toBe('');
+});
+
+test('canonicalPhone returns empty string for empty input', function () {
+    expect($this->parser->canonicalPhone(''))->toBe('');
+});
+
+// --- parseDateMultiFormat Tests ---
+
+test('parseDateMultiFormat parses BDV format j/n/Y G:i', function () {
+    $result = $this->parser->parseDateMultiFormat('15/1/2026', '09:40', ['j/n/Y G:i']);
+    expect($result)->toBe('2026-01-15T09:40:00');
+});
+
+test('parseDateMultiFormat parses BNC 2-digit year format d/m/y', function () {
+    $result = $this->parser->parseDateMultiFormat('15/01/26', '09:40', ['d/m/y H:i', 'd/m/Y H:i']);
+    expect($result)->toBe('2026-01-15T09:40:00');
+});
+
+test('parseDateMultiFormat parses BNC 4-digit year format d/m/Y', function () {
+    $result = $this->parser->parseDateMultiFormat('15/01/2026', '09:40', ['d/m/y H:i', 'd/m/Y H:i']);
+    expect($result)->toBe('2026-01-15T09:40:00');
+});
+
+test('parseDateMultiFormat falls back to raw string for unparseable', function () {
+    $result = $this->parser->parseDateMultiFormat('not-a-date', '00:00', ['d/m/y H:i']);
+    expect($result)->toBe('not-a-date 00:00');
+});
+
+test('parseDateMultiFormat does not throw on invalid input', function () {
+    $result = $this->parser->parseDateMultiFormat('', '', ['d/m/y H:i']);
+    expect($result)->toBe(' ');
+});
+
+// --- normalizeForDedup Tests ---
+
+test('normalizeForDedup returns amount|phone|date|ref for BDV', function () {
+    $text = 'Recibiste un PagomovilBDV por Bs. 3.000,00 del 0424-3153557 Ref: 006236568762 en fecha: 02-06-26 hora: 09:40';
+    $result = $this->parser->normalizeForDedup('bdv', $text);
+
+    expect(substr_count($result, '|'))->toBe(3);
+    // Amount is cents: 300000, phone stripped of non-digits: 04243153557, date raw fallback: 02-06-26 09:40, ref: 006236568762
+    expect($result)->toBe('300000|04243153557|02-06-26 09:40|006236568762');
+});
+
+test('normalizeForDedup same BNC masked and full phone produce same string', function () {
+    $maskedText = 'BNC Pago Movil Recibido Bs.10455,00 Telf.0416***9503 Dia:31/05/26-20:25 Ref:603185603 Llamar al 0500-2625000 si no realizo esta Operacion';
+    // Full phone with same last 4 digits (9503) as the masked version
+    $fullText = 'BNC Pago Movil Recibido Bs.10455,00 Telf.041612349503 Dia:31/05/2026-20:25 Ref:603185603 Llamar al 0500-2625000 si no realizo esta Operacion';
+
+    $result1 = $this->parser->normalizeForDedup('bnc', $maskedText);
+    $result2 = $this->parser->normalizeForDedup('bnc', $fullText);
+
+    expect($result1)->toBe($result2);
+    // canonicalPhone(0416***9503) = 0416 + 9503 = 04169503
+    expect($result1)->toContain('|04169503|');
+});
+
+test('normalizeForDedup falls back to raw body when regex does not match', function () {
+    $text = 'BNC Pago Movil Recibido Bs.10455,00 Telf. Dia:31/05/26-20:25 Ref:603185603 Llamar al 0500-2625000 si no realizo esta Operacion';
+    $result = $this->parser->normalizeForDedup('bnc', $text);
+
+    // No phone group match → regex fails → fallback to raw body
+    expect($result)->toBe($text);
+});
+
 // --- Error Cases ---
 
 test('returns null for unknown bank', function () {

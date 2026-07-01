@@ -1,6 +1,7 @@
 <?php
 
 use App\Console\Commands\SimulatePaymentNotification;
+use App\Enums\BankCode;
 use App\Models\PaymentNotification;
 use App\Models\SystemConfig;
 use App\Services\Payment\ParsedPayment;
@@ -182,7 +183,48 @@ it('computeDedupHash is deterministic', function () {
     expect($hash1)->toHaveLength(64);
 });
 
+it('computeDedupHash uses normalized input — same BNC payment from different sources produces same hash', function () {
+    $maskedBody = 'BNC Pago Movil Recibido Bs.10455,00 Telf.0416***9503 Dia:31/05/26-20:25 Ref:603185603 Llamar al 0500-2625000 si no realizo esta Operacion';
+    $fullBody = 'BNC Pago Movil Recibido Bs.10455,00 Telf.041612349503 Dia:31/05/2026-20:25 Ref:603185603 Llamar al 0500-2625000 si no realizo esta Operacion';
+
+    $hash1 = PaymentNotification::computeDedupHash('bnc', $maskedBody);
+    $hash2 = PaymentNotification::computeDedupHash('bnc', $fullBody);
+
+    expect($hash1)->toBe($hash2);
+    expect($hash1)->toHaveLength(64);
+});
+
+it('computeDedupHash for BDV uses full phone without canonicalization', function () {
+    $body = 'Recibiste un PagomovilBDV por Bs. 3.000,00 del 0424-3153557 Ref: 006236568762 en fecha: 02-06-26 hora: 09:40';
+
+    $hash = PaymentNotification::computeDedupHash('bdv', $body);
+    expect($hash)->toHaveLength(64);
+});
+
 // --- Seeder Tests ---
+
+it('rejects invalid bank code using BankCode enum validation', function () {
+    $exitCode = Artisan::call(SimulatePaymentNotification::class, [
+        '--bank' => 'invalid_bank',
+        '--amount' => '3000',
+        '--reference' => '006236568762',
+    ]);
+
+    expect($exitCode)->toBe(1);
+    expect(PaymentNotification::count())->toBe(0);
+});
+
+it('accepts all BankCode::cases() as valid banks', function () {
+    foreach (BankCode::cases() as $bank) {
+        $exitCode = Artisan::call(SimulatePaymentNotification::class, [
+            '--bank' => $bank->value,
+            '--amount' => '1500',
+            '--reference' => '12345678',
+        ]);
+
+        expect($exitCode)->toBe(0);
+    }
+});
 
 it('seeder creates expected notification count', function () {
     $seeder = new NotificationSampleSeeder;

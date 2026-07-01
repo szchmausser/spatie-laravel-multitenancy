@@ -2,6 +2,7 @@
 
 namespace App\Services\Payment;
 
+use App\Enums\BankCode;
 use App\Models\SystemConfig;
 use Carbon\Carbon;
 
@@ -87,6 +88,82 @@ class PaymentNotificationParser
         $digits = preg_replace('/[^0-9]/', '', $phone);
 
         return strlen($digits) >= 4 ? substr($digits, -4) : $digits;
+    }
+
+    /**
+     * Strip non-digits from a phone, return first 4 + last 4 digits.
+     *
+     * If fewer than 4 digits remain after stripping, returns empty string.
+     */
+    public function canonicalPhone(string $phone): string
+    {
+        $digits = preg_replace('/[^0-9]/', '', $phone);
+
+        if (strlen($digits) < 4) {
+            return '';
+        }
+
+        return substr($digits, 0, 4).substr($digits, -4);
+    }
+
+    /**
+     * Try multiple date formats and return ISO 8601 on first success.
+     *
+     * If none match, returns raw "$date $time" — never null, never throws.
+     *
+     * @param  string[]  $formats
+     */
+    public function parseDateMultiFormat(string $date, string $time, array $formats): string
+    {
+        $full = "{$date} {$time}";
+
+        foreach ($formats as $format) {
+            $dt = \DateTime::createFromFormat($format, $full);
+
+            if ($dt !== false) {
+                return $dt->format('Y-m-d\TH:i:s');
+            }
+        }
+
+        return $full;
+    }
+
+    /**
+     * Normalize a raw notification body for deterministic dedup hashing.
+     *
+     * Uses the same regex as parse(), extracts amount, phone, date, and
+     * reference, normalizes each field, and returns a 4-field pipe string.
+     *
+     * The result is intended for: hash('sha256', $bankCode . $normalized)
+     */
+    public function normalizeForDedup(string $bankCode, string $rawBody): string
+    {
+        $regex = SystemConfig::get("regex_{$bankCode}");
+
+        if (! $regex || preg_match($regex, $rawBody, $matches) !== 1) {
+            return $rawBody;
+        }
+
+        $amount = (string) $this->normalizeAmount($matches['amount'] ?? '0');
+
+        $bank = BankCode::tryFrom($bankCode);
+        $rawPhone = $matches['phone'] ?? '';
+
+        if ($bank && $bank->appliesCanonicalPhone()) {
+            $phone = $this->canonicalPhone($rawPhone);
+        } else {
+            $phone = preg_replace('/[^0-9]/', '', $rawPhone);
+        }
+
+        $date = $this->parseDateMultiFormat(
+            $matches['date'] ?? '',
+            $matches['time'] ?? '',
+            $bank ? $bank->dateFormats() : [],
+        );
+
+        $ref = normalizeRef($matches['reference'] ?? '');
+
+        return "{$amount}|{$phone}|{$date}|{$ref}";
     }
 
     /**
