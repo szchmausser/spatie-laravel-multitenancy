@@ -45,7 +45,7 @@ export default function PaymentNotificationsIndex({
     const [reference, setReference] = useState(filters.reference ?? '');
     const [from, setFrom] = useState(filters.from ?? '');
     const [to, setTo] = useState(filters.to ?? '');
-    const [expandedId, setExpandedId] = useState<number | null>(null);
+    const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
     const [submittingId, setSubmittingId] = useState<number | null>(null);
 
     function applyFilters() {
@@ -90,7 +90,15 @@ export default function PaymentNotificationsIndex({
     }
 
     function toggleExpand(id: number) {
-        setExpandedId(expandedId === id ? null : id);
+        setExpandedIds((prev) => {
+            const next = new Set(prev);
+            if (next.has(id)) {
+                next.delete(id);
+            } else {
+                next.add(id);
+            }
+            return next;
+        });
     }
 
     const isEmpty = notifications.data.length === 0;
@@ -329,7 +337,7 @@ export default function PaymentNotificationsIndex({
                                                     class: 'bg-gray-500 hover:bg-gray-600',
                                                 };
                                             const isExpanded =
-                                                expandedId === item.id;
+                                                expandedIds.has(item.id);
                                             const isSubmitting =
                                                 submittingId === item.id;
                                             const isFailed =
