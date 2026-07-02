@@ -211,4 +211,53 @@ export type ReconciliationPageProps = {
     orphanedPayments: OrphanedPayment[];
     orphanedNotifications: OrphanedNotification[];
     timeline: TimelineItem[];
+    pollingInterval: number;
+};
+
+export type UnmatchedReference = {
+    id: number;
+    reference: string;
+    amount_cents: number;
+    sender_phone_last4: string | null;
+    bank_code: string;
+    created_at: string;
+};
+
+export type PendingPaymentItem = {
+    id: number;
+    amount_cents: number;
+    transaction_id: string | null;
+    payment_method: string;
+    status: string;
+    created_at: string;
+    tenant: { id: number; name: string };
+    order: {
+        id: number;
+        plan?: { name: string } | null;
+        resource?: { name: string } | null;
+    } | null;
+};
+
+export type MatchedPaymentItem = PendingPaymentItem & {
+    verified_by: number | null;
+    verified_at: string | null;
+    verifier: { id: number; name: string; email?: string } | null;
+    payment_match: {
+        id: number;
+        match_status: string;
+        matched_at: string | null;
+        parsed_reference: string | null;
+        parsed_amount_cents: number;
+        notification: { id: number; bank_code: string } | null;
+    } | null;
+    match_type: 'auto' | 'manual';
+};
+
+export type ReconciliationStats = {
+    from: string | null;
+    to: string | null;
+    total_payments: number;
+    total_amount_cents: number;
+    by_bank: { bank_code: string; count: number; total_cents: number }[];
+    by_status: Record<string, number>;
 };

@@ -13,6 +13,7 @@ use App\Models\Payment;
 use App\Models\PaymentMatch;
 use App\Models\SystemConfig;
 use App\Notifications\PendingPaymentCreated;
+use App\Notifications\SystemAlert;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Notification;
@@ -52,14 +53,17 @@ class PaymentService
 
     /**
      * Attempt to reverse-match this payment against existing unmatched
-     * notifications. This is the synchronous counterpart of the forward
-     * matching flow — it handles the ~80% case where the bank notification
-     * arrives before the customer finishes reporting.
+     * bank notifications by reference AND amount (strict match).
+     *
+     * If strict match fails but a notification with the same reference
+     * exists with a different amount, falls back to reference-only matching
+     * to handle overpayment scenarios. In that case:
+     * - The match is linked and the payment is auto-verified
+     * - A SystemAlert is sent to all landlord admins about the discrepancy
      *
      * Guards:
      * - Payment must be Pending with pago_movil method
      * - Reference must not already be matched
-     * - An unmatched PaymentMatch must exist with matching ref + amount
      *
      * When a match is found, delegates to ReconciliationOrchestrator::runReverse()
      * and accumulates any resulting events for later dispatch.
@@ -84,11 +88,24 @@ class PaymentService
             return;
         }
 
-        // Query unmatched payment_matches with matching reference and amount
+        // Step 1: Strict match (reference + amount)
         $match = PaymentMatch::where('match_status', 'unmatched')
             ->where('parsed_reference', $payment->transaction_id)
             ->where('parsed_amount_cents', $payment->amount_cents)
             ->first();
+
+        $amountMismatch = false;
+
+        // Step 2: Fallback — reference-only match (amount mismatch / overpayment)
+        if ($match === null) {
+            $match = PaymentMatch::where('match_status', 'unmatched')
+                ->where('parsed_reference', $payment->transaction_id)
+                ->first();
+
+            if ($match !== null) {
+                $amountMismatch = true;
+            }
+        }
 
         if ($match === null) {
             return;
@@ -101,6 +118,52 @@ class PaymentService
         // If auto-verified, push event to pendingEvents for controller dispatch
         if ($result->verifiedPayment !== null) {
             $this->pendingEvents[] = new PaymentVerified($result->verifiedPayment);
+
+            if ($amountMismatch) {
+                $this->notifyOverpayment($payment, $match);
+            }
+        }
+    }
+
+    /**
+     * Send a SystemAlert about an amount mismatch between the bank notification
+     * and the reported payment, signaling potential overpayment to admins.
+     */
+    private function notifyOverpayment(Payment $payment, PaymentMatch $match): void
+    {
+        try {
+            $admins = Landlord::all();
+
+            if ($admins->isEmpty()) {
+                return;
+            }
+
+            $reportedAmount = number_format($payment->amount_cents / 100, 2);
+            $receivedAmount = number_format($match->parsed_amount_cents / 100, 2);
+            $diff = $match->parsed_amount_cents - $payment->amount_cents;
+            $diffFormatted = number_format(abs($diff) / 100, 2);
+
+            $message = sprintf(
+                'Pago #%d (Ref: %s) verificado con discrepancia de monto. Reportado: Bs. %s. Bancario: Bs. %s. Diferencia: Bs. %s. Cliente: %s.',
+                $payment->id,
+                $payment->transaction_id,
+                $reportedAmount,
+                $receivedAmount,
+                $diffFormatted,
+                $payment->tenant?->name ?? 'N/A',
+            );
+
+            Notification::send($admins, new SystemAlert(
+                type: 'payment_amount_mismatch',
+                message: $message,
+                severity: 'warning',
+            ));
+        } catch (\Throwable $e) {
+            Log::warning('Failed to send overpayment alert', [
+                'payment_id' => $payment->id,
+                'match_id' => $match->id,
+                'error' => $e->getMessage(),
+            ]);
         }
     }
 

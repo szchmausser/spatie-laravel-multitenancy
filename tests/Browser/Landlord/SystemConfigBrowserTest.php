@@ -66,3 +66,21 @@ test('admin can toggle a boolean config', function () {
         ->click('[data-testid="save-config-btn"]')
         ->waitForText('Desactivado');
 });
+
+test('reconciliation polling interval appears in system configs', function () {
+    $config = SystemConfig::updateOrCreate(
+        ['key' => 'reconciliation.polling_interval_seconds'],
+        ['group' => 'reconciliation', 'value' => '30', 'type' => 'integer'],
+    );
+
+    $this->actingAs($this->admin)
+        ->visit(route('landlord.admin.system-configs'))
+        ->waitForText('polling_interval_seconds')
+        ->assertSee('30')
+        ->click("[data-testid=\"edit-config-{$config->id}\"]")
+        ->waitForText('Editar configuración')
+        ->clear('[data-testid="input-value"]')
+        ->type('[data-testid="input-value"]', '15')
+        ->click('[data-testid="save-config-btn"]')
+        ->waitForText('15');
+});

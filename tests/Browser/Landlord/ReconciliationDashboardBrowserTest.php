@@ -4,20 +4,14 @@ use App\Models\Landlord;
 use App\Models\Order;
 use App\Models\Payment;
 use App\Models\PaymentMatch;
-use App\Models\PaymentNotification;
 use App\Models\Plan;
 use App\Models\Tenant;
 
 /**
- * Browser tests for the S8f reconciliation dashboard.
+ * Browser tests for the reconciliation dashboard (index + tab pages).
  *
- * Covers:
- *   - Empty state with N/A match rate and empty sections
- *   - Shadow mode toggle via PATCH
- *   - KPI cards display match rate percentage and breakdown
- *   - Timeline shows notification events
- *   - Orphan notifications table renders data
- *   - KPI counts for active alerts and failed notifications
+ * The index page now shows KPI cards and tab navigation.
+ * The shadow mode toggle moved to system-configs page.
  */
 beforeEach(function () {
     $this->admin = Landlord::factory()->createQuietly();
@@ -41,24 +35,15 @@ function createPaymentForBrowserTest(array $attributes = []): Payment
     ], $attributes));
 }
 
-test('index page loads with empty state', function () {
+test('index page loads with empty state KPIs and no tab content', function () {
     $this->actingAs($this->admin)
         ->visit(route('landlord.reconciliation.index'))
         ->waitForText('Dashboard de Conciliación')
         ->assertSee('Dashboard de Conciliación')
         ->assertSeeIn('[data-testid="kpi-match-rate"]', 'N/A')
-        ->assertSee('No hay payments huérfanos')
-        ->assertSee('No hay notificaciones huérfanas')
-        ->assertSee('No hay actividad reciente');
-});
-
-test('shadow mode toggle sends patch and shows flash message', function () {
-    $this->actingAs($this->admin)
-        ->visit(route('landlord.reconciliation.index'))
-        ->waitForText('Dashboard de Conciliación')
-        ->click('[data-testid="shadow-toggle-btn"]')
-        ->waitForText('Shadow mode')
-        ->assertSee('Shadow mode');
+        ->assertSeeIn('[data-testid="kpi-autoverified"]', '0')
+        ->assertSeeIn('[data-testid="kpi-alerts"]', '0')
+        ->assertSeeIn('[data-testid="kpi-failed"]', '0');
 });
 
 test('kpi cards show match rate percentage and breakdown', function () {
@@ -73,41 +58,8 @@ test('kpi cards show match rate percentage and breakdown', function () {
         ->assertSeeIn('[data-testid="kpi-match-rate"]', '2 de 3');
 });
 
-test('timeline shows payment notification events and clicking them filters notifications', function () {
-    PaymentNotification::factory()->createQuietly([
-        'parsed_data' => [
-            'amount_cents' => 3000,
-            'reference' => 'NOTIF-BROWSER',
-            'sender_phone_last4' => '1234',
-        ],
-        'created_at' => now()->subMinutes(15),
-    ]);
-
-    $this->actingAs($this->admin)
-        ->visit(route('landlord.reconciliation.index'))
-        ->waitForText('Dashboard de Conciliación')
-        ->assertSee('NOTIF-BROWSER')
-        ->click('[data-testid="timeline-item-0"] a')
-        ->waitForText('Notificaciones Bancarias')
-        ->assertPathIs('/admin/payment-notifications');
-});
-
-test('orphan notifications table shows unmatched records', function () {
-    PaymentMatch::factory()->createQuietly([
-        'match_status' => 'unmatched',
-        'parsed_amount_cents' => 5000,
-        'created_at' => now()->subHours(2),
-    ]);
-
-    $this->actingAs($this->admin)
-        ->visit(route('landlord.reconciliation.index'))
-        ->waitForText('Dashboard de Conciliación')
-        ->assertSeeIn('[data-testid="orphaned-notifications-table"]', 'Bs. 50.00');
-});
-
 test('kpi cards show autoverified and alert counts', function () {
-    // Create verified payments (autoverified today)
-    $payment = createPaymentForBrowserTest([
+    createPaymentForBrowserTest([
         'verified_at' => now(),
         'verified_by' => null,
     ]);
@@ -118,4 +70,54 @@ test('kpi cards show autoverified and alert counts', function () {
         ->assertSeeIn('[data-testid="kpi-autoverified"]', '1')
         ->assertSeeIn('[data-testid="kpi-failed"]', '0')
         ->assertSeeIn('[data-testid="kpi-alerts"]', '0');
+});
+
+test('tab navigation loads pending page', function () {
+    // Create a pending payment without a match
+    createPaymentForBrowserTest();
+
+    $this->actingAs($this->admin)
+        ->visit(route('landlord.reconciliation.pending'))
+        ->waitForText('Pagos Pendientes')
+        ->assertSee('Pagos Pendientes');
+});
+
+test('tab navigation loads matched page', function () {
+    $this->actingAs($this->admin)
+        ->visit(route('landlord.reconciliation.matched'))
+        ->waitForText('Pagos Matcheados')
+        ->assertSee('No hay pagos conciliados');
+});
+
+test('tab navigation loads stats page', function () {
+    $this->actingAs($this->admin)
+        ->visit(route('landlord.reconciliation.stats'))
+        ->waitForText('Estadísticas')
+        ->assertSee('No hay datos estadísticos');
+});
+
+test('pending tab shows empty state when no payments exist', function () {
+    $this->actingAs($this->admin)
+        ->visit(route('landlord.reconciliation.pending'))
+        ->waitForText('Pagos Pendientes')
+        ->assertSee('No hay pagos reportados pendientes');
+});
+
+test('pending tab shows payment rows and expand detail', function () {
+    $payment = createPaymentForBrowserTest();
+
+    $this->actingAs($this->admin)
+        ->visit(route('landlord.reconciliation.pending'))
+        ->waitForText('Pagos Pendientes')
+        ->assertSee('#'.$payment->id)
+        ->click('[data-testid="expand-'.$payment->id.'"]')
+        ->waitForText('Monto')
+        ->assertSee('Monto');
+});
+
+test('matched tab shows empty state', function () {
+    $this->actingAs($this->admin)
+        ->visit(route('landlord.reconciliation.matched'))
+        ->waitForText('Pagos Matcheados')
+        ->assertSee('No hay pagos conciliados');
 });

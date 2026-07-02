@@ -47,6 +47,7 @@ type Payment = {
     verified_by?: number | null;
     verifier?: { id: number; name: string; email: string } | null;
     verified_at?: string | null;
+    match_type?: 'auto' | 'manual' | null;
     cancellation_type?: string | null;
     cancellation_reason?: string | null;
     pago_movil_detail?: PagoMovilDetail | null;
@@ -249,6 +250,14 @@ export function PaymentDetailsCard({ payment, title = 'Detalles del Pago', showC
                             <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
                                 <span className="text-muted-foreground">Estado de conciliación</span>
                                 <span className="font-medium capitalize">{payment.payment_match.match_status}</span>
+                                {payment.match_type && (
+                                    <>
+                                        <span className="text-muted-foreground">Tipo de match</span>
+                                        <span className={`font-medium ${payment.match_type === 'auto' ? 'text-blue-600' : 'text-amber-600'}`}>
+                                            {payment.match_type === 'auto' ? 'Automático' : 'Manual'}
+                                        </span>
+                                    </>
+                                )}
                                 {payment.payment_match.matched_at && (
                                     <>
                                         <span className="text-muted-foreground">Conciliado el día</span>

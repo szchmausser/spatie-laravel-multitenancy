@@ -121,9 +121,6 @@ test('index loads with all KPI data when empty', function () {
             ->where('activeAlerts', 0)
             ->where('failedNotifications', 0)
             ->where('shadowModeEnabled', false)
-            ->where('orphanedPayments', [])
-            ->where('orphanedNotifications', [])
-            ->where('timeline', [])
         );
 });
 
@@ -230,60 +227,359 @@ test('toggle shadow mode enables and disables', function () {
         );
 });
 
-test('index returns orphaned payments and timeline events', function () {
+// ─── PENDING PAYMENTS (R1-R4) ─────────────────────────────────────────────
+
+test('pending returns only unmatched pending payments', function () {
     $this->actingAs($this->admin);
 
-    // Create an orphaned payment: pending, old (beyond 30 min threshold), without match
-    $orphanedPayment = createPaymentForTest([
-        'status' => PaymentStatus::Pending,
-        'created_at' => now()->subHours(2),
-        'amount_cents' => 2500,
-    ]);
-
-    // Create a recent payment that should NOT be orphaned (within threshold)
-    createPaymentForTest([
-        'status' => PaymentStatus::Pending,
-        'created_at' => now()->subMinutes(5),
-    ]);
-
-    // Create a verified payment (appears in timeline as verification event)
-    $verifiedPayment = createPaymentForTest([
-        'verified_at' => now()->subHour(),
-        'verified_by' => $this->admin->id,
-    ]);
-    $verifiedPayment->update(['status' => PaymentStatus::Verified]);
-
-    // Create a match (appears in timeline)
-    $matchPayment = createPaymentForTest();
-    $matchNotification = PaymentNotification::factory()->createQuietly();
+    // Matched payment — should NOT appear in pending
+    $matched = createPaymentForTest(['status' => PaymentStatus::Pending]);
+    $notification = PaymentNotification::factory()->createQuietly();
     PaymentMatch::factory()->createQuietly([
-        'payment_id' => $matchPayment->id,
-        'payment_notification_id' => $matchNotification->id,
-        'match_status' => 'matched',
-        'parsed_reference' => 'REF-TIMELINE',
-        'created_at' => now()->subMinutes(30),
+        'payment_id' => $matched->id,
+        'payment_notification_id' => $notification->id,
     ]);
 
-    // Create a parsed notification (appears in timeline)
-    $timelineNotification = PaymentNotification::factory()->createQuietly([
-        'parsed_data' => [
-            'amount_cents' => 3000,
-            'reference' => 'NOTIF-REF',
-            'sender_phone_last4' => '1234',
-        ],
-        'created_at' => now()->subMinutes(15),
-    ]);
+    // Unmatched pending payment — SHOULD appear
+    $unmatched = createPaymentForTest(['status' => PaymentStatus::Pending]);
 
-    $response = $this->get(route('landlord.reconciliation.index'));
+    $response = $this->get(route('landlord.reconciliation.pending'));
 
     $response->assertOk()
         ->assertInertia(fn (AssertableInertia $page) => $page
-            ->has('orphanedPayments', 1)
-            ->where('orphanedPayments.0.id', $orphanedPayment->id)
-            ->where('orphanedPayments.0.amount_cents', 2500)
-            // Timeline: 2 notifications + 1 verification + 1 match = 4 items.
-            // Exact order depends on second-precision timestamps — verify count
-            // and structure only.
-            ->has('timeline', 4)
+            ->has('payments.data', 1)
+            ->where('payments.data.0.id', $unmatched->id)
+            ->has('filters')
+            ->has('tenants')
+            ->where('pollingInterval', fn ($val) => is_int($val))
+        );
+});
+
+test('pending filters by search (tenant name)', function () {
+    $this->actingAs($this->admin);
+
+    $tenantAcme = Tenant::factory()->createQuietly(['name' => 'ACME Corp']);
+    $tenantBeta = Tenant::factory()->createQuietly(['name' => 'Beta Inc']);
+
+    createPaymentForTest(['tenant_id' => $tenantAcme->id, 'status' => PaymentStatus::Pending]);
+    createPaymentForTest(['tenant_id' => $tenantBeta->id, 'status' => PaymentStatus::Pending]);
+
+    $response = $this->get(route('landlord.reconciliation.pending', ['search' => 'ACME']));
+
+    $response->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->has('payments.data', 1)
+        );
+});
+
+test('pending filters by date range', function () {
+    $this->actingAs($this->admin);
+
+    $old = createPaymentForTest([
+        'status' => PaymentStatus::Pending,
+        'created_at' => now()->subDays(10),
+    ]);
+    $recent = createPaymentForTest([
+        'status' => PaymentStatus::Pending,
+        'created_at' => now()->subDay(),
+    ]);
+
+    $response = $this->get(route('landlord.reconciliation.pending', [
+        'from' => now()->subDays(3)->format('Y-m-d'),
+        'to' => now()->format('Y-m-d'),
+    ]));
+
+    $response->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->has('payments.data', 1)
+            ->where('payments.data.0.id', $recent->id)
+        );
+});
+
+test('pending empty state', function () {
+    $this->actingAs($this->admin);
+
+    $response = $this->get(route('landlord.reconciliation.pending'));
+
+    $response->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->has('payments.data', 0)
+            ->has('unmatched_references', 0)
+        );
+});
+
+test('pending returns unmatched bank notifications without linked payment', function () {
+    $this->actingAs($this->admin);
+
+    // Create an unmatched PaymentMatch (notification parsed, no payment linked)
+    $notification = PaymentNotification::factory()->createQuietly();
+    $unmatched = PaymentMatch::factory()->createQuietly([
+        'payment_notification_id' => $notification->id,
+        'payment_id' => null,
+        'match_status' => 'unmatched',
+    ]);
+
+    // Create a matched PaymentMatch — should NOT appear in unmatched_references
+    $payment = createPaymentForTest(['status' => PaymentStatus::Pending]);
+    $matchedNotification = PaymentNotification::factory()->createQuietly();
+    PaymentMatch::factory()->createQuietly([
+        'payment_notification_id' => $matchedNotification->id,
+        'payment_id' => $payment->id,
+        'match_status' => 'matched',
+    ]);
+
+    $response = $this->get(route('landlord.reconciliation.pending'));
+
+    $response->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->has('unmatched_references', 1)
+            ->where('unmatched_references.0.id', $unmatched->id)
+            ->where('unmatched_references.0.reference', $unmatched->parsed_reference)
+            ->where('unmatched_references.0.amount_cents', $unmatched->parsed_amount_cents)
+            ->where('unmatched_references.0.bank_code', $notification->bank_code)
+        );
+});
+
+test('pending unmatched_references respects date filters', function () {
+    $this->actingAs($this->admin);
+
+    // Old notification (10 days ago) — should be filtered out
+    $oldNotification = PaymentNotification::factory()->createQuietly();
+    PaymentMatch::factory()->createQuietly([
+        'payment_notification_id' => $oldNotification->id,
+        'payment_id' => null,
+        'match_status' => 'unmatched',
+        'created_at' => now()->subDays(10),
+    ]);
+
+    // Recent notification (1 day ago) — should appear
+    $recentNotification = PaymentNotification::factory()->createQuietly();
+    $recentMatch = PaymentMatch::factory()->createQuietly([
+        'payment_notification_id' => $recentNotification->id,
+        'payment_id' => null,
+        'match_status' => 'unmatched',
+        'created_at' => now()->subDay(),
+    ]);
+
+    $response = $this->get(route('landlord.reconciliation.pending', [
+        'from' => now()->subDays(3)->format('Y-m-d'),
+        'to' => now()->format('Y-m-d'),
+    ]));
+
+    $response->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->has('unmatched_references', 1)
+            ->where('unmatched_references.0.id', $recentMatch->id)
+        );
+});
+
+// ─── MATCHED PAYMENTS (R5-R7) ─────────────────────────────────────────────
+
+test('matched returns only payments with match', function () {
+    $this->actingAs($this->admin);
+
+    $matched = createPaymentForTest(['status' => PaymentStatus::Verified]);
+    $notification = PaymentNotification::factory()->createQuietly();
+    PaymentMatch::factory()->createQuietly([
+        'payment_id' => $matched->id,
+        'payment_notification_id' => $notification->id,
+        'match_status' => 'matched',
+    ]);
+
+    // Pending without match — should NOT appear
+    createPaymentForTest(['status' => PaymentStatus::Pending]);
+
+    $response = $this->get(route('landlord.reconciliation.matched'));
+
+    $response->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->has('payments.data', 1)
+            ->where('payments.data.0.id', $matched->id)
+            ->has('payments.data.0.match_type')
+            ->has('filters')
+            ->where('pollingInterval', fn ($val) => is_int($val))
+        );
+});
+
+test('matched shows auto match type when verified_by is null', function () {
+    $this->actingAs($this->admin);
+
+    $payment = createPaymentForTest(['status' => PaymentStatus::Verified, 'verified_by' => null]);
+    $notification = PaymentNotification::factory()->createQuietly();
+    PaymentMatch::factory()->createQuietly([
+        'payment_id' => $payment->id,
+        'payment_notification_id' => $notification->id,
+        'match_status' => 'matched',
+    ]);
+
+    $response = $this->get(route('landlord.reconciliation.matched'));
+
+    $response->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('payments.data.0.match_type', 'auto')
+        );
+});
+
+test('matched shows manual match type when verified_by is set', function () {
+    $this->actingAs($this->admin);
+
+    $verifier = Landlord::factory()->createQuietly();
+    $payment = createPaymentForTest([
+        'status' => PaymentStatus::Verified,
+        'verified_by' => $verifier->id,
+        'verified_at' => now(),
+    ]);
+    $notification = PaymentNotification::factory()->createQuietly();
+    PaymentMatch::factory()->createQuietly([
+        'payment_id' => $payment->id,
+        'payment_notification_id' => $notification->id,
+        'match_status' => 'matched',
+    ]);
+
+    $response = $this->get(route('landlord.reconciliation.matched'));
+
+    $response->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('payments.data.0.match_type', 'manual')
+        );
+});
+
+test('matched filters by match_status', function () {
+    $this->actingAs($this->admin);
+
+    $matched = createPaymentForTest();
+    $n1 = PaymentNotification::factory()->createQuietly();
+    PaymentMatch::factory()->createQuietly([
+        'payment_id' => $matched->id,
+        'payment_notification_id' => $n1->id,
+        'match_status' => 'matched',
+    ]);
+
+    $unmatched = createPaymentForTest();
+    $n2 = PaymentNotification::factory()->createQuietly();
+    PaymentMatch::factory()->createQuietly([
+        'payment_id' => $unmatched->id,
+        'payment_notification_id' => $n2->id,
+        'match_status' => 'unmatched',
+    ]);
+
+    $response = $this->get(route('landlord.reconciliation.matched', ['match_status' => 'unmatched']));
+
+    $response->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->has('payments.data', 1)
+            ->where('payments.data.0.id', $unmatched->id)
+        );
+});
+
+test('matched empty state', function () {
+    $this->actingAs($this->admin);
+
+    $response = $this->get(route('landlord.reconciliation.matched'));
+
+    $response->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->has('payments.data', 0)
+        );
+});
+
+// ─── PAYMENT DETAIL (R8-R9) ───────────────────────────────────────────────
+
+test('show returns payment with full relations', function () {
+    $this->actingAs($this->admin);
+
+    $verifier = Landlord::factory()->createQuietly();
+    $payment = createPaymentForTest([
+        'status' => PaymentStatus::Verified,
+        'verified_by' => $verifier->id,
+        'verified_at' => now(),
+    ]);
+    $notification = PaymentNotification::factory()->createQuietly();
+    PaymentMatch::factory()->createQuietly([
+        'payment_id' => $payment->id,
+        'payment_notification_id' => $notification->id,
+        'match_status' => 'matched',
+    ]);
+
+    $response = $this->get(route('landlord.reconciliation.payments.show', $payment));
+
+    $response->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->has('payment', fn (AssertableInertia $p) => $p
+                ->where('id', $payment->id)
+                ->has('tenant')
+                ->has('order')
+                ->has('payment_match')
+                ->has('verifier')
+                ->where('match_type', 'manual')
+                ->etc()
+            )
+        );
+});
+
+// ─── STATISTICS (R10) ──────────────────────────────────────────────────────
+
+test('stats returns aggregated payment data', function () {
+    $this->actingAs($this->admin);
+
+    createPaymentForTest([
+        'status' => PaymentStatus::Pending,
+        'amount_cents' => 1000,
+        'created_at' => now()->subDay(),
+    ]);
+    createPaymentForTest([
+        'status' => PaymentStatus::Verified,
+        'amount_cents' => 2000,
+        'created_at' => now()->subDay(),
+    ]);
+
+    $response = $this->get(route('landlord.reconciliation.stats', [
+        'from' => now()->subDays(3)->format('Y-m-d'),
+        'to' => now()->format('Y-m-d'),
+    ]));
+
+    $response->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('stats.total_payments', 2)
+            ->where('stats.total_amount_cents', 3000)
+            ->has('stats.by_status')
+            ->has('stats.by_bank')
+            ->has('tenants')
+            ->where('pollingInterval', fn ($val) => is_int($val))
+        );
+});
+
+test('stats filters by date range', function () {
+    $this->actingAs($this->admin);
+
+    createPaymentForTest([
+        'status' => PaymentStatus::Pending,
+        'created_at' => now()->subDays(10),
+    ]);
+    createPaymentForTest([
+        'status' => PaymentStatus::Verified,
+        'created_at' => now()->subDay(),
+    ]);
+
+    $response = $this->get(route('landlord.reconciliation.stats', [
+        'from' => now()->subDays(2)->format('Y-m-d'),
+        'to' => now()->format('Y-m-d'),
+    ]));
+
+    $response->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('stats.total_payments', 1)
+        );
+});
+
+test('stats empty state', function () {
+    $this->actingAs($this->admin);
+
+    $response = $this->get(route('landlord.reconciliation.stats'));
+
+    $response->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('stats.total_payments', 0)
+            ->where('stats.total_amount_cents', 0)
         );
 });

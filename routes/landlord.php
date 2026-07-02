@@ -117,7 +117,11 @@ Route::middleware(['auth', 'verified', EnsureUserIsAdmin::class])->prefix('admin
     Route::get('payment-notifications', [PaymentNotificationController::class, 'index'])->name('payment-notifications.index');
     Route::post('payment-notifications/{notification}/reprocess', [PaymentNotificationController::class, 'reprocess'])->name('payment-notifications.reprocess');
 
-    // Reconciliation dashboard — KPIs, orphaned records, timeline, shadow mode toggle
+    // Reconciliation dashboard — KPIs, tabs, and management endpoints
     Route::get('reconciliation', [ReconciliationDashboardController::class, 'index'])->name('reconciliation.index');
+    Route::get('reconciliation/pending', [ReconciliationDashboardController::class, 'pending'])->name('reconciliation.pending');
+    Route::get('reconciliation/matched', [ReconciliationDashboardController::class, 'matched'])->name('reconciliation.matched');
+    Route::get('reconciliation/stats', [ReconciliationDashboardController::class, 'stats'])->name('reconciliation.stats');
+    Route::get('reconciliation/payments/{payment}', [ReconciliationDashboardController::class, 'show'])->name('reconciliation.payments.show');
     Route::patch('reconciliation/shadow-mode', [ReconciliationDashboardController::class, 'toggleShadowMode'])->name('reconciliation.shadow-mode');
 });

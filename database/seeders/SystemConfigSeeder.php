@@ -14,15 +14,17 @@ class SystemConfigSeeder extends Seeder
     {
         $configs = [
             // Payment configs
-            ['group' => 'payment', 'key' => 'payment.default_gateway', 'value' => 'pago_movil', 'type' => 'string', 'description' => 'Método de pago por defecto para nuevos pedidos. Valores: pago_movil (PagoMóvil), bank_transfer (Transferencia Bancaria).'],
             ['group' => 'payment', 'key' => 'payment.order_expiry_hours', 'value' => 48, 'type' => 'integer', 'description' => 'Horas después de las cuales un pedido pendiente de pago se considera expirado y se cancela automáticamente.'],
 
             // Reconciliation configs
             ['group' => 'reconciliation', 'key' => 'reconciliation.match_window_hours', 'value' => 72, 'type' => 'integer', 'description' => 'Ventana de tiempo (en horas) hacia atrás para buscar coincidencias entre notificaciones bancarias y pagos registrados.'],
             ['group' => 'reconciliation', 'key' => 'reconciliation.shadow_mode_enabled', 'value' => false, 'type' => 'boolean', 'description' => 'Cuando está activo, las conciliaciones se ejecutan en modo simulación: se registran los resultados pero no se aplican cambios a los pagos. Útil para validar reglas sin afectar datos reales.'],
+            ['group' => 'reconciliation', 'key' => 'reconciliation.polling_interval_seconds', 'value' => 30, 'type' => 'integer', 'description' => 'Intervalo en segundos para actualización automática del dashboard de conciliación. 0 = desactivado.'],
+            ['group' => 'reconciliation', 'key' => 'reconciliation.orphan_threshold_minutes', 'value' => 30, 'type' => 'integer', 'description' => 'Minutos después de los cuales un pago pendiente sin match se considera huérfano y se muestra en alertas.'],
 
             // Device configs
             ['group' => 'device', 'key' => 'device.heartbeat_interval_minutes', 'value' => 1, 'type' => 'integer', 'description' => 'Intervalo en minutos entre heartbeats del dispositivo Android. Este valor se envía al teléfono en cada respuesta de heartbeat, permitiendo ajustar remotamente la frecuencia sin actualizar la app.'],
+            ['group' => 'device', 'key' => 'device.heartbeat_retention_days', 'value' => 30, 'type' => 'integer', 'description' => 'Días que se conservan los heartbeats antes de ser purgados automáticamente.'],
 
             // Regex configs (solo BDV y BNC con formatos reales verificados)
             ['group' => 'reconciliation', 'key' => 'regex_bdv', 'value' => '/Recibiste\s+un\s+PagomovilBDV\s+por\s+Bs\.\s+(?<amount>[\d.,]+)\s+del\s+(?<phone>[\d-]+)\s+Ref:\s+(?<reference>\d+)\s+en\s+fecha:\s+(?<date>[\d\/-]+)\s+hora:\s+(?<time>[\d:]+)/i', 'type' => 'string', 'description' => 'Regex para extraer datos de notificaciones SMS del Banco de Venezuela (BDV). Debe incluir grupos nombrados: amount, phone, reference, date, time.'],

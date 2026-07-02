@@ -489,6 +489,72 @@ test('reverse matches an existing unmatched notification and auto-verifies payme
     Cache::forget('system_config.reconciliation.shadow_mode_enabled');
 })->group('reverse-match');
 
+test('reverse match falls back to reference-only when amount mismatches and sends system alert', function () {
+    SystemConfig::create([
+        'group' => 'reconciliation',
+        'key' => 'reconciliation.shadow_mode_enabled',
+        'value' => 'false',
+        'type' => 'boolean',
+    ]);
+
+    // Create a landlord admin so SystemAlert notifications have a recipient
+    $admin = Landlord::factory()->createQuietly();
+
+    $notification = new PaymentNotification;
+    $notification->bank_code = 'bdv';
+    $notification->raw_text = 'test amount mismatch reverse';
+    $notification->dedup_hash = PaymentNotification::computeDedupHash('bdv', 'test amount mismatch reverse');
+    $notification->parse_status = 'pending';
+    $notification->save();
+    $notification->refresh();
+
+    $orchestrator = new ReconciliationOrchestrator($this->service);
+    $service = new PaymentService(['pago_movil' => new PagoMovilGateway], $orchestrator);
+
+    $tenant = Tenant::factory()->createQuietly();
+    $order = Order::factory()->createQuietly(['tenant_id' => $tenant->id]);
+    $config = PaymentMethodConfig::factory()->ofPagoMovil()->createQuietly();
+
+    // Create unmatched PaymentMatch with DIFFERENT amount than the payment
+    $match = PaymentMatch::create([
+        'payment_notification_id' => $notification->id,
+        'parsed_reference' => '006236568762',
+        'parsed_amount_cents' => 500000,  // Notification: Bs. 5.000
+        'match_status' => 'unmatched',
+    ]);
+
+    // Payment is reported with a LOWER amount (reference-only match should trigger)
+    $payment = $service->recordPayment(
+        $order,
+        300000,  // Reported: Bs. 3.000 — different from notification
+        'pago_movil',
+        $config->id,
+        ['sender_bank' => 'BDV', 'sender_phone' => '04121234567', 'payment_date' => '2026-06-20'],
+        '006236568762',
+    );
+
+    $match->refresh();
+    $payment->refresh();
+
+    // Match should have linked despite amount difference (reference-only fallback)
+    expect($match->match_status)->toBe('matched');
+    expect($match->payment_id)->toBe($payment->id);
+    expect($payment->status)->toBe(PaymentStatus::Verified);
+
+    // SystemAlert should have been sent to landlord admins about overpayment
+    $alert = $admin
+        ->notifications()
+        ->where('type', App\Notifications\SystemAlert::class)
+        ->first();
+
+    expect($alert)->not->toBeNull();
+    expect($alert->data['type'])->toBe('payment_amount_mismatch');
+    expect($alert->data['message'])->toContain('discrepancia');
+    expect($alert->data['severity'])->toBe('warning');
+
+    Cache::forget('system_config.reconciliation.shadow_mode_enabled');
+})->group('reverse-match');
+
 test('ignores reverse match when no matching notification exists', function () {
     $orchestrator = new ReconciliationOrchestrator($this->service);
     $service = new PaymentService(['pago_movil' => new PagoMovilGateway], $orchestrator);
