@@ -80,7 +80,7 @@ test('payment form fields are visible and submit is disabled when empty', functi
         $tenant->makeCurrent();
         $this->actingAs($user)
             ->visit("/billing/orders/{$order->id}")
-            ->waitForText('Realizar Pago')
+            ->waitForText('Reporta tu pago')
             // Verify all pago movil form fields are visible
             ->assertVisible('#amount')
             ->assertVisible('#reference')
@@ -136,7 +136,7 @@ test('filling payment fields enables submit button', function () {
         $tenant->makeCurrent();
         $this->actingAs($user)
             ->visit("/billing/orders/{$order->id}")
-            ->waitForText('Realizar Pago')
+            ->waitForText('Reporta tu pago')
             // Fill all required fields
             ->type('#amount', '29.00')
             ->type('#reference', '1234567890')

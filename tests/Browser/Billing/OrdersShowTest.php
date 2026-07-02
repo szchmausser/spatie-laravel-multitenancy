@@ -117,10 +117,10 @@ test('orders show pago movil payment flow', function () {
         $tenant->makeCurrent();
         $this->actingAs($user)
             ->visit("/billing/orders/{$order->id}")
-            ->waitForText('Realizar Pago')
+            ->waitForText('Reporta tu pago')
             // Verify payment section is visible
             ->assertVisible('[data-testid="payment-section"]')
-            ->assertSee('Realizar Pago')
+            ->assertSee('Reporta tu pago')
             // Verify payment form fields are visible
             ->assertVisible('#amount')
             ->assertVisible('#reference')
@@ -140,39 +140,3 @@ test('orders show pago movil payment flow', function () {
     }
 });
 
-test('orders show payment submit button disabled when fields empty', function () {
-    $testDatabase = config('database.connections.landlord.database');
-    $tenant = Tenant::factory()->createQuietly([
-        'domain' => '127.0.0.1',
-        'database' => $testDatabase,
-    ]);
-    $plan = Plan::factory()->createQuietly(['is_active' => true, 'name' => 'Premium']);
-
-    $previousDefault = $this->setupTenantConnectionForTest();
-
-    try {
-        $user = User::on('tenant')->create([
-            'name' => 'Validation Test',
-            'email' => 'validation-test@tenant.test',
-            'password' => bcrypt('password'),
-            'email_verified_at' => now(),
-        ]);
-        $user->assignRole('tenant-admin');
-
-        $order = Order::factory()->forPlan()->pending()->createQuietly([
-            'tenant_id' => $tenant->id,
-            'plan_id' => $plan->id,
-            'total_cents' => 2900,
-        ]);
-
-        $tenant->makeCurrent();
-        $this->actingAs($user)
-            ->visit("/billing/orders/{$order->id}")
-            ->waitForText('Realizar Pago')
-            ->assertVisible('button[type="submit"]')
-            ->assertDisabled('button[type="submit"]')
-            ->assertNoJavaScriptErrors();
-    } finally {
-        $this->cleanupTenantConnection($previousDefault);
-    }
-});

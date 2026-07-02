@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\Landlord;
+use App\Models\Plan;
 use App\Models\Tenant;
 use Illuminate\Support\Facades\DB;
 
@@ -19,6 +20,13 @@ use Illuminate\Support\Facades\DB;
  */
 beforeEach(function () {
     $this->admin = Landlord::factory()->createQuietly();
+
+    // Ensure the 'free' plan exists for Tenant::created → ensureDefaultSubscription()
+    Plan::factory()->create([
+        'slug' => 'free',
+        'name' => 'Free',
+        'price_cents' => 0,
+    ]);
 });
 
 test('index page shows tenant list', function () {
@@ -104,8 +112,8 @@ test('delete flow removes tenant from list', function () {
     // The destroy action attempts DROP DATABASE which cannot run inside a
     // transaction. The browser test server handles requests independently
     // (no wrapping transaction), so DDL could execute. However, to avoid
-    // dependency on PostgreSQL permissions, mock the unprepared statement.
-    DB::partialMock()->shouldReceive('unprepared')->andReturn(true);
+    // dependency on PostgreSQL permissions, mock the statement call.
+    DB::partialMock()->shouldReceive('statement')->andReturn(true);
 
     $this->actingAs($admin)
         ->visit(route('landlord.tenants.show', $tenant))

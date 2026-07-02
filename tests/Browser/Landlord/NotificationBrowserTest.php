@@ -76,6 +76,7 @@ beforeEach(function () {
 test('admin can visit compose page and see tenants', function () {
     $this->actingAs($this->admin)
         ->visit(route('landlord.notifications.create'))
+        ->waitForText('Send Notification')
         ->assertSee('Send Notification')
         ->assertSee('Acme Corp')
         ->assertNoJavaScriptErrors();
@@ -86,10 +87,12 @@ test('admin can fill form and preview notification', function () {
 
     $this->actingAs($this->admin)
         ->visit(route('landlord.notifications.create'))
-        ->fill('notification-title', 'Test Title')
-        ->fill('notification-message', 'Hello tenants!')
-        ->check("tenant-{$this->tenant->id}")
+        ->waitForText('Send Notification')
+        ->fill('@notification-title', 'Test Title')
+        ->fill('@notification-message', 'Hello tenants!')
+        ->check("@tenant-checkbox-{$this->tenant->id}")
         ->press('@preview-btn')
+        ->waitForText('Preview Notification')
         ->assertSee('Preview Notification')
         ->assertSee('Acme Corp')
         ->assertSee('Recipient Counts')
@@ -101,12 +104,15 @@ test('admin can send notification from preview', function () {
 
     $this->actingAs($this->admin)
         ->visit(route('landlord.notifications.create'))
-        ->fill('notification-title', 'Test Title')
-        ->fill('notification-message', 'Hello tenants!')
-        ->check("tenant-{$this->tenant->id}")
+        ->waitForText('Send Notification')
+        ->fill('@notification-title', 'Test Title')
+        ->fill('@notification-message', 'Hello tenants!')
+        ->check("@tenant-checkbox-{$this->tenant->id}")
         ->press('@preview-btn')
+        ->waitForText('Preview Notification')
         ->assertSee('Preview Notification')
         ->press('@send-btn')
+        ->waitForText('Notification History')
         ->assertSee('Notification History')
         ->assertNoJavaScriptErrors();
 });
@@ -117,15 +123,17 @@ test('history shows sent notification', function () {
     // Send a notification first
     $this->actingAs($this->admin)
         ->visit(route('landlord.notifications.create'))
-        ->fill('notification-title', 'Test Title')
-        ->fill('notification-message', 'Hello tenants!')
-        ->check("tenant-{$this->tenant->id}")
+        ->waitForText('Send Notification')
+        ->fill('@notification-title', 'Test Title')
+        ->fill('@notification-message', 'Hello tenants!')
+        ->check("@tenant-checkbox-{$this->tenant->id}")
         ->press('@preview-btn')
+        ->waitForText('Preview Notification')
+        ->assertSee('Preview Notification')
         ->press('@send-btn')
-        ->assertSee('Notification History');
-
-    // Verify the entry is visible
-    $this->assertSee('Test Title')
+        ->waitForText('Notification History')
+        ->assertSee('Notification History')
+        ->assertSee('Test Title')
         ->assertSee('Hello tenants!')
         ->assertNoJavaScriptErrors();
 });

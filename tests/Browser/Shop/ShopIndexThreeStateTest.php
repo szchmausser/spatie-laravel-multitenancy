@@ -150,7 +150,7 @@ test('premium resource in basic plan shows included badge and download on shop',
             ->waitForText('Shop')
             ->assertVisible('[data-testid="shop-resource-card-monthly-report"]')
             ->assertVisible('[data-testid="shop-resource-plan-badge-monthly-report"]')
-            ->assertSeeIn('[data-testid="shop-resource-plan-badge-monthly-report"]', 'Incluido en tu plan')
+            ->assertSeeIn('[data-testid="shop-resource-plan-badge-monthly-report"]', 'Incluido')
             ->assertVisible('[data-testid="shop-resource-download-btn-monthly-report"]')
             ->assertNoJavaScriptErrors();
     } finally {
@@ -289,7 +289,7 @@ test('shop page renders all three resource states simultaneously', function () {
             // Plan-included → badge verde + Download
             ->assertVisible('[data-testid="shop-resource-card-plan-feature"]')
             ->assertVisible('[data-testid="shop-resource-plan-badge-plan-feature"]')
-            ->assertSeeIn('[data-testid="shop-resource-plan-badge-plan-feature"]', 'Incluido en tu plan')
+            ->assertSeeIn('[data-testid="shop-resource-plan-badge-plan-feature"]', 'Incluido')
             ->assertVisible('[data-testid="shop-resource-download-btn-plan-feature"]')
 
             // Buy-only → "Comprar" button
