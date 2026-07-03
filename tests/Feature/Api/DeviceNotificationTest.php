@@ -16,7 +16,7 @@ it('creates notification with server-computed dedup hash and no alert', function
     $rawBody = 'Recibiste un PagomovilBDV por Bs. 3.000,00 del 0424-3153557 Ref: 006236568762 en fecha: 02-06-26 hora: 09:40';
 
     $response = $this->withHeaders(['X-Device-Token' => 'valid-token-for-test'])
-        ->postJson('/api/device/notifications', [
+        ->postJson('/api/ingest/bank-app', [
             'bank_code' => 'bdv',
             'raw_body' => $rawBody,
         ]);
@@ -30,7 +30,7 @@ it('creates notification with server-computed dedup hash and no alert', function
         'bank_code' => 'bdv',
         'raw_text' => $rawBody,
         'dedup_hash' => $expectedHash,
-        'source_type' => 'android_push',
+        'source_type' => 'bank-app',
     ]);
 
     Notification::assertNothingSent();
@@ -47,12 +47,12 @@ it('returns duplicate_ignored on duplicate server hash', function () {
 
     // First request creates the notification
     $first = $this->withHeaders(['X-Device-Token' => 'valid-token-for-test-2'])
-        ->postJson('/api/device/notifications', $payload);
+        ->postJson('/api/ingest/bank-app', $payload);
     $first->assertStatus(201);
 
     // Second request — same server hash → UNIQUE constraint violation → duplicate_ignored
     $second = $this->withHeaders(['X-Device-Token' => 'valid-token-for-test-2'])
-        ->postJson('/api/device/notifications', $payload);
+        ->postJson('/api/ingest/bank-app', $payload);
     $second->assertStatus(200);
     $second->assertJson(['status' => 'duplicate_ignored']);
 });

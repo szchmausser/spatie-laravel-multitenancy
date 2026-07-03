@@ -12,7 +12,7 @@ class PaymentNotificationChannelSeeder extends Seeder
      *
      * Reads the existing regex_{bank} values and creates:
      *   - regex_{bank}_sms       (same as existing SMS regex)
-     *   - regex_{bank}_android_push (same as SMS for now; operators update later)
+     *   - regex_{bank}_bank-app  (same as SMS for now; operators update later)
      *
      * Existing entries are NOT overwritten (idempotent).
      * Old regex_{bank} keys are preserved (backward compat).
@@ -20,7 +20,7 @@ class PaymentNotificationChannelSeeder extends Seeder
     public function run(): void
     {
         $banks = ['bdv', 'bnc'];
-        $channels = ['sms', 'android_push'];
+        $channels = ['sms', 'bank-app'];
 
         foreach ($banks as $bank) {
             $existingRegex = SystemConfig::get("regex_{$bank}");

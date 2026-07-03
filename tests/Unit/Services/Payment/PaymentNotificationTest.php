@@ -247,20 +247,20 @@ it('seeder is idempotent', function () {
 
 // --- Factory Tests ---
 
-it('factory creates notification with default source_type AndroidPush', function () {
+it('factory creates notification with default source_type BankApp', function () {
     $notification = PaymentNotification::factory()->create();
 
-    expect($notification->source_type)->toBe(SourceType::AndroidPush);
+    expect($notification->source_type)->toBe(SourceType::BankApp);
 });
 
 it('factory withSourceType state overrides source_type', function () {
-    $notification = PaymentNotification::factory()->withSourceType(SourceType::AndroidPush)->create();
+    $notification = PaymentNotification::factory()->withSourceType(SourceType::BankApp)->create();
 
-    expect($notification->source_type)->toBe(SourceType::AndroidPush);
+    expect($notification->source_type)->toBe(SourceType::BankApp);
 });
 
 it('factory source_type is set with createQuietly', function () {
     $notification = PaymentNotification::factory()->createQuietly();
 
-    expect($notification->source_type)->toBe(SourceType::AndroidPush);
+    expect($notification->source_type)->toBe(SourceType::BankApp);
 });

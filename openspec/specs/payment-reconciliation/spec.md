@@ -43,15 +43,15 @@ The `payment_notifications` table SHALL enforce a UNIQUE constraint on `dedup_ha
 
 ### Requirement: `SourceType` backed enum
 
-A new backed string PHP enum `App\Enums\SourceType` tracks the origin channel of each payment notification. Currently includes `AndroidPush = 'android_push'`. The enum provides `label()` for display and `values()` for validation rules.
+A new backed string PHP enum `App\Enums\SourceType` tracks the origin channel of each payment notification. Currently includes `BankApp = 'bank-app'`. The enum provides `label()` for display and `values()` for validation rules.
 
-#### Scenario: AndroidPush case value and label
+#### Scenario: BankApp case value and label
 
-- GIVEN the `SourceType::AndroidPush` case
+- GIVEN the `SourceType::BankApp` case
 - WHEN its `value` is accessed
-- THEN it returns `'android_push'`
+- THEN it returns `'bank-app'`
 - WHEN its `label()` is called
-- THEN it returns `'Android Push'`
+- THEN it returns `'Bank App'`
 
 #### Scenario: Unknown string returns null via tryFrom
 
@@ -66,7 +66,7 @@ A new backed string PHP enum `App\Enums\SourceType` tracks the origin channel of
 
 ### Requirement: Nullable `device_id` + `source_type` column
 
-The `payment_notifications` table SHALL accept null `device_id` (to support non-Android sources) and SHALL have a `source_type` varchar(20) column with default `'android_push'`. The FK on `device_id` uses `ON DELETE SET NULL`. An index on `source_type` supports filtering.
+The `payment_notifications` table SHALL accept null `device_id` (to support non-Android sources) and SHALL have a `source_type` varchar(20) column with default `'bank-app'`. The FK on `device_id` uses `ON DELETE SET NULL`. An index on `source_type` supports filtering.
 
 #### Scenario: Non-Android notification without device_id succeeds
 
@@ -86,20 +86,20 @@ The `payment_notifications` table SHALL accept null `device_id` (to support non-
 #### Scenario: Existing rows backfilled
 
 - AFTER migration runs
-- THEN all existing `payment_notifications` rows have `source_type = 'android_push'`
+- THEN all existing `payment_notifications` rows have `source_type = 'bank-app'`
 
 ### Requirement: Server-side dedup hash (no client-supplied hash)
 
-The `DeviceController::storeNotification()` endpoint SHALL compute `dedup_hash` server-side via `PaymentNotification::computeDedupHash()`. The `dedup_hash` field is removed from request validation. The `dedup_hash_mismatch` SystemAlert emission is removed. Old Android clients that still send `dedup_hash` in the body have that field accepted but ignored.
+The `IngestController::__invoke()` endpoint SHALL compute `dedup_hash` server-side via `PaymentNotification::computeDedupHash()`. The `dedup_hash` field is removed from request validation. The `dedup_hash_mismatch` SystemAlert emission is removed. Old Android clients that still send `dedup_hash` in the body have that field accepted but ignored.
 
 #### Scenario: New notification with server-computed hash
 
-- GIVEN Android device sends `POST /api/device/notifications`
+- GIVEN device sends `POST /api/ingest/bank-app`
 - AND body includes `bank_code`, `raw_body` (`dedup_hash` optionally present)
-- WHEN `storeNotification()` processes the request
+- WHEN `IngestNotificationAction` processes the request
 - THEN server computes `dedup_hash` via `computeDedupHash()`
 - THEN notification stored with server-computed hash
-- THEN `source_type = 'android_push'`
+- THEN `source_type = 'bank-app'`
 - THEN response 201 created
 
 #### Scenario: Duplicate detected by UNIQUE constraint
@@ -113,7 +113,7 @@ The `DeviceController::storeNotification()` endpoint SHALL compute `dedup_hash` 
 
 #### Scenario: Old client sends dedup_hash (backward compat)
 
-- GIVEN old Android app sends `dedup_hash` in request
+- GIVEN old app sends `dedup_hash` in request
 - WHEN request arrives
 - THEN `dedup_hash` in body is accepted but IGNORED
 - THEN server computes its own hash
@@ -208,3 +208,25 @@ For each bank with an existing `regex_{bankCode}` entry in `SystemConfig`, both 
 - GIVEN a bank code with no `regex_{b}` entry
 - WHEN seeder runs
 - THEN no entries created for that bank
+
+### Requirement: `POST /api/ingest/{source}` route pattern
+
+The system MUST expose `/api/ingest/{source}` as the notification ingestion entry point. The `{source}` segment MUST map to a `SourceType` enum case via `SourceType::tryFrom()`. The controller MUST validate the device token via existing `device.auth` middleware and delegate to `IngestNotificationAction` for hash computation, notification creation, and job dispatch.
+
+#### Scenario: Valid bank-app source returns 201
+
+- GIVEN an authenticated device
+- WHEN a POST request to `/api/ingest/bank-app` contains valid `bank_code` and `raw_body`
+- THEN the response is 201 with `{ "status": "created" }`
+
+#### Scenario: Unrecognized source returns 422
+
+- GIVEN an authenticated device
+- WHEN a POST request to `/api/ingest/invalid-source` is sent
+- THEN the response is 422 with an error indicating unrecognized source type
+
+#### Scenario: Removed old route returns 404
+
+- GIVEN any request
+- WHEN a POST request to `/api/notifications` is sent
+- THEN the response is 404

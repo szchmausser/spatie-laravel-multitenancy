@@ -41,7 +41,15 @@ beforeEach(function () {
         'type' => 'string',
     ]);
 
-    // Channel-specific regex (Android push uses same pattern as SMS for now)
+    // Channel-specific regex for bank-app (matching the column default)
+    SystemConfig::create([
+        'group' => 'reconciliation',
+        'key' => 'regex_bdv_bank-app',
+        'value' => '/Recibiste\s+un\s+PagomovilBDV\s+por\s+Bs\.\s+(?<amount>[\d.,]+)\s+del\s+(?<phone>[\d-]+)\s+Ref:\s+(?<reference>\d+)\s+en\s+fecha:\s+(?<date>[\d-]+)\s+hora:\s+(?<time>[\d:]+)/i',
+        'type' => 'string',
+    ]);
+
+    // Channel-specific regex backward compat (Android push uses same pattern)
     SystemConfig::create([
         'group' => 'reconciliation',
         'key' => 'regex_bdv_android_push',
@@ -68,6 +76,7 @@ afterEach(function () {
     Cache::forget('system_config.reconciliation.shadow_mode_enabled');
     Cache::forget('system_config.reconciliation.match_window_hours');
     Cache::forget('system_config.regex_bdv');
+    Cache::forget('system_config.regex_bdv_bank-app');
     Cache::forget('system_config.regex_bdv_android_push');
 });
 

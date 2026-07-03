@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\DeviceController;
+use App\Http\Controllers\Api\IngestController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -28,6 +29,7 @@ Route::middleware('device.auth')->prefix('device')->group(function () {
         ]);
     });
 
-    Route::post('/notifications', [DeviceController::class, 'storeNotification']);
     Route::post('/heartbeat', [DeviceController::class, 'heartbeat']);
 });
+
+Route::middleware('device.auth')->post('/ingest/{source}', IngestController::class);

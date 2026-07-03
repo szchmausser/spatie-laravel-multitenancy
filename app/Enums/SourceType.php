@@ -4,7 +4,7 @@ namespace App\Enums;
 
 enum SourceType: string
 {
-    case AndroidPush = 'android_push';
+    case BankApp = 'bank-app';
 
     /**
      * Human-readable label for display in admin UI / logs.
@@ -12,7 +12,7 @@ enum SourceType: string
     public function label(): string
     {
         return match ($this) {
-            self::AndroidPush => 'Android Push',
+            self::BankApp => 'Bank App',
         };
     }
 

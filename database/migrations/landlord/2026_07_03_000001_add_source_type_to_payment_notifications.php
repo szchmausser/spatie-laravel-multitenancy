@@ -12,7 +12,7 @@ return new class extends Migration
      *
      * 1. Drop existing FK on device_id to redefine it with explicit nullOnDelete.
      * 2. Re-add FK with ON DELETE SET NULL (was already set, reinforced for clarity).
-     * 3. Add source_type varchar(20) with default 'android_push' and an index.
+     * 3. Add source_type varchar(20) with default 'bank-app' and an index.
      * 4. Backfill existing rows where source_type is null.
      */
     public function up(): void
@@ -32,7 +32,7 @@ return new class extends Migration
         // Step 3: Add source_type column and index
         Schema::connection('landlord')->table('payment_notifications', function (Blueprint $table) {
             $table->string('source_type', 20)
-                ->default('android_push')
+                ->default('bank-app')
                 ->after('device_id');
 
             $table->index('source_type');
@@ -42,7 +42,7 @@ return new class extends Migration
         DB::connection('landlord')
             ->table('payment_notifications')
             ->whereNull('source_type')
-            ->update(['source_type' => 'android_push']);
+            ->update(['source_type' => 'bank-app']);
     }
 
     /**

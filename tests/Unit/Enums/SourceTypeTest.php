@@ -3,15 +3,15 @@
 use App\Enums\SourceType;
 
 test('source type enum has correct case values', function () {
-    expect(SourceType::AndroidPush->value)->toBe('android_push');
+    expect(SourceType::BankApp->value)->toBe('bank-app');
 });
 
 test('source type enum label returns human-readable string', function () {
-    expect(SourceType::AndroidPush->label())->toBe('Android Push');
+    expect(SourceType::BankApp->label())->toBe('Bank App');
 });
 
 test('source type enum values returns all case values', function () {
-    expect(SourceType::values())->toBe(['android_push']);
+    expect(SourceType::values())->toBe(['bank-app']);
 });
 
 test('source type enum tryFrom returns null for unknown value', function () {

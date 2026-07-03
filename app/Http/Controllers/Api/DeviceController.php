@@ -2,14 +2,10 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Enums\SourceType;
 use App\Http\Controllers\Controller;
-use App\Jobs\IngestPaymentNotification;
 use App\Models\Device;
 use App\Models\DeviceInviteCode;
-use App\Models\PaymentNotification;
 use App\Models\SystemConfig;
-use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -80,55 +76,6 @@ class DeviceController extends Controller
             'name' => $device->name,
             'is_active' => $device->is_active,
         ], 201);
-    }
-
-    /**
-     * Store a payment notification sent by a registered device.
-     *
-     * The dedup_hash is used for idempotency. If the hash already exists,
-     * the notification is silently ignored (200 duplicate_ignored).
-     * On first occurrence, the notification is persisted and the
-     * IngestPaymentNotification job is dispatched for async processing.
-     *
-     * The Android device MUST send the raw, unparsed notification body.
-     * All parsing happens server-side via PaymentNotificationParser;
-     * fields pre-parsed by the device are ignored for correctness.
-     */
-    public function storeNotification(Request $request): JsonResponse
-    {
-        /** @var Device $device */
-        $device = $request->get('device');
-
-        $validated = $request->validate([
-            'bank_code' => ['required', 'string', 'max:20'],
-            'raw_body' => ['required', 'string'],
-        ]);
-
-        try {
-            $computedHash = PaymentNotification::computeDedupHash(
-                $validated['bank_code'],
-                $validated['raw_body'],
-            );
-
-            $notification = PaymentNotification::forceCreate([
-                'device_id' => $device->id,
-                'bank_code' => $validated['bank_code'],
-                'raw_text' => $validated['raw_body'],
-                'dedup_hash' => $computedHash,
-                'source_type' => SourceType::AndroidPush->value,
-                'parse_status' => 'pending',
-            ]);
-
-            IngestPaymentNotification::dispatch($notification);
-
-            return response()->json(['status' => 'created'], 201);
-        } catch (QueryException $e) {
-            if ($e->getCode() === '23505') {
-                return response()->json(['status' => 'duplicate_ignored'], 200);
-            }
-
-            throw $e;
-        }
     }
 
     /**

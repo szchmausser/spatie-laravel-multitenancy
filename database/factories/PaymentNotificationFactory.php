@@ -47,7 +47,7 @@ class PaymentNotificationFactory extends Factory
                 'reference' => $reference,
                 'sender_phone_last4' => substr($phone, -4),
             ],
-            'source_type' => SourceType::AndroidPush,
+            'source_type' => SourceType::BankApp,
             'parsed_at' => $now,
         ];
     }

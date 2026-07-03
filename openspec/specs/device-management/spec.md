@@ -61,7 +61,7 @@ The `DeviceInviteCodeFactory` MUST NOT reference `tenant_id` in its definition o
 
 ### Requirement: Server-Side Dedup Hash Verification
 
-When a device sends a payment notification via `POST /api/device/notifications`, the system MUST recompute the expected `dedup_hash` using `PaymentNotification::computeDedupHash($bankCode, $rawBody)` and compare it against the hash sent by the device. If they do not match, the system MUST log a warning with bank code and snippet of raw body and dispatch a `SystemAlert` notification. The system MUST NOT reject the notification on mismatch — the notification is still stored and processed normally.
+When a device sends a payment notification via `POST /api/ingest/{source}`, the system MUST recompute the expected `dedup_hash` using `PaymentNotification::computeDedupHash($bankCode, $rawBody)` and compare it against the hash sent by the device. If they do not match, the system MUST log a warning with bank code and snippet of raw body and dispatch a `SystemAlert` notification. The system MUST NOT reject the notification on mismatch — the notification is still stored and processed normally.
 
 #### Scenario: Hash mismatch logs warning and creates SystemAlert
 
