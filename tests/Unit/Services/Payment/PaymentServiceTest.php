@@ -15,6 +15,7 @@ use App\Models\Resource;
 use App\Models\SystemConfig;
 use App\Models\Tenant;
 use App\Notifications\PendingPaymentCreated;
+use App\Notifications\SystemAlert;
 use App\Services\Payment\BankTransferGateway;
 use App\Services\Payment\PagoMovilGateway;
 use App\Services\Payment\PaymentService;
@@ -544,7 +545,7 @@ test('reverse match falls back to reference-only when amount mismatches and send
     // SystemAlert should have been sent to landlord admins about overpayment
     $alert = $admin
         ->notifications()
-        ->where('type', App\Notifications\SystemAlert::class)
+        ->where('type', SystemAlert::class)
         ->first();
 
     expect($alert)->not->toBeNull();

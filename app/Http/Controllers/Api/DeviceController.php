@@ -2,19 +2,16 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Enums\SourceType;
 use App\Http\Controllers\Controller;
 use App\Jobs\IngestPaymentNotification;
 use App\Models\Device;
 use App\Models\DeviceInviteCode;
-use App\Models\Landlord;
 use App\Models\PaymentNotification;
 use App\Models\SystemConfig;
-use App\Notifications\SystemAlert;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Str;
 
 class DeviceController extends Controller
@@ -105,41 +102,22 @@ class DeviceController extends Controller
         $validated = $request->validate([
             'bank_code' => ['required', 'string', 'max:20'],
             'raw_body' => ['required', 'string'],
-            'dedup_hash' => ['required', 'string', 'max:64'],
         ]);
 
         try {
-            $notification = PaymentNotification::forceCreate([
-                'device_id' => $device->id,
-                'bank_code' => $validated['bank_code'],
-                'raw_text' => $validated['raw_body'],
-                'dedup_hash' => $validated['dedup_hash'],
-                'parse_status' => 'pending',
-            ]);
-
             $computedHash = PaymentNotification::computeDedupHash(
                 $validated['bank_code'],
                 $validated['raw_body'],
             );
 
-            if ($computedHash !== $validated['dedup_hash']) {
-                $snippet = mb_substr($validated['raw_body'], 0, 100);
-
-                Log::warning('Dedup hash mismatch', [
-                    'bank_code' => $validated['bank_code'],
-                    'raw_body_snippet' => $snippet,
-                    'device_hash' => $validated['dedup_hash'],
-                    'computed_hash' => $computedHash,
-                ]);
-
-                $admins = Landlord::all();
-
-                Notification::send($admins, new SystemAlert(
-                    type: 'dedup_hash_mismatch',
-                    message: "Dedup hash mismatch for bank [{$validated['bank_code']}]. Device hash: {$validated['dedup_hash']}, computed: {$computedHash}. Raw body: {$snippet}",
-                    severity: 'warning',
-                ));
-            }
+            $notification = PaymentNotification::forceCreate([
+                'device_id' => $device->id,
+                'bank_code' => $validated['bank_code'],
+                'raw_text' => $validated['raw_body'],
+                'dedup_hash' => $computedHash,
+                'source_type' => SourceType::AndroidPush->value,
+                'parse_status' => 'pending',
+            ]);
 
             IngestPaymentNotification::dispatch($notification);
 

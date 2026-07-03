@@ -89,6 +89,105 @@ test('createFromParsed is idempotent — same notification returns same match', 
     expect($second->match_status)->toBe('unmatched');
 });
 
+// ─── createFromParsed by-reference dedup ───
+
+test('createFromParsed reuses existing unmatched match for same reference — links new notification', function () {
+    // First notification creates unmatched match
+    $firstMatch = PaymentMatch::createFromParsed($this->notification, $this->parsedPayment);
+    expect($firstMatch->match_status)->toBe('unmatched');
+    expect($firstMatch->payment_notification_id)->toBe($this->notification->id);
+
+    // Create a second notification with same reference
+    $secondNotification = new PaymentNotification;
+    $secondNotification->bank_code = 'bdv';
+    $secondNotification->raw_text = $this->notification->raw_text;
+    $secondNotification->dedup_hash = PaymentNotification::computeDedupHash('bdv', 'second body');
+    $secondNotification->parse_status = 'pending';
+    $secondNotification->save();
+
+    $secondMatch = PaymentMatch::createFromParsed($secondNotification, $this->parsedPayment);
+
+    // Should return the SAME match (same ID), with notification_id updated
+    expect($secondMatch->id)->toBe($firstMatch->id);
+    expect($secondMatch->payment_notification_id)->toBe($secondNotification->id);
+    expect($secondMatch->match_status)->toBe('unmatched');
+
+    // Only one PaymentMatch should exist for this reference
+    expect(PaymentMatch::where('parsed_reference', '006236568762')->count())->toBe(1);
+});
+
+test('createFromParsed creates duplicate_attempt when matched match exists for same reference', function () {
+    // Create a matched match for this reference first
+    $firstMatch = PaymentMatch::createFromParsed($this->notification, $this->parsedPayment);
+    $firstMatch->update(['match_status' => 'matched']);
+    $firstMatch->refresh();
+    expect($firstMatch->match_status)->toBe('matched');
+
+    // Create a second notification with same reference
+    $secondNotification = new PaymentNotification;
+    $secondNotification->bank_code = 'bdv';
+    $secondNotification->raw_text = $this->notification->raw_text;
+    $secondNotification->dedup_hash = PaymentNotification::computeDedupHash('bdv', 'second body');
+    $secondNotification->parse_status = 'pending';
+    $secondNotification->save();
+
+    $secondMatch = PaymentMatch::createFromParsed($secondNotification, $this->parsedPayment);
+
+    // Should create a NEW match with duplicate_attempt status
+    expect($secondMatch->id)->not->toBe($firstMatch->id);
+    expect($secondMatch->match_status)->toBe('duplicate_attempt');
+    expect($secondMatch->payment_notification_id)->toBe($secondNotification->id);
+    expect($secondMatch->parsed_reference)->toBe('006236568762');
+
+    // Two matches should exist for this reference now
+    expect(PaymentMatch::where('parsed_reference', '006236568762')->count())->toBe(2);
+});
+
+test('createFromParsed with null reference creates new unmatched (skips dedup)', function () {
+    $parsedWithNullRef = new ParsedPayment(
+        amountCents: 300000,
+        reference: null,
+        senderPhoneLast4: '3557',
+        parsedAt: Carbon::now(),
+    );
+
+    $match = PaymentMatch::createFromParsed($this->notification, $parsedWithNullRef);
+
+    expect($match->match_status)->toBe('unmatched');
+    expect($match->parsed_reference)->toBeNull();
+    expect($match->payment_notification_id)->toBe($this->notification->id);
+});
+
+test('createFromParsed with different reference creates new unmatched for each reference', function () {
+    $firstMatch = PaymentMatch::createFromParsed($this->notification, $this->parsedPayment);
+    expect($firstMatch->match_status)->toBe('unmatched');
+    expect($firstMatch->parsed_reference)->toBe('006236568762');
+
+    // Second notification with different reference
+    $secondNotification = new PaymentNotification;
+    $secondNotification->bank_code = 'bdv';
+    $secondNotification->raw_text = $this->notification->raw_text;
+    $secondNotification->dedup_hash = PaymentNotification::computeDedupHash('bdv', 'third body');
+    $secondNotification->parse_status = 'pending';
+    $secondNotification->save();
+
+    $differentParsed = new ParsedPayment(
+        amountCents: 500000,
+        reference: '009999999999',
+        senderPhoneLast4: '1234',
+        parsedAt: Carbon::now(),
+    );
+
+    $secondMatch = PaymentMatch::createFromParsed($secondNotification, $differentParsed);
+
+    expect($secondMatch->id)->not->toBe($firstMatch->id);
+    expect($secondMatch->match_status)->toBe('unmatched');
+    expect($secondMatch->parsed_reference)->toBe('009999999999');
+
+    // Two separate unmatched matches
+    expect(PaymentMatch::where('match_status', 'unmatched')->count())->toBe(2);
+});
+
 test('ReconciliationResult stores nullable properties', function () {
     $result = new ReconciliationResult;
 

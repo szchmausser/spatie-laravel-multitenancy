@@ -44,7 +44,11 @@ class IngestPaymentNotification implements NotTenantAware, ShouldQueue
     {
         /** @var PaymentNotificationParser $parser */
         $parser = app(PaymentNotificationParser::class);
-        $parsed = $parser->parse($this->notification->bank_code, $this->notification->raw_text);
+        $parsed = $parser->parse(
+            $this->notification->bank_code,
+            $this->notification->raw_text,
+            $this->notification->source_type?->value,
+        );
 
         if ($parsed === null) {
             $this->notification->markFailed('Regex did not match');

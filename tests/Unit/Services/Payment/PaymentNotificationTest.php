@@ -2,6 +2,7 @@
 
 use App\Console\Commands\SimulatePaymentNotification;
 use App\Enums\BankCode;
+use App\Enums\SourceType;
 use App\Models\PaymentNotification;
 use App\Models\SystemConfig;
 use App\Services\Payment\ParsedPayment;
@@ -242,4 +243,24 @@ it('seeder is idempotent', function () {
     $seeder->run();
 
     expect(PaymentNotification::count())->toBe(8);
+});
+
+// --- Factory Tests ---
+
+it('factory creates notification with default source_type AndroidPush', function () {
+    $notification = PaymentNotification::factory()->create();
+
+    expect($notification->source_type)->toBe(SourceType::AndroidPush);
+});
+
+it('factory withSourceType state overrides source_type', function () {
+    $notification = PaymentNotification::factory()->withSourceType(SourceType::AndroidPush)->create();
+
+    expect($notification->source_type)->toBe(SourceType::AndroidPush);
+});
+
+it('factory source_type is set with createQuietly', function () {
+    $notification = PaymentNotification::factory()->createQuietly();
+
+    expect($notification->source_type)->toBe(SourceType::AndroidPush);
 });

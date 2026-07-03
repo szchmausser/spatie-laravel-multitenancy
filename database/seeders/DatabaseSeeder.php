@@ -50,6 +50,7 @@ class DatabaseSeeder extends Seeder
             TenantsSeeder::class,
             PaymentMethodConfigSeeder::class,
             SystemConfigSeeder::class,
+            PaymentNotificationChannelSeeder::class,
         ]);
     }
 

@@ -224,3 +224,78 @@ test('returns regex pattern for valid bank', function () {
     $regex = SystemConfig::get('regex_bdv');
     expect($regex)->not->toBeEmpty();
 });
+
+// --- Channel-aware (sourceType) Tests ---
+
+describe('channel-aware parsing', function () {
+
+    beforeEach(function () {
+        SystemConfig::create([
+            'group' => 'reconciliation',
+            'key' => 'regex_bdv_android_sms',
+            'value' => '/Recibiste\s+un\s+PagomovilBDV\s+por\s+Bs\.\s+(?<amount>[\d.,]+)\s+del\s+(?<phone>[\d-]+)\s+Ref:\s+(?<reference>\d+)\s+en\s+fecha:\s+(?<date>[\d-]+)\s+hora:\s+(?<time>[\d:]+)/i',
+            'type' => 'string',
+        ]);
+
+        SystemConfig::create([
+            'group' => 'reconciliation',
+            'key' => 'regex_bdv_android_push',
+            'value' => '/Recibiste\s+un\s+PagomovilBDV\s+por\s+Bs\.\s+(?<amount>[\d.,]+)\s+del\s+(?<phone>[\d-]+)\s+Ref:\s+(?<reference>\d+)\s+en\s+fecha:\s+(?<date>[\d-]+)\s+hora:\s+(?<time>[\d:]+)/i',
+            'type' => 'string',
+        ]);
+    });
+
+    test('parses with sourceType android_sms', function () {
+        $text = 'Recibiste un PagomovilBDV por Bs. 3.000,00 del 0424-3153557 Ref: 006236568762 en fecha: 02-06-26 hora: 09:40';
+        $result = $this->parser->parse('bdv', $text, 'android_sms');
+
+        expect($result)->not->toBeNull();
+        expect($result->amountCents)->toBe(300000);
+        expect($result->reference)->toBe('006236568762');
+    });
+
+    test('parses with sourceType android_push', function () {
+        $text = 'Recibiste un PagomovilBDV por Bs. 3.000,00 del 0424-3153557 Ref: 006236568762 en fecha: 02-06-26 hora: 09:40';
+        $result = $this->parser->parse('bdv', $text, 'android_push');
+
+        expect($result)->not->toBeNull();
+        expect($result->amountCents)->toBe(300000);
+        expect($result->reference)->toBe('006236568762');
+    });
+
+    test('returns null when sourceType key does not exist', function () {
+        $text = 'Recibiste un PagomovilBDV por Bs. 3.000,00 del 0424-3153557 Ref: 006236568762 en fecha: 02-06-26 hora: 09:40';
+        $result = $this->parser->parse('bdv', $text, 'nonexistent_channel');
+
+        expect($result)->toBeNull();
+    });
+
+    test('normalizeForDedup with sourceType uses channel regex', function () {
+        $text = 'Recibiste un PagomovilBDV por Bs. 3.000,00 del 0424-3153557 Ref: 006236568762 en fecha: 02-06-26 hora: 09:40';
+        $result = $this->parser->normalizeForDedup('bdv', $text, 'android_push');
+
+        expect(substr_count($result, '|'))->toBe(3);
+        expect($result)->toBe('300000|04243153557|02-06-26 09:40|006236568762');
+    });
+
+    test('normalizeForDedup falls back to raw body when sourceType key not found', function () {
+        $text = 'BNC Pago Movil Recibido Bs.10455,00 Telf.0416***9503 Dia:31/05/26-20:25 Ref:603185603 Llamar al 0500-2625000 si no realizo esta Operacion';
+        $result = $this->parser->normalizeForDedup('bnc', $text, 'nonexistent_channel');
+
+        expect($result)->toBe($text);
+    });
+
+    test('returns null when sourceType regex exists but does not match text', function () {
+        $text = 'This text does not match the BDV push pattern at all';
+        $result = $this->parser->parse('bdv', $text, 'android_push');
+
+        expect($result)->toBeNull();
+    });
+
+    test('normalizeForDedup returns raw body when sourceType regex exists but does not match', function () {
+        $text = 'Non-matching text for BDV push';
+        $result = $this->parser->normalizeForDedup('bdv', $text, 'android_push');
+
+        expect($result)->toBe($text);
+    });
+});

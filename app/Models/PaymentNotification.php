@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\SourceType;
 use App\Services\Payment\ParsedPayment;
 use App\Services\Payment\PaymentNotificationParser;
 use Database\Factories\PaymentNotificationFactory;
@@ -29,6 +30,7 @@ class PaymentNotification extends Model
         'parsed_data',
         'parse_error',
         'parsed_at',
+        'source_type',
     ];
 
     protected function casts(): array
@@ -36,6 +38,7 @@ class PaymentNotification extends Model
         return [
             'parsed_data' => 'array',
             'parsed_at' => 'datetime',
+            'source_type' => SourceType::class,
         ];
     }
 

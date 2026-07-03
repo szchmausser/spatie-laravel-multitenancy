@@ -94,3 +94,65 @@ it('simulated BNC notification round-trips through parser correctly', function (
     expect($notification->fresh()->parsed_data['amount_cents'])->toBe(250050);
     expect($notification->fresh()->parsed_data['reference'])->toBe('12345678');
 });
+
+// --- Channel-aware Integration Tests ---
+
+describe('channel-aware integration', function () {
+
+    beforeEach(function () {
+        // Seed channel-specific regex keys (mirrors what T4 migration does)
+        SystemConfig::create([
+            'group' => 'reconciliation',
+            'key' => 'regex_bdv_android_sms',
+            'value' => '/Recibiste\s+un\s+PagomovilBDV\s+por\s+Bs\.\s+(?<amount>[\d.,]+)\s+del\s+(?<phone>[\d-]+)\s+Ref:\s+(?<reference>\d+)\s+en\s+fecha:\s+(?<date>[\d-]+)\s+hora:\s+(?<time>[\d:]+)/i',
+            'type' => 'string',
+        ]);
+
+        SystemConfig::create([
+            'group' => 'reconciliation',
+            'key' => 'regex_bdv_android_push',
+            'value' => '/Recibiste\s+un\s+PagomovilBDV\s+por\s+Bs\.\s+(?<amount>[\d.,]+)\s+del\s+(?<phone>[\d-]+)\s+Ref:\s+(?<reference>\d+)\s+en\s+fecha:\s+(?<date>[\d-]+)\s+hora:\s+(?<time>[\d:]+)/i',
+            'type' => 'string',
+        ]);
+    });
+
+    it('parses BDV notification with sourceType android_sms', function () {
+        $text = 'Recibiste un PagomovilBDV por Bs. 3.000,00 del 0424-3153557 Ref: 006236568762 en fecha: 02-06-26 hora: 09:40';
+        $parsed = $this->parser->parse('bdv', $text, 'android_sms');
+
+        expect($parsed)->not->toBeNull();
+        expect($parsed->amountCents)->toBe(300000);
+        expect($parsed->reference)->toBe('006236568762');
+    });
+
+    it('parses BDV notification with sourceType android_push', function () {
+        $text = 'Recibiste un PagomovilBDV por Bs. 3.000,00 del 0424-3153557 Ref: 006236568762 en fecha: 02-06-26 hora: 09:40';
+        $parsed = $this->parser->parse('bdv', $text, 'android_push');
+
+        expect($parsed)->not->toBeNull();
+        expect($parsed->amountCents)->toBe(300000);
+        expect($parsed->reference)->toBe('006236568762');
+    });
+
+    it('returns null when channel regex key is missing', function () {
+        $text = 'Recibiste un PagomovilBDV por Bs. 3.000,00 del 0424-3153557 Ref: 006236568762 en fecha: 02-06-26 hora: 09:40';
+        $parsed = $this->parser->parse('bdv', $text, 'missing_channel');
+
+        expect($parsed)->toBeNull();
+    });
+
+    it('normalizeForDedup with sourceType', function () {
+        $text = 'Recibiste un PagomovilBDV por Bs. 3.000,00 del 0424-3153557 Ref: 006236568762 en fecha: 02-06-26 hora: 09:40';
+        $result = $this->parser->normalizeForDedup('bdv', $text, 'android_push');
+
+        expect($result)->toBe('300000|04243153557|02-06-26 09:40|006236568762');
+    });
+
+    it('returns null when passing sourceType without matching regex key (backward compat)', function () {
+        // The generic regex_bdv exists but regex_bnc_missing_channel does not
+        $text = 'BNC Pago Movil Recibido Bs.10455,00 Telf.0416***9503 Dia:31/05/26-20:25 Ref:603185603 Llamar al 0500-2625000 si no realizo esta Operacion';
+        $parsed = $this->parser->parse('bnc', $text, 'missing_channel');
+
+        expect($parsed)->toBeNull();
+    });
+});

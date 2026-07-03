@@ -11,13 +11,18 @@ class PaymentNotificationParser
     /**
      * Parse a raw notification text for a given bank.
      *
+     * When $sourceType is provided, looks for regex_{bankCode}_{sourceType}
+     * in SystemConfig. Returns null if the channel-specific key does not exist.
+     *
+     * When $sourceType is null (backward compat), uses the generic regex_{bankCode}.
+     *
      * Returns null when the notification cannot be parsed (unknown bank,
      * regex doesn't match, insufficient data).
      */
-    public function parse(string $bankCode, string $text): ?ParsedPayment
+    public function parse(string $bankCode, string $text, ?string $sourceType = null): ?ParsedPayment
     {
-        // 1. Get regex for this bank (cached 1h via SystemConfig)
-        $regex = SystemConfig::get("regex_{$bankCode}");
+        // 1. Get regex for this bank+channel (cached 1h via SystemConfig)
+        $regex = $this->resolveRegex($bankCode, $sourceType);
 
         if (! $regex) {
             return null;
@@ -47,6 +52,23 @@ class PaymentNotificationParser
             ),
             rawGroups: $namedGroups,
         );
+    }
+
+    /**
+     * Resolve the regex key for a given bank and optional source type.
+     *
+     * When $sourceType is provided, looks for regex_{bankCode}_{sourceType}.
+     * When $sourceType is null, uses regex_{bankCode} (backward compat).
+     *
+     * Returns the regex pattern string, or null if the key is not configured.
+     */
+    private function resolveRegex(string $bankCode, ?string $sourceType): ?string
+    {
+        $key = $sourceType
+            ? "regex_{$bankCode}_{$sourceType}"
+            : "regex_{$bankCode}";
+
+        return SystemConfig::get($key);
     }
 
     /**
@@ -136,9 +158,9 @@ class PaymentNotificationParser
      *
      * The result is intended for: hash('sha256', $bankCode . $normalized)
      */
-    public function normalizeForDedup(string $bankCode, string $rawBody): string
+    public function normalizeForDedup(string $bankCode, string $rawBody, ?string $sourceType = null): string
     {
-        $regex = SystemConfig::get("regex_{$bankCode}");
+        $regex = $this->resolveRegex($bankCode, $sourceType);
 
         if (! $regex || preg_match($regex, $rawBody, $matches) !== 1) {
             return $rawBody;

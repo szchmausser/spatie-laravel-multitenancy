@@ -2,6 +2,7 @@
 
 namespace Database\Factories;
 
+use App\Enums\SourceType;
 use App\Models\PaymentNotification;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
@@ -46,8 +47,19 @@ class PaymentNotificationFactory extends Factory
                 'reference' => $reference,
                 'sender_phone_last4' => substr($phone, -4),
             ],
+            'source_type' => SourceType::AndroidPush,
             'parsed_at' => $now,
         ];
+    }
+
+    /**
+     * Override the source_type for a specific channel.
+     */
+    public function withSourceType(SourceType $sourceType): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'source_type' => $sourceType,
+        ]);
     }
 
     /**

@@ -127,7 +127,59 @@ This project has domain-specific skills available in `**/skills/**`. You MUST ac
 # Test Enforcement
 
 - Every change must be programmatically tested. Write a new test or update an existing test, then run the affected tests to make sure they pass.
-- Run the minimum number of tests needed to ensure code quality and speed. Use `php artisan test --compact` with a specific filename or filter.
+
+## CRITICAL: Never run the full test suite
+
+The full suite takes 20+ minutes and almost always produces a timeout. **Never** run `php artisan test`, `phpunit`, or `./vendor/bin/pest` without a `--filter`.
+
+**Always run only the specific tests affected by your change:**
+
+```bash
+php artisan test --compact --filter=PaymentService
+php artisan test --compact --filter=PaymentNotificationParser
+php artisan test --compact --filter=IngestPaymentNotification
+php artisan test --compact --filter=ReconciliationOrchestrator
+```
+
+If you need to run all tests in a directory:
+
+```bash
+php artisan test --compact tests/Unit/Services/Payment
+```
+
+The `--compact` flag is mandatory — omitting it produces excessive output.
+
+## Multi-tenancy in tests
+
+This app uses Spatie Multitenancy v4 with BD landlord + BD física por tenant.
+
+**Before creating any tenant-scoped data in a test:**
+
+1. Create or retrieve a `Tenant` model (this auto-provisions the physical database via model events)
+2. Make it current with `$tenant->makeCurrent()`
+3. **Models with `UsesLandlordConnection` trait** (e.g. `Plan`, `Landlord`, `PaymentNotification`, `PaymentMatch`, `SystemConfig`) store data in the landlord database — accessible without making a tenant current.
+4. **Models with `UsesTenantConnection` trait** (e.g. `User`, `Payment`, `Order`, `PagoMovilDetail`) store data in the tenant's physical database — requires `$tenant->makeCurrent()` before creation.
+
+**Tenant data factories require special handling:**
+
+```php
+// Instead of relying on tenant events during tests, pre-provision a tenant
+$tenant = Tenant::factory()->forDatabase('test_tenant_'.uniqid())->create();
+$tenant->makeCurrent();
+
+$user = User::factory()->create(); // now in the tenant's DB
+```
+
+**Never depend on `DatabaseSeeder` seeding the exact tenant you need** — create your own tenant with a unique database name to avoid collisions.
+
+**Never run tests in parallel** — the tenant provisioning process (creating BDs, running migrations) is not parallel-safe.
+
+## Referenced documentation
+
+- `docs/Arquitectura multitenencia aplicada.md` — full multitenancy architecture guide
+  - **Section 18.3** — Reset completo del sistema. Siempre usar esta receta para resets, no improvisar.
+- `.agents/skills/browser-testing/SKILL.md` — browser testing principles, selectors, and patterns
+- `.agents/skills/pest-testing/SKILL.md` — Pest-specific testing conventions for this project
 
 === inertia-laravel/core rules ===
 

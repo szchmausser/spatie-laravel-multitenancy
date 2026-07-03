@@ -33,10 +33,18 @@ beforeEach(function () {
         'type' => 'boolean',
     ]);
 
-    // Real BDV regex pattern
+    // Real BDV regex pattern (backward compat for SMS path)
     SystemConfig::create([
         'group' => 'reconciliation',
         'key' => 'regex_bdv',
+        'value' => '/Recibiste\s+un\s+PagomovilBDV\s+por\s+Bs\.\s+(?<amount>[\d.,]+)\s+del\s+(?<phone>[\d-]+)\s+Ref:\s+(?<reference>\d+)\s+en\s+fecha:\s+(?<date>[\d-]+)\s+hora:\s+(?<time>[\d:]+)/i',
+        'type' => 'string',
+    ]);
+
+    // Channel-specific regex (Android push uses same pattern as SMS for now)
+    SystemConfig::create([
+        'group' => 'reconciliation',
+        'key' => 'regex_bdv_android_push',
         'value' => '/Recibiste\s+un\s+PagomovilBDV\s+por\s+Bs\.\s+(?<amount>[\d.,]+)\s+del\s+(?<phone>[\d-]+)\s+Ref:\s+(?<reference>\d+)\s+en\s+fecha:\s+(?<date>[\d-]+)\s+hora:\s+(?<time>[\d:]+)/i',
         'type' => 'string',
     ]);
@@ -60,6 +68,7 @@ afterEach(function () {
     Cache::forget('system_config.reconciliation.shadow_mode_enabled');
     Cache::forget('system_config.reconciliation.match_window_hours');
     Cache::forget('system_config.regex_bdv');
+    Cache::forget('system_config.regex_bdv_android_push');
 });
 
 // ─── Successful parse → match → parse_status = parsed ───
