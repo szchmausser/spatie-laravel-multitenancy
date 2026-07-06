@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Landlord;
 
+use App\Enums\SourceType;
 use App\Http\Controllers\Controller;
 use App\Models\SystemConfig;
 use Illuminate\Http\Request;
@@ -26,6 +27,10 @@ class SystemConfigController extends Controller
 
         return Inertia::render('landlord/system-configs/index', [
             'groups' => $configs->groupBy('group'),
+            'availableChannels' => array_map(
+                fn (SourceType $case) => ['value' => $case->value, 'label' => $case->label()],
+                SourceType::cases(),
+            ),
         ]);
     }
 

@@ -31,8 +31,14 @@ const breadcrumbs: BreadcrumbItem[] = [
 
 type GroupedConfigs = Record<string, SystemConfig[]>;
 
+type ChannelOption = {
+    value: string;
+    label: string;
+};
+
 type PageProps = {
     groups: GroupedConfigs;
+    availableChannels: ChannelOption[];
     flash?: { success?: string; error?: string };
     errors?: Record<string, string>;
 };
@@ -60,8 +66,9 @@ function EditDialog({
     open: boolean;
     onOpenChange: (open: boolean) => void;
 }) {
-    const { errors } = usePage<PageProps>().props;
+    const { errors, availableChannels } = usePage<PageProps>().props;
     const isRegex = config?.key.startsWith('regex_');
+    const isShadowChannels = config?.key === 'reconciliation.shadow_mode_channels';
     const inputType = config?.type === 'integer' ? 'number' : 'text';
 
     // For string values, initialize with current value; for boolean, use checked state
@@ -69,13 +76,31 @@ function EditDialog({
     const [booleanValue, setBooleanValue] = useState(
         config?.value === '1' || config?.value === 'true',
     );
+    const [selectedChannels, setSelectedChannels] = useState<string[]>(
+        isShadowChannels ? (() => {
+            try { return JSON.parse(config?.value ?? '[]'); }
+            catch { return []; }
+        })() : [],
+    );
     const [processing, setProcessing] = useState(false);
+
+    const toggleChannel = (value: string) => {
+        setSelectedChannels((prev) =>
+            prev.includes(value)
+                ? prev.filter((v) => v !== value)
+                : [...prev, value],
+        );
+    };
 
     // Reset form state when dialog opens with a different config
     useEffect(() => {
         if (config) {
             setStringValue(config.value);
             setBooleanValue(config.value === '1' || config.value === 'true');
+            if (isShadowChannels) {
+                try { setSelectedChannels(JSON.parse(config.value ?? '[]')); }
+                catch { setSelectedChannels([]); }
+            }
         }
     }, [config]);
 
@@ -84,7 +109,11 @@ function EditDialog({
 
         setProcessing(true);
 
-        const value = config.type === 'boolean' ? (booleanValue ? '1' : '0') : stringValue;
+        const value = config.type === 'boolean'
+            ? (booleanValue ? '1' : '0')
+            : isShadowChannels
+                ? JSON.stringify(selectedChannels)
+                : stringValue;
 
         router.put(
             update(config.id).url,
@@ -140,6 +169,22 @@ function EditDialog({
                                 <Label htmlFor="value" className="cursor-pointer">
                                     Activo
                                 </Label>
+                            </div>
+                        ) : isShadowChannels ? (
+                            <div className="flex flex-wrap gap-4" data-testid="shadow-channels-edit">
+                                {availableChannels.map((channel) => (
+                                    <div key={channel.value} className="flex items-center gap-2">
+                                        <Checkbox
+                                            id={`shadow-${channel.value}`}
+                                            checked={selectedChannels.includes(channel.value)}
+                                            onCheckedChange={() => toggleChannel(channel.value)}
+                                            data-testid={`shadow-channel-${channel.value}`}
+                                        />
+                                        <Label htmlFor={`shadow-${channel.value}`} className="cursor-pointer">
+                                            {channel.label}
+                                        </Label>
+                                    </div>
+                                ))}
                             </div>
                         ) : isRegex ? (
                             <textarea

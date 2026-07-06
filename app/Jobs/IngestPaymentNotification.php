@@ -7,7 +7,6 @@ use App\Events\PaymentCancelled;
 use App\Events\PaymentVerified;
 use App\Models\PaymentMatch;
 use App\Models\PaymentNotification;
-use App\Models\SystemConfig;
 use App\Services\Payment\PaymentNotificationParser;
 use App\Services\Payment\ReconciliationOrchestrator;
 use App\Services\Payment\ReconciliationResult;
@@ -78,12 +77,10 @@ class IngestPaymentNotification implements NotTenantAware, ShouldQueue
      */
     private function dispatchPostCommitEvents(ReconciliationResult $result): void
     {
+        // The orchestrator already decided whether to shadow or verify.
+        // If verifiedPayment is set, the match was NOT shadowed → dispatch.
         if ($result->verifiedPayment !== null) {
-            $shadowMode = (bool) SystemConfig::get('reconciliation.shadow_mode_enabled', false);
-
-            if (! $shadowMode) {
-                event(new PaymentVerified($result->verifiedPayment));
-            }
+            event(new PaymentVerified($result->verifiedPayment));
         }
 
         if ($result->cancelledPayment !== null) {

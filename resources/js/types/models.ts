@@ -207,7 +207,6 @@ export type ReconciliationPageProps = {
     autoverifiedToday: number;
     activeAlerts: number;
     failedNotifications: number;
-    shadowModeEnabled: boolean;
     orphanedPayments: OrphanedPayment[];
     orphanedNotifications: OrphanedNotification[];
     timeline: TimelineItem[];

@@ -234,13 +234,13 @@ test('update with invalid regex returns validation error', function () {
     $response->assertSessionHasErrors('value');
 });
 
-test('admin can toggle boolean config from true to false', function () {
+test('admin can toggle a boolean config', function () {
     $admin = Landlord::factory()->create();
     $this->actingAs($admin);
 
     $config = SystemConfig::create([
         'group' => 'reconciliation',
-        'key' => 'reconciliation.shadow_mode_enabled',
+        'key' => 'reconciliation.test_boolean',
         'value' => '1',
         'type' => 'boolean',
     ]);
@@ -252,6 +252,25 @@ test('admin can toggle boolean config from true to false', function () {
 
     $response->assertSessionHas('success');
     $this->assertEquals('0', $config->fresh()->value);
+});
+
+test('admin cannot set invalid shadow channels via controller', function () {
+    $admin = Landlord::factory()->create();
+    $this->actingAs($admin);
+
+    $config = SystemConfig::create([
+        'group' => 'reconciliation',
+        'key' => 'reconciliation.shadow_mode_channels',
+        'value' => json_encode(['bank-app']),
+        'type' => 'json',
+    ]);
+
+    $response = $this->put(route('landlord.admin.system-configs.update', $config), [
+        'value' => json_encode(['invalid-channel']),
+    ]);
+
+    $response->assertSessionHasErrors('value');
+    $this->assertEquals(json_encode(['bank-app']), $config->fresh()->value);
 });
 
 test('admin panel includes system config card', function () {

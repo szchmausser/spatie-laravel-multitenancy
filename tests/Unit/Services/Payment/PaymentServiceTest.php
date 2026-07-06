@@ -437,9 +437,9 @@ test('payment model casts cancellation_type to enum', function () {
 test('reverse matches an existing unmatched notification and auto-verifies payment', function () {
     SystemConfig::create([
         'group' => 'reconciliation',
-        'key' => 'reconciliation.shadow_mode_enabled',
-        'value' => 'false',
-        'type' => 'boolean',
+        'key' => 'reconciliation.shadow_mode_channels',
+        'value' => '[]',
+        'type' => 'json',
     ]);
 
     $notification = new PaymentNotification;
@@ -487,15 +487,15 @@ test('reverse matches an existing unmatched notification and auto-verifies payme
     expect($pending)->toHaveCount(1);
     expect($pending[0])->toBeInstanceOf(PaymentVerified::class);
 
-    Cache::forget('system_config.reconciliation.shadow_mode_enabled');
+    Cache::forget('system_config.reconciliation.shadow_mode_channels');
 })->group('reverse-match');
 
 test('reverse match falls back to reference-only when amount mismatches and sends system alert', function () {
     SystemConfig::create([
         'group' => 'reconciliation',
-        'key' => 'reconciliation.shadow_mode_enabled',
-        'value' => 'false',
-        'type' => 'boolean',
+        'key' => 'reconciliation.shadow_mode_channels',
+        'value' => '[]',
+        'type' => 'json',
     ]);
 
     // Create a landlord admin so SystemAlert notifications have a recipient
@@ -553,7 +553,7 @@ test('reverse match falls back to reference-only when amount mismatches and send
     expect($alert->data['message'])->toContain('discrepancia');
     expect($alert->data['severity'])->toBe('warning');
 
-    Cache::forget('system_config.reconciliation.shadow_mode_enabled');
+    Cache::forget('system_config.reconciliation.shadow_mode_channels');
 })->group('reverse-match');
 
 test('ignores reverse match when no matching notification exists', function () {
@@ -586,9 +586,9 @@ test('ignores reverse match when no matching notification exists', function () {
 test('reverse match stays as pending when shadow mode is on', function () {
     SystemConfig::create([
         'group' => 'reconciliation',
-        'key' => 'reconciliation.shadow_mode_enabled',
-        'value' => 'true',
-        'type' => 'boolean',
+        'key' => 'reconciliation.shadow_mode_channels',
+        'value' => json_encode(['bank-app']),
+        'type' => 'json',
     ]);
 
     $notification = new PaymentNotification;
@@ -629,7 +629,7 @@ test('reverse match stays as pending when shadow mode is on', function () {
     expect($match->payment_id)->toBe($payment->id);
     expect($payment->status)->toBe(PaymentStatus::Pending);
 
-    Cache::forget('system_config.reconciliation.shadow_mode_enabled');
+    Cache::forget('system_config.reconciliation.shadow_mode_channels');
 })->group('reverse-match');
 
 test('does not reverse match non-pago-movil payment', function () {

@@ -21,8 +21,8 @@ test('index page loads with grouped configs', function () {
         ['group' => 'payment', 'value' => 'pago_movil', 'type' => 'string'],
     );
     SystemConfig::updateOrCreate(
-        ['key' => 'reconciliation.shadow_mode_enabled'],
-        ['group' => 'reconciliation', 'value' => '1', 'type' => 'boolean'],
+        ['key' => 'reconciliation.shadow_mode_channels'],
+        ['group' => 'reconciliation', 'value' => '[]', 'type' => 'json'],
     );
 
     $this->actingAs($this->admin)
@@ -31,7 +31,7 @@ test('index page loads with grouped configs', function () {
         ->assertSee('payment')
         ->assertSee('reconciliation')
         ->assertSee('payment.default_gateway')
-        ->assertSee('shadow_mode_enabled');
+        ->assertSee('shadow_mode_channels');
 });
 
 test('admin can edit a string config', function () {
@@ -51,20 +51,21 @@ test('admin can edit a string config', function () {
         ->waitForText('bank_transfer');
 });
 
-test('admin can toggle a boolean config', function () {
+test('admin can toggle shadow channels via checkboxes', function () {
     $config = SystemConfig::updateOrCreate(
-        ['key' => 'reconciliation.shadow_mode_enabled'],
-        ['group' => 'reconciliation', 'value' => '1', 'type' => 'boolean'],
+        ['key' => 'reconciliation.shadow_mode_channels'],
+        ['group' => 'reconciliation', 'value' => '[]', 'type' => 'json'],
     );
 
     $this->actingAs($this->admin)
         ->visit(route('landlord.admin.system-configs'))
-        ->waitForText('shadow_mode_enabled')
+        ->waitForText('shadow_mode_channels')
         ->click("[data-testid=\"edit-config-{$config->id}\"]")
         ->waitForText('Editar configuración')
-        ->uncheck('[data-testid="input-value"]')
+        ->waitForText('Bank App')
+        ->check('[data-testid="shadow-channel-bank-app"]')
         ->click('[data-testid="save-config-btn"]')
-        ->waitForText('Desactivado');
+        ->waitForText('["bank-app"]');
 });
 
 test('reconciliation polling interval appears in system configs', function () {

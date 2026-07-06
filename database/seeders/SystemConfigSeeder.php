@@ -18,7 +18,7 @@ class SystemConfigSeeder extends Seeder
 
             // Reconciliation configs
             ['group' => 'reconciliation', 'key' => 'reconciliation.match_window_hours', 'value' => 72, 'type' => 'integer', 'description' => 'Ventana de tiempo (en horas) hacia atrás para buscar coincidencias entre notificaciones bancarias y pagos registrados.'],
-            ['group' => 'reconciliation', 'key' => 'reconciliation.shadow_mode_enabled', 'value' => false, 'type' => 'boolean', 'description' => 'Cuando está activo, las conciliaciones se ejecutan en modo simulación: se registran los resultados pero no se aplican cambios a los pagos. Útil para validar reglas sin afectar datos reales.'],
+            ['group' => 'reconciliation', 'key' => 'reconciliation.shadow_mode_channels', 'value' => json_encode(['bank-app', 'sms']), 'type' => 'json', 'description' => 'Canales que ejecutan en modo shadow. Las notificaciones de estos canales no auto-verifican pagos. Vacío = todos auto-verifican.'],
             ['group' => 'reconciliation', 'key' => 'reconciliation.polling_interval_seconds', 'value' => 30, 'type' => 'integer', 'description' => 'Intervalo en segundos para actualización automática del dashboard de conciliación. 0 = desactivado.'],
             ['group' => 'reconciliation', 'key' => 'reconciliation.orphan_threshold_minutes', 'value' => 30, 'type' => 'integer', 'description' => 'Minutos después de los cuales un pago pendiente sin match se considera huérfano y se muestra en alertas.'],
 

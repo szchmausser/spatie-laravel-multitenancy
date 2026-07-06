@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\SourceType;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Cache;
 use Spatie\Multitenancy\Models\Concerns\UsesLandlordConnection;
@@ -71,6 +72,15 @@ class SystemConfig extends Model
             };
         }
 
+        // Normalize: if value is already a JSON string, decode before re-encoding
+        // to prevent double-encoding when the controller/form sends serialized JSON.
+        if ($type === 'json' && is_string($value)) {
+            $decoded = json_decode($value, true);
+            if (json_last_error() === JSON_ERROR_NONE) {
+                $value = $decoded;
+            }
+        }
+
         $stored = match ($type) {
             'json' => json_encode($value),
             'boolean' => $value ? '1' : '0',
@@ -108,6 +118,27 @@ class SystemConfig extends Model
         parent::boot();
 
         static::saving(function (SystemConfig $config) {
+            // Validate shadow_mode_channels — only known SourceType values allowed
+            if ($config->key === 'reconciliation.shadow_mode_channels') {
+                $channels = json_decode($config->value, true);
+
+                if (! is_array($channels)) {
+                    throw new \InvalidArgumentException(
+                        'The value for [reconciliation.shadow_mode_channels] must be a JSON array of channel names.'
+                    );
+                }
+
+                $validValues = SourceType::values();
+                $invalid = array_diff($channels, $validValues);
+
+                if (! empty($invalid)) {
+                    throw new \InvalidArgumentException(
+                        'Invalid channel(s) in [reconciliation.shadow_mode_channels]: '.implode(', ', $invalid)
+                        .'. Allowed: '.implode(', ', $validValues)
+                    );
+                }
+            }
+
             // Validate regex configs (keys starting with regex_)
             if (str_starts_with($config->key, 'regex_')) {
                 $regex = is_array($config->value) ? ($config->value['pattern'] ?? null) : $config->value;

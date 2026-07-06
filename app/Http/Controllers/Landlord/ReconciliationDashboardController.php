@@ -27,26 +27,8 @@ class ReconciliationDashboardController extends Controller
             'autoverifiedToday' => $this->autoverifiedToday(),
             'activeAlerts' => $this->activeAlerts(),
             'failedNotifications' => $this->failedNotifications(),
-            'shadowModeEnabled' => $this->shadowModeStatus(),
             'pollingInterval' => $this->pollingInterval(),
         ]);
-    }
-
-    /**
-     * Toggle the reconciliation shadow mode on or off.
-     */
-    public function toggleShadowMode(Request $request): RedirectResponse
-    {
-        $validated = $request->validate([
-            'enabled' => ['required', 'boolean'],
-        ]);
-
-        SystemConfig::set('reconciliation.shadow_mode_enabled', $validated['enabled']);
-
-        return redirect()->back()->with(
-            'success',
-            'Shadow mode '.($validated['enabled'] ? 'activado' : 'desactivado').' correctamente.'
-        );
     }
 
     /**
@@ -311,11 +293,4 @@ class ReconciliationDashboardController extends Controller
         return PaymentNotification::failed()->count();
     }
 
-    /**
-     * Check whether shadow mode is currently enabled.
-     */
-    private function shadowModeStatus(): bool
-    {
-        return SystemConfig::get('reconciliation.shadow_mode_enabled', false);
-    }
 }

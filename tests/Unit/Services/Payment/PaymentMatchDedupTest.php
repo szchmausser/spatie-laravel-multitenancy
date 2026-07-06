@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\SourceType;
 use App\Models\PaymentMatch;
 use App\Models\PaymentNotification;
 use App\Services\Payment\ParsedPayment;
@@ -20,7 +21,7 @@ beforeEach(function () {
         'raw_text' => 'First notification body',
         'dedup_hash' => hash('sha256', 'bdv|first'),
         'parse_status' => 'pending',
-        'source_type' => 'android_push',
+        'source_type' => SourceType::BankApp,
     ]);
 
     $this->notification2 = PaymentNotification::forceCreate([
@@ -28,7 +29,7 @@ beforeEach(function () {
         'raw_text' => 'Second notification body (different)',
         'dedup_hash' => hash('sha256', 'bdv|second'),
         'parse_status' => 'pending',
-        'source_type' => 'android_push',
+        'source_type' => SourceType::BankApp,
     ]);
 
     $this->parsed = new ParsedPayment(

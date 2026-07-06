@@ -7,7 +7,6 @@ use App\Models\Payment;
 use App\Models\PaymentMatch;
 use App\Models\PaymentNotification;
 use App\Models\Plan;
-use App\Models\SystemConfig;
 use App\Models\Tenant;
 use App\Models\User;
 use Database\Seeders\TenantPermissionsSeeder;
@@ -120,7 +119,6 @@ test('index loads with all KPI data when empty', function () {
             ->where('autoverifiedToday', 0)
             ->where('activeAlerts', 0)
             ->where('failedNotifications', 0)
-            ->where('shadowModeEnabled', false)
         );
 });
 
@@ -185,47 +183,7 @@ test('index returns match rate statistics', function () {
         );
 });
 
-test('shadow toggle rejects non-boolean payload with 422', function () {
-    $this->actingAs($this->admin);
 
-    $response = $this->patch(route('landlord.reconciliation.shadow-mode'), [
-        'enabled' => 'not-a-boolean',
-    ]);
-
-    $response->assertSessionHasErrors('enabled');
-});
-
-test('toggle shadow mode enables and disables', function () {
-    $this->actingAs($this->admin);
-
-    // Enable shadow mode
-    $response = $this->patch(route('landlord.reconciliation.shadow-mode'), [
-        'enabled' => true,
-    ]);
-
-    $response->assertRedirect();
-    $this->assertTrue(SystemConfig::get('reconciliation.shadow_mode_enabled'));
-
-    // Verify the dashboard reflects the new value
-    $this->get(route('landlord.reconciliation.index'))
-        ->assertInertia(fn (AssertableInertia $page) => $page
-            ->where('shadowModeEnabled', true)
-        );
-
-    // Disable shadow mode
-    $response = $this->patch(route('landlord.reconciliation.shadow-mode'), [
-        'enabled' => false,
-    ]);
-
-    $response->assertRedirect();
-    $this->assertFalse(SystemConfig::get('reconciliation.shadow_mode_enabled'));
-
-    // Verify the dashboard reflects the change
-    $this->get(route('landlord.reconciliation.index'))
-        ->assertInertia(fn (AssertableInertia $page) => $page
-            ->where('shadowModeEnabled', false)
-        );
-});
 
 // ─── PENDING PAYMENTS (R1-R4) ─────────────────────────────────────────────
 

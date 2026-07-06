@@ -35,9 +35,9 @@ beforeEach(function () {
     ]);
     SystemConfig::create([
         'group' => 'reconciliation',
-        'key' => 'reconciliation.shadow_mode_enabled',
-        'value' => 'false',
-        'type' => 'boolean',
+        'key' => 'reconciliation.shadow_mode_channels',
+        'value' => '[]',
+        'type' => 'json',
     ]);
 
     $this->paymentService = new PaymentService([]);
@@ -64,7 +64,7 @@ beforeEach(function () {
 });
 
 afterEach(function () {
-    Cache::forget('system_config.reconciliation.shadow_mode_enabled');
+    Cache::forget('system_config.reconciliation.shadow_mode_channels');
     Cache::forget('system_config.reconciliation.match_window_hours');
 });
 
@@ -304,13 +304,12 @@ test('duplicate detection — verified payment with same reference triggers dupl
     expect($result->cancelledPayment)->toBeNull();
 });
 
-// ─── Shadow mode ON ───
+// ─── Per-channel shadow mode ───
 
-test('shadow mode on — match found but payment NOT verified', function () {
-    // Override to shadow mode on — update the existing record
-    SystemConfig::where('key', 'reconciliation.shadow_mode_enabled')
-        ->update(['value' => 'true']);
-    Cache::forget('system_config.reconciliation.shadow_mode_enabled');
+test('bank-app in shadow channels — match found but payment NOT verified', function () {
+    SystemConfig::where('key', 'reconciliation.shadow_mode_channels')
+        ->update(['value' => json_encode(['bank-app'])]);
+    Cache::forget('system_config.reconciliation.shadow_mode_channels');
 
     $match = PaymentMatch::createFromParsed($this->notification, $this->parsedPayment);
 
@@ -337,6 +336,66 @@ test('shadow mode on — match found but payment NOT verified', function () {
     expect($match->payment_id)->toBe($payment->id);
     expect($payment->status)->toBe(PaymentStatus::Pending);
     expect($result->verifiedPayment)->toBeNull();
+});
+
+test('bank-app not in shadow channels — payment auto-verified', function () {
+    SystemConfig::where('key', 'reconciliation.shadow_mode_channels')
+        ->update(['value' => json_encode(['sms'])]);
+    Cache::forget('system_config.reconciliation.shadow_mode_channels');
+
+    $match = PaymentMatch::createFromParsed($this->notification, $this->parsedPayment);
+
+    $tenant = Tenant::factory()->createQuietly();
+    $order = Order::factory()->createQuietly(['tenant_id' => $tenant->id]);
+
+    $payment = Payment::factory()->createQuietly([
+        'tenant_id' => $tenant->id,
+        'order_id' => $order->id,
+        'amount_cents' => 300000,
+        'transaction_id' => '006236568762',
+        'status' => PaymentStatus::Pending,
+        'created_at' => now()->subHours(2),
+    ]);
+
+    $result = DB::transaction(function () use ($match) {
+        return $this->orchestrator->run($match);
+    });
+
+    $match->refresh();
+    $payment->refresh();
+
+    expect($match->match_status)->toBe('matched');
+    expect($match->matched_at)->not->toBeNull();
+    expect($payment->status)->toBe(PaymentStatus::Verified);
+    expect($result->verifiedPayment->id)->toBe($payment->id);
+});
+
+test('empty shadow channels — all channels auto-verify', function () {
+    // Default beforeEach already sets channels to [], so just assert it works
+    $match = PaymentMatch::createFromParsed($this->notification, $this->parsedPayment);
+
+    $tenant = Tenant::factory()->createQuietly();
+    $order = Order::factory()->createQuietly(['tenant_id' => $tenant->id]);
+
+    $payment = Payment::factory()->createQuietly([
+        'tenant_id' => $tenant->id,
+        'order_id' => $order->id,
+        'amount_cents' => 300000,
+        'transaction_id' => '006236568762',
+        'status' => PaymentStatus::Pending,
+        'created_at' => now()->subHours(2),
+    ]);
+
+    $result = DB::transaction(function () use ($match) {
+        return $this->orchestrator->run($match);
+    });
+
+    $match->refresh();
+    $payment->refresh();
+
+    expect($match->match_status)->toBe('matched');
+    expect($payment->status)->toBe(PaymentStatus::Verified);
+    expect($result->verifiedPayment->id)->toBe($payment->id);
 });
 
 // ─── Time window expiry ───

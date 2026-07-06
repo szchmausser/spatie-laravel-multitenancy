@@ -123,5 +123,5 @@ Route::middleware(['auth', 'verified', EnsureUserIsAdmin::class])->prefix('admin
     Route::get('reconciliation/matched', [ReconciliationDashboardController::class, 'matched'])->name('reconciliation.matched');
     Route::get('reconciliation/stats', [ReconciliationDashboardController::class, 'stats'])->name('reconciliation.stats');
     Route::get('reconciliation/payments/{payment}', [ReconciliationDashboardController::class, 'show'])->name('reconciliation.payments.show');
-    Route::patch('reconciliation/shadow-mode', [ReconciliationDashboardController::class, 'toggleShadowMode'])->name('reconciliation.shadow-mode');
+
 });

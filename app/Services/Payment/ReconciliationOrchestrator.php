@@ -17,6 +17,32 @@ class ReconciliationOrchestrator
     }
 
     /**
+     * Determine whether a match should be shadowed based on its source channel.
+     *
+     * Resolves source_type via PaymentMatch → PaymentNotification FK.
+     * Empty channels = no shadow mode for any channel.
+     */
+    private function shouldShadow(PaymentMatch $match): bool
+    {
+        $channels = SystemConfig::get('reconciliation.shadow_mode_channels', []);
+
+        if (empty($channels)) {
+            return false;
+        }
+
+        // Ensure notification is eager-loaded to avoid N+1
+        $match->loadMissing('notification');
+
+        $sourceType = $match->notification?->source_type?->value;
+
+        if ($sourceType === null) {
+            return false;
+        }
+
+        return in_array($sourceType, $channels, true);
+    }
+
+    /**
      * Run the reconciliation matching algorithm against a payment match.
      *
      * Must be called inside a DB::transaction for SELECT FOR UPDATE to work.
@@ -93,9 +119,7 @@ class ReconciliationOrchestrator
                 return $result;
             }
 
-            $shadowMode = SystemConfig::get('reconciliation.shadow_mode_enabled', false);
-
-            if ($shadowMode) {
+            if ($this->shouldShadow($match)) {
                 $match->update([
                     'payment_id' => $payment->id,
                     'match_status' => 'pending',
@@ -151,10 +175,9 @@ class ReconciliationOrchestrator
         // Link payment to the match
         $match->update(['payment_id' => $payment->id]);
 
-        $shadowMode = SystemConfig::get('reconciliation.shadow_mode_enabled', false);
         $result = new ReconciliationResult;
 
-        if ($shadowMode) {
+        if ($this->shouldShadow($match)) {
             $match->update(['match_status' => 'pending']);
         } else {
             $this->paymentService->verifyPayment($payment, null);

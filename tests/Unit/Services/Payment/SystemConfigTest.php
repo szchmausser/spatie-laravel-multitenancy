@@ -108,6 +108,37 @@ test('save invalidates cache', function () {
     expect($result)->toBe('updated');
 });
 
+test('shadow_mode_channels accepts valid channel list', function () {
+    SystemConfig::set('reconciliation.shadow_mode_channels', ['bank-app'], 'json');
+
+    $result = SystemConfig::get('reconciliation.shadow_mode_channels');
+    expect($result)->toBe(['bank-app']);
+});
+
+test('shadow_mode_channels accepts empty list', function () {
+    SystemConfig::set('reconciliation.shadow_mode_channels', [], 'json');
+
+    $result = SystemConfig::get('reconciliation.shadow_mode_channels');
+    expect($result)->toBe([]);
+});
+
+test('shadow_mode_channels rejects invalid channel', function () {
+    SystemConfig::set('reconciliation.shadow_mode_channels', ['invalid'], 'json');
+})->throws(\InvalidArgumentException::class, 'Invalid channel(s)');
+
+test('shadow_mode_channels rejects non-array value', function () {
+    SystemConfig::set('reconciliation.shadow_mode_channels', 'not-an-array', 'json');
+})->throws(\InvalidArgumentException::class, 'must be a JSON array');
+
+test('shadow_mode_channels validation fires on direct create too', function () {
+    SystemConfig::create([
+        'group' => 'reconciliation',
+        'key' => 'reconciliation.shadow_mode_channels',
+        'value' => json_encode(['bad-channel']),
+        'type' => 'json',
+    ]);
+})->throws(\InvalidArgumentException::class, 'Invalid channel(s)');
+
 test('detectType returns correct types', function () {
     SystemConfig::set('type.string', 'hello');
     SystemConfig::set('type.integer', 42);

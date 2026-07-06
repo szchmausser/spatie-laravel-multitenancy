@@ -28,9 +28,9 @@ beforeEach(function () {
     ]);
     SystemConfig::create([
         'group' => 'reconciliation',
-        'key' => 'reconciliation.shadow_mode_enabled',
-        'value' => 'false',
-        'type' => 'boolean',
+        'key' => 'reconciliation.shadow_mode_channels',
+        'value' => '[]',
+        'type' => 'json',
     ]);
 
     // Real BDV regex pattern (backward compat for SMS path)
@@ -73,7 +73,7 @@ beforeEach(function () {
 });
 
 afterEach(function () {
-    Cache::forget('system_config.reconciliation.shadow_mode_enabled');
+    Cache::forget('system_config.reconciliation.shadow_mode_channels');
     Cache::forget('system_config.reconciliation.match_window_hours');
     Cache::forget('system_config.regex_bdv');
     Cache::forget('system_config.regex_bdv_bank-app');
@@ -153,10 +153,10 @@ test('job with parse failure marks notification as failed and does not attempt m
 test('job with shadow mode on does not dispatch PaymentVerified event even with match', function () {
     Event::fake([PaymentVerified::class]);
 
-    // Set shadow mode on
-    SystemConfig::where('key', 'reconciliation.shadow_mode_enabled')
-        ->update(['value' => 'true']);
-    Cache::forget('system_config.reconciliation.shadow_mode_enabled');
+    // Set shadow mode on for bank-app (notification default source_type)
+    SystemConfig::where('key', 'reconciliation.shadow_mode_channels')
+        ->update(['value' => json_encode(['bank-app'])]);
+    Cache::forget('system_config.reconciliation.shadow_mode_channels');
 
     $tenant = Tenant::factory()->createQuietly();
     $order = Order::factory()->createQuietly(['tenant_id' => $tenant->id]);

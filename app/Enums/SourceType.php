@@ -5,6 +5,7 @@ namespace App\Enums;
 enum SourceType: string
 {
     case BankApp = 'bank-app';
+    case Sms = 'sms';
 
     /**
      * Human-readable label for display in admin UI / logs.
@@ -13,6 +14,7 @@ enum SourceType: string
     {
         return match ($this) {
             self::BankApp => 'Bank App',
+            self::Sms => 'SMS',
         };
     }
 
