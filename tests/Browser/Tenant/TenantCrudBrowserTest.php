@@ -3,7 +3,6 @@
 use App\Models\Landlord;
 use App\Models\Plan;
 use App\Models\Tenant;
-use Illuminate\Support\Facades\DB;
 
 /**
  * Browser tests for tenant CRUD operations.
@@ -109,11 +108,9 @@ test('delete flow removes tenant from list', function () {
     $admin = Landlord::factory()->createQuietly();
     $tenant = Tenant::factory()->createQuietly();
 
-    // The destroy action attempts DROP DATABASE which cannot run inside a
-    // transaction. The browser test server handles requests independently
-    // (no wrapping transaction), so DDL could execute. However, to avoid
-    // dependency on PostgreSQL permissions, mock the statement call.
-    DB::partialMock()->shouldReceive('statement')->andReturn(true);
+    // No transaction wrapping in browser tests, and createQuietly() means
+    // no physical database was provisioned, so DROP DATABASE IF EXISTS
+    // on a non-existent database is harmless — no mock needed.
 
     $this->actingAs($admin)
         ->visit(route('landlord.tenants.show', $tenant))

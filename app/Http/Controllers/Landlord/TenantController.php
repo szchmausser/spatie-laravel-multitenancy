@@ -66,7 +66,7 @@ class TenantController extends Controller
         try {
             Tenant::create($validated);
         } catch (\Exception $e) {
-            DB::statement('DROP DATABASE IF EXISTS "'.$validated['database'].'"');
+            $this->dropDatabase($validated['database']);
             throw $e;
         }
 
@@ -125,10 +125,21 @@ class TenantController extends Controller
      */
     public function destroy(Tenant $tenant)
     {
-        DB::statement('DROP DATABASE IF EXISTS "'.$tenant->database.'"');
+        $this->dropDatabase($tenant->database);
 
         $tenant->delete();
 
         return redirect()->route('landlord.tenants.index');
+    }
+
+    /**
+     * Drop a tenant's physical PostgreSQL database.
+     *
+     * Extracted to a protected method so tests can mock it and avoid
+     * running DDL (DROP DATABASE cannot execute inside a transaction).
+     */
+    protected function dropDatabase(string $database): void
+    {
+        DB::statement('DROP DATABASE IF EXISTS "'.$database.'"');
     }
 }

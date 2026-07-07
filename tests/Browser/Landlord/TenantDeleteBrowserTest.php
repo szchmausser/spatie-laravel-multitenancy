@@ -2,7 +2,6 @@
 
 use App\Models\Landlord;
 use App\Models\Tenant;
-use Illuminate\Support\Facades\DB;
 
 /**
  * Browser test for deleting a tenant from the landlord admin panel.
@@ -24,9 +23,6 @@ beforeEach(function () {
 
 test('tenant delete removes tenant from list', function () {
     $tenant = Tenant::factory()->createQuietly();
-
-    // Mock the DROP DATABASE statement to avoid actual database operations
-    DB::partialMock()->shouldReceive('statement')->andReturn(true);
 
     $this->actingAs($this->admin)
         ->visit(route('landlord.tenants.show', $tenant->id))

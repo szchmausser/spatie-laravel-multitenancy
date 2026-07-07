@@ -1,9 +1,9 @@
 <?php
 
+use App\Http\Controllers\Landlord\TenantController;
 use App\Models\Landlord;
 use App\Models\Tenant;
 use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
-use Illuminate\Support\Facades\DB;
 use Inertia\Testing\AssertableInertia as Assert;
 
 beforeEach(function () {
@@ -117,8 +117,14 @@ test('destroy processes deletion for admin', function () {
     $admin = Landlord::factory()->createQuietly();
     $tenant = Tenant::factory()->createQuietly();
 
-    // DROP DATABASE cannot run inside a transaction, so mock it.
-    DB::partialMock()->shouldReceive('statement')->andReturn(true);
+    // DROP DATABASE cannot run inside a transaction (DDL), so mock
+    // the extracted dropDatabase method on a partial controller mock.
+    // Mocking the controller method instead of DB::partialMock avoids
+    // breaking the db singleton's $this->app reference that the
+    // database session driver needs to resolve connections.
+    $this->partialMock(TenantController::class, function ($mock) {
+        $mock->shouldAllowMockingProtectedMethods()->shouldReceive('dropDatabase')->andReturnNull();
+    });
 
     $this->actingAs($admin)
         ->delete(route('landlord.tenants.destroy', $tenant))
