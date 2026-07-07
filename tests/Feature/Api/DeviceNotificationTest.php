@@ -8,7 +8,8 @@ use Illuminate\Support\Facades\Notification;
 beforeEach(function () {
     Notification::fake();
 
-    SystemConfig::create(['group' => 'reconciliation', 'key' => 'regex_bdv', 'value' => '/Recibiste\s+un\s+PagomovilBDV\s+por\s+Bs\.\s+(?<amount>[\d.,]+)\s+del\s+(?<phone>[\d-]+)\s+Ref:\s+(?<reference>\d+)\s+en\s+fecha:\s+(?<date>[\d-]+)\s+hora:\s+(?<time>[\d:]+)/i', 'type' => 'string']);
+    SystemConfig::create(['group' => 'reconciliation', 'key' => 'regex_bdv_bank-app', 'value' => '/Recibiste\s+un\s+PagomovilBDV\s+por\s+Bs\.\s+(?<amount>[\d.,]+)\s+del\s+(?<phone>[\d-]+)\s+Ref:\s+(?<reference>\d+)\s+en\s+fecha:\s+(?<date>[\d-]+)\s+hora:\s+(?<time>[\d:]+)/i', 'type' => 'string']);
+    SystemConfig::create(['group' => 'reconciliation', 'key' => 'regex_bdv_sms', 'value' => '/Recibiste\s+un\s+PagomovilBDV\s+por\s+Bs\.\s+(?<amount>[\d.,]+)\s+del\s+(?<phone>[\d-]+)\s+Ref:\s+(?<reference>\d+)\s+en\s+fecha:\s+(?<date>[\d-]+)\s+hora:\s+(?<time>[\d:]+)/i', 'type' => 'string']);
 });
 
 it('creates notification with server-computed dedup hash and no alert', function () {
@@ -23,7 +24,7 @@ it('creates notification with server-computed dedup hash and no alert', function
 
     $response->assertStatus(201);
 
-    $expectedHash = PaymentNotification::computeDedupHash('bdv', $rawBody);
+    $expectedHash = PaymentNotification::computeDedupHash('bdv', $rawBody, 'bank-app');
 
     $this->assertDatabaseHas('payment_notifications', [
         'device_id' => $device->id,

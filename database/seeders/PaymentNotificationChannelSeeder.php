@@ -2,49 +2,18 @@
 
 namespace Database\Seeders;
 
-use App\Models\SystemConfig;
 use Illuminate\Database\Seeder;
 
 class PaymentNotificationChannelSeeder extends Seeder
 {
     /**
-     * Seed per-channel regex entries for each bank that has a base regex.
+     * No-op — channel-specific regexes are now seeded directly by SystemConfigSeeder.
      *
-     * Reads the existing regex_{bank} values and creates:
-     *   - regex_{bank}_sms       (same as existing SMS regex)
-     *   - regex_{bank}_bank-app  (same as SMS for now; operators update later)
-     *
-     * Existing entries are NOT overwritten (idempotent).
-     * Old regex_{bank} keys are preserved (backward compat).
+     * This seeder is kept for backward compatibility with DatabaseSeeder but does nothing.
      */
     public function run(): void
     {
-        $banks = ['bdv', 'bnc'];
-        $channels = ['sms', 'bank-app'];
-
-        foreach ($banks as $bank) {
-            $existingRegex = SystemConfig::get("regex_{$bank}");
-
-            if ($existingRegex === null) {
-                continue; // Skip banks without a base regex
-            }
-
-            foreach ($channels as $channel) {
-                $key = "regex_{$bank}_{$channel}";
-
-                $existing = SystemConfig::where('key', $key)->first();
-
-                if ($existing !== null) {
-                    continue; // Already exists, don't overwrite
-                }
-
-                SystemConfig::create([
-                    'group' => 'reconciliation',
-                    'key' => $key,
-                    'value' => $existingRegex,
-                    'type' => 'string',
-                ]);
-            }
-        }
+        // Channel-specific regexes (regex_{bank}_{channel}) are now seeded
+        // directly in SystemConfigSeeder. No conversion needed.
     }
 }

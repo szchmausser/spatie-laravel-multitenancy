@@ -20,7 +20,7 @@ class IngestNotificationAction
         SourceType $sourceType,
         ?int $deviceId = null,
     ): PaymentNotification {
-        $hash = PaymentNotification::computeDedupHash($bankCode, $rawBody);
+        $hash = PaymentNotification::computeDedupHash($bankCode, $rawBody, $sourceType->value);
 
         $notification = PaymentNotification::forceCreate([
             'device_id' => $deviceId,

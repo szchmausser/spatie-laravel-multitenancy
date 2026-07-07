@@ -49,10 +49,10 @@ class PaymentNotification extends Model
      * semantically identical payments from different sources (masked vs full
      * phone, 2 vs 4 digit dates) produce the same hash.
      */
-    public static function computeDedupHash(string $bankCode, string $rawText): string
+    public static function computeDedupHash(string $bankCode, string $rawText, string $sourceType): string
     {
         $normalized = app(PaymentNotificationParser::class)
-            ->normalizeForDedup($bankCode, $rawText);
+            ->normalizeForDedup($bankCode, $rawText, $sourceType);
 
         return hash('sha256', $bankCode.$normalized);
     }

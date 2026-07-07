@@ -40,7 +40,7 @@ class PaymentNotificationFactory extends Factory
         return [
             'bank_code' => $bankCode,
             'raw_text' => $rawText,
-            'dedup_hash' => PaymentNotification::computeDedupHash($bankCode, $rawText),
+            'dedup_hash' => PaymentNotification::computeDedupHash($bankCode, $rawText, SourceType::BankApp->value),
             'parse_status' => 'parsed',
             'parsed_data' => [
                 'amount_cents' => (int) ($amount * 100),

@@ -48,7 +48,7 @@ beforeEach(function () {
     $notification = new PaymentNotification;
     $notification->bank_code = 'bdv';
     $notification->raw_text = 'Recibiste un PagomovilBDV por Bs. 3.000,00 del 0424-3153557 Ref: 006236568762 en fecha: 02-06-26 hora: 09:40';
-    $notification->dedup_hash = PaymentNotification::computeDedupHash('bdv', 'test body');
+    $notification->dedup_hash = PaymentNotification::computeDedupHash('bdv', 'test body', 'sms');
     $notification->parse_status = 'pending';
     $notification->save();
     $notification->refresh();
@@ -101,7 +101,7 @@ test('createFromParsed reuses existing unmatched match for same reference — li
     $secondNotification = new PaymentNotification;
     $secondNotification->bank_code = 'bdv';
     $secondNotification->raw_text = $this->notification->raw_text;
-    $secondNotification->dedup_hash = PaymentNotification::computeDedupHash('bdv', 'second body');
+    $secondNotification->dedup_hash = PaymentNotification::computeDedupHash('bdv', 'second body', 'sms');
     $secondNotification->parse_status = 'pending';
     $secondNotification->save();
 
@@ -127,7 +127,7 @@ test('createFromParsed creates duplicate_attempt when matched match exists for s
     $secondNotification = new PaymentNotification;
     $secondNotification->bank_code = 'bdv';
     $secondNotification->raw_text = $this->notification->raw_text;
-    $secondNotification->dedup_hash = PaymentNotification::computeDedupHash('bdv', 'second body');
+    $secondNotification->dedup_hash = PaymentNotification::computeDedupHash('bdv', 'second body', 'sms');
     $secondNotification->parse_status = 'pending';
     $secondNotification->save();
 
@@ -167,7 +167,7 @@ test('createFromParsed with different reference creates new unmatched for each r
     $secondNotification = new PaymentNotification;
     $secondNotification->bank_code = 'bdv';
     $secondNotification->raw_text = $this->notification->raw_text;
-    $secondNotification->dedup_hash = PaymentNotification::computeDedupHash('bdv', 'third body');
+    $secondNotification->dedup_hash = PaymentNotification::computeDedupHash('bdv', 'third body', 'sms');
     $secondNotification->parse_status = 'pending';
     $secondNotification->save();
 

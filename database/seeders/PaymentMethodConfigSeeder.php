@@ -15,7 +15,7 @@ use Illuminate\Database\Seeder;
  * de Crédito).
  *
  * @see NotificationSampleSeeder for bank_code values
- * @see SystemConfigSeeder for regex_bdv / regex_bnc
+ * @see SystemConfigSeeder for regex_bdv_sms / regex_bdv_bank-app / regex_bnc_sms / regex_bnc_bank-app
  */
 class PaymentMethodConfigSeeder extends Seeder
 {

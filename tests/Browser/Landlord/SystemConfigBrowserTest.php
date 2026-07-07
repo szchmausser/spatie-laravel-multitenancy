@@ -17,44 +17,44 @@ beforeEach(function () {
 
 test('index page loads with grouped configs', function () {
     SystemConfig::updateOrCreate(
-        ['key' => 'payment.default_gateway'],
-        ['group' => 'payment', 'value' => 'pago_movil', 'type' => 'string'],
+        ['key' => 'payment.order_expiry_hours'],
+        ['group' => 'payment', 'value' => '48', 'type' => 'integer', 'description' => 'Horas antes de que una orden pendiente de pago expire.'],
     );
     SystemConfig::updateOrCreate(
         ['key' => 'reconciliation.shadow_mode_channels'],
-        ['group' => 'reconciliation', 'value' => '[]', 'type' => 'json'],
+        ['group' => 'reconciliation', 'value' => '[]', 'type' => 'json', 'description' => 'Canales en modo sombra.'],
     );
 
     $this->actingAs($this->admin)
         ->visit(route('landlord.admin.system-configs'))
         ->waitForText('Configuración del Sistema')
-        ->assertSee('payment')
-        ->assertSee('reconciliation')
-        ->assertSee('payment.default_gateway')
+        ->assertSee('Pagos')
+        ->assertSee('Conciliación')
+        ->assertSee('order_expiry_hours')
         ->assertSee('shadow_mode_channels');
 });
 
 test('admin can edit a string config', function () {
     $config = SystemConfig::updateOrCreate(
-        ['key' => 'payment.default_gateway'],
-        ['group' => 'payment', 'value' => 'pago_movil', 'type' => 'string'],
+        ['key' => 'payment.order_expiry_hours'],
+        ['group' => 'payment', 'value' => '48', 'type' => 'integer', 'description' => 'Horas antes de que una orden expire.'],
     );
 
     $this->actingAs($this->admin)
         ->visit(route('landlord.admin.system-configs'))
-        ->waitForText('payment.default_gateway')
+        ->waitForText('order_expiry_hours')
         ->click("[data-testid=\"edit-config-{$config->id}\"]")
         ->waitForText('Editar configuración')
         ->clear('[data-testid="input-value"]')
-        ->type('[data-testid="input-value"]', 'bank_transfer')
+        ->type('[data-testid="input-value"]', '72')
         ->click('[data-testid="save-config-btn"]')
-        ->waitForText('bank_transfer');
+        ->waitForText('72 h');
 });
 
 test('admin can toggle shadow channels via checkboxes', function () {
     $config = SystemConfig::updateOrCreate(
         ['key' => 'reconciliation.shadow_mode_channels'],
-        ['group' => 'reconciliation', 'value' => '[]', 'type' => 'json'],
+        ['group' => 'reconciliation', 'value' => '[]', 'type' => 'json', 'description' => 'Canales en modo sombra.'],
     );
 
     $this->actingAs($this->admin)
@@ -65,13 +65,13 @@ test('admin can toggle shadow channels via checkboxes', function () {
         ->waitForText('Bank App')
         ->check('[data-testid="shadow-channel-bank-app"]')
         ->click('[data-testid="save-config-btn"]')
-        ->waitForText('["bank-app"]');
+        ->waitForText('bank-app');
 });
 
 test('reconciliation polling interval appears in system configs', function () {
     $config = SystemConfig::updateOrCreate(
         ['key' => 'reconciliation.polling_interval_seconds'],
-        ['group' => 'reconciliation', 'value' => '30', 'type' => 'integer'],
+        ['group' => 'reconciliation', 'value' => '30', 'type' => 'integer', 'description' => 'Segundos entre auto-refresh del dashboard.'],
     );
 
     $this->actingAs($this->admin)

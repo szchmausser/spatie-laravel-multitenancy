@@ -445,7 +445,7 @@ test('reverse matches an existing unmatched notification and auto-verifies payme
     $notification = new PaymentNotification;
     $notification->bank_code = 'bdv';
     $notification->raw_text = 'test reverse match';
-    $notification->dedup_hash = PaymentNotification::computeDedupHash('bdv', 'test reverse match');
+    $notification->dedup_hash = PaymentNotification::computeDedupHash('bdv', 'test reverse match', 'sms');
     $notification->parse_status = 'pending';
     $notification->save();
     $notification->refresh();
@@ -504,7 +504,7 @@ test('reverse match falls back to reference-only when amount mismatches and send
     $notification = new PaymentNotification;
     $notification->bank_code = 'bdv';
     $notification->raw_text = 'test amount mismatch reverse';
-    $notification->dedup_hash = PaymentNotification::computeDedupHash('bdv', 'test amount mismatch reverse');
+    $notification->dedup_hash = PaymentNotification::computeDedupHash('bdv', 'test amount mismatch reverse', 'sms');
     $notification->parse_status = 'pending';
     $notification->save();
     $notification->refresh();
@@ -594,7 +594,7 @@ test('reverse match stays as pending when shadow mode is on', function () {
     $notification = new PaymentNotification;
     $notification->bank_code = 'bdv';
     $notification->raw_text = 'test shadow reverse match';
-    $notification->dedup_hash = PaymentNotification::computeDedupHash('bdv', 'test shadow reverse match');
+    $notification->dedup_hash = PaymentNotification::computeDedupHash('bdv', 'test shadow reverse match', 'sms');
     $notification->parse_status = 'pending';
     $notification->save();
     $notification->refresh();
@@ -644,7 +644,7 @@ test('does not reverse match non-pago-movil payment', function () {
     $notification = new PaymentNotification;
     $notification->bank_code = 'bdv';
     $notification->raw_text = 'test non-pago-movil';
-    $notification->dedup_hash = PaymentNotification::computeDedupHash('bdv', 'test non-pago-movil');
+    $notification->dedup_hash = PaymentNotification::computeDedupHash('bdv', 'test non-pago-movil', 'sms');
     $notification->parse_status = 'pending';
     $notification->save();
     $notification->refresh();

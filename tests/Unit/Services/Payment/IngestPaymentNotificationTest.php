@@ -33,26 +33,16 @@ beforeEach(function () {
         'type' => 'json',
     ]);
 
-    // Real BDV regex pattern (backward compat for SMS path)
+    // Per-channel regex for BDV (sms and bank-app)
     SystemConfig::create([
         'group' => 'reconciliation',
-        'key' => 'regex_bdv',
+        'key' => 'regex_bdv_sms',
         'value' => '/Recibiste\s+un\s+PagomovilBDV\s+por\s+Bs\.\s+(?<amount>[\d.,]+)\s+del\s+(?<phone>[\d-]+)\s+Ref:\s+(?<reference>\d+)\s+en\s+fecha:\s+(?<date>[\d-]+)\s+hora:\s+(?<time>[\d:]+)/i',
         'type' => 'string',
     ]);
-
-    // Channel-specific regex for bank-app (matching the column default)
     SystemConfig::create([
         'group' => 'reconciliation',
         'key' => 'regex_bdv_bank-app',
-        'value' => '/Recibiste\s+un\s+PagomovilBDV\s+por\s+Bs\.\s+(?<amount>[\d.,]+)\s+del\s+(?<phone>[\d-]+)\s+Ref:\s+(?<reference>\d+)\s+en\s+fecha:\s+(?<date>[\d-]+)\s+hora:\s+(?<time>[\d:]+)/i',
-        'type' => 'string',
-    ]);
-
-    // Channel-specific regex backward compat (Android push uses same pattern)
-    SystemConfig::create([
-        'group' => 'reconciliation',
-        'key' => 'regex_bdv_android_push',
         'value' => '/Recibiste\s+un\s+PagomovilBDV\s+por\s+Bs\.\s+(?<amount>[\d.,]+)\s+del\s+(?<phone>[\d-]+)\s+Ref:\s+(?<reference>\d+)\s+en\s+fecha:\s+(?<date>[\d-]+)\s+hora:\s+(?<time>[\d:]+)/i',
         'type' => 'string',
     ]);
@@ -64,7 +54,7 @@ beforeEach(function () {
     $notification = new PaymentNotification;
     $notification->bank_code = 'bdv';
     $notification->raw_text = 'Recibiste un PagomovilBDV por Bs. 3.000,00 del 0424-3153557 Ref: 006236568762 en fecha: 02-06-26 hora: 09:40';
-    $notification->dedup_hash = PaymentNotification::computeDedupHash('bdv', 'test body');
+    $notification->dedup_hash = PaymentNotification::computeDedupHash('bdv', 'test body', 'sms');
     $notification->parse_status = 'pending';
     $notification->save();
     $notification->refresh();
@@ -75,9 +65,8 @@ beforeEach(function () {
 afterEach(function () {
     Cache::forget('system_config.reconciliation.shadow_mode_channels');
     Cache::forget('system_config.reconciliation.match_window_hours');
-    Cache::forget('system_config.regex_bdv');
+    Cache::forget('system_config.regex_bdv_sms');
     Cache::forget('system_config.regex_bdv_bank-app');
-    Cache::forget('system_config.regex_bdv_android_push');
 });
 
 // ─── Successful parse → match → parse_status = parsed ───
@@ -130,7 +119,7 @@ test('job with parse failure marks notification as failed and does not attempt m
     $badNotification = new PaymentNotification;
     $badNotification->bank_code = 'bdv';
     $badNotification->raw_text = 'This text does not match any regex pattern';
-    $badNotification->dedup_hash = PaymentNotification::computeDedupHash('bdv', 'unparseable');
+    $badNotification->dedup_hash = PaymentNotification::computeDedupHash('bdv', 'unparseable', 'sms');
     $badNotification->parse_status = 'pending';
     $badNotification->save();
     $badNotification->refresh();

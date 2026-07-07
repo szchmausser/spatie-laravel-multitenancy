@@ -15,7 +15,7 @@ class NotificationSampleSeeder extends Seeder
         $samples = $this->generateSamples();
 
         foreach ($samples as $sample) {
-            $dedupHash = PaymentNotification::computeDedupHash($sample['bank_code'], $sample['raw_text']);
+            $dedupHash = PaymentNotification::computeDedupHash($sample['bank_code'], $sample['raw_text'], 'sms');
 
             // Skip if already seeded (idempotent)
             if (PaymentNotification::where('dedup_hash', $dedupHash)->exists()) {

@@ -1,6 +1,16 @@
 import { Head, router, usePage } from '@inertiajs/react';
 import { update } from '@/routes/landlord/admin/system-configs';
-import { Pencil, Settings } from 'lucide-react';
+import {
+    Banknote,
+    Clock,
+    Code,
+    CreditCard,
+    Cpu,
+    Pencil,
+    Settings,
+    Smartphone,
+    Zap,
+} from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -43,6 +53,29 @@ type PageProps = {
     errors?: Record<string, string>;
 };
 
+const groupMeta: Record<string, { label: string; description: string; icon: typeof Settings }> = {
+    payment: {
+        label: 'Pagos',
+        description: 'Expiración de órdenes',
+        icon: CreditCard,
+    },
+    reconciliation: {
+        label: 'Conciliación',
+        description: 'Matching de notificaciones bancarias con pagos',
+        icon: Banknote,
+    },
+    regex: {
+        label: 'Expresiones Regulares',
+        description: 'Patrones de parseo para notificaciones bancarias',
+        icon: Code,
+    },
+    device: {
+        label: 'Dispositivos',
+        description: 'Heartbeats y retención de datos del dispositivo Android',
+        icon: Smartphone,
+    },
+};
+
 const typeLabel: Record<string, string> = {
     string: 'Texto',
     integer: 'Entero',
@@ -56,6 +89,36 @@ const typeVariant: Record<string, 'default' | 'secondary' | 'outline' | 'destruc
     boolean: 'outline',
     json: 'destructive',
 };
+
+function formatValue(config: SystemConfig): string {
+    if (config.type === 'boolean') {
+        return config.value === '1' || config.value === 'true' ? 'Activado' : 'Desactivado';
+    }
+    if (config.type === 'json') {
+        try {
+            const parsed = JSON.parse(config.value);
+            if (Array.isArray(parsed)) {
+                return parsed.length === 0 ? 'Vacío' : parsed.join(', ');
+            }
+            return config.value;
+        } catch {
+            return config.value;
+        }
+    }
+    if (config.type === 'integer') {
+        const num = parseInt(config.value, 10);
+        if (config.key.includes('_minutes')) return `${num} min`;
+        if (config.key.includes('_hours')) return `${num} h`;
+        if (config.key.includes('_seconds')) return `${num} seg`;
+        if (config.key.includes('_days')) return `${num} días`;
+        return config.value;
+    }
+    // Truncate long regex for display
+    if (config.key.startsWith('regex_') && config.value.length > 60) {
+        return config.value.substring(0, 57) + '...';
+    }
+    return config.value;
+}
 
 function EditDialog({
     config,
@@ -71,16 +134,20 @@ function EditDialog({
     const isShadowChannels = config?.key === 'reconciliation.shadow_mode_channels';
     const inputType = config?.type === 'integer' ? 'number' : 'text';
 
-    // For string values, initialize with current value; for boolean, use checked state
     const [stringValue, setStringValue] = useState(config?.value ?? '');
     const [booleanValue, setBooleanValue] = useState(
         config?.value === '1' || config?.value === 'true',
     );
     const [selectedChannels, setSelectedChannels] = useState<string[]>(
-        isShadowChannels ? (() => {
-            try { return JSON.parse(config?.value ?? '[]'); }
-            catch { return []; }
-        })() : [],
+        isShadowChannels
+            ? (() => {
+                  try {
+                      return JSON.parse(config?.value ?? '[]');
+                  } catch {
+                      return [];
+                  }
+              })()
+            : [],
     );
     const [processing, setProcessing] = useState(false);
 
@@ -92,43 +159,44 @@ function EditDialog({
         );
     };
 
-    // Reset form state when dialog opens with a different config
     useEffect(() => {
         if (config) {
             setStringValue(config.value);
             setBooleanValue(config.value === '1' || config.value === 'true');
             if (isShadowChannels) {
-                try { setSelectedChannels(JSON.parse(config.value ?? '[]')); }
-                catch { setSelectedChannels([]); }
+                try {
+                    setSelectedChannels(JSON.parse(config.value ?? '[]'));
+                } catch {
+                    setSelectedChannels([]);
+                }
             }
         }
-    }, [config]);
+    }, [config, isShadowChannels]);
 
     function handleSubmit() {
         if (!config) return;
 
         setProcessing(true);
 
-        const value = config.type === 'boolean'
-            ? (booleanValue ? '1' : '0')
-            : isShadowChannels
-                ? JSON.stringify(selectedChannels)
-                : stringValue;
+        const value =
+            config.type === 'boolean'
+                ? booleanValue
+                    ? '1'
+                    : '0'
+                : isShadowChannels
+                  ? JSON.stringify(selectedChannels)
+                  : stringValue;
 
-        router.put(
-            update(config.id).url,
-            { value },
-            {
-                preserveScroll: true,
-                onSuccess: () => {
-                    onOpenChange(false);
-                    setProcessing(false);
-                },
-                onError: () => {
-                    setProcessing(false);
-                },
+        router.put(update(config.id).url, { value }, {
+            preserveScroll: true,
+            onSuccess: () => {
+                onOpenChange(false);
+                setProcessing(false);
             },
-        );
+            onError: () => {
+                setProcessing(false);
+            },
+        });
     }
 
     if (!config) return null;
@@ -154,6 +222,15 @@ function EditDialog({
                         </code>
                     </div>
 
+                    {config.description && (
+                        <div className="space-y-2">
+                            <Label>Descripción</Label>
+                            <p className="rounded-md border bg-muted/50 px-3 py-2 text-sm text-muted-foreground leading-relaxed">
+                                {config.description}
+                            </p>
+                        </div>
+                    )}
+
                     <div className="space-y-2">
                         <Label htmlFor="value">Valor</Label>
                         {config.type === 'boolean' ? (
@@ -171,16 +248,29 @@ function EditDialog({
                                 </Label>
                             </div>
                         ) : isShadowChannels ? (
-                            <div className="flex flex-wrap gap-4" data-testid="shadow-channels-edit">
+                            <div
+                                className="flex flex-wrap gap-4"
+                                data-testid="shadow-channels-edit"
+                            >
                                 {availableChannels.map((channel) => (
-                                    <div key={channel.value} className="flex items-center gap-2">
+                                    <div
+                                        key={channel.value}
+                                        className="flex items-center gap-2"
+                                    >
                                         <Checkbox
                                             id={`shadow-${channel.value}`}
-                                            checked={selectedChannels.includes(channel.value)}
-                                            onCheckedChange={() => toggleChannel(channel.value)}
+                                            checked={selectedChannels.includes(
+                                                channel.value,
+                                            )}
+                                            onCheckedChange={() =>
+                                                toggleChannel(channel.value)
+                                            }
                                             data-testid={`shadow-channel-${channel.value}`}
                                         />
-                                        <Label htmlFor={`shadow-${channel.value}`} className="cursor-pointer">
+                                        <Label
+                                            htmlFor={`shadow-${channel.value}`}
+                                            className="cursor-pointer"
+                                        >
                                             {channel.label}
                                         </Label>
                                     </div>
@@ -192,7 +282,7 @@ function EditDialog({
                                 data-testid="input-value"
                                 value={stringValue}
                                 onChange={(e) => setStringValue(e.target.value)}
-                                className="border-input file:text-foreground placeholder:text-muted-foreground selection:bg-primary selection:text-primary-foreground flex h-24 w-full min-w-0 rounded-md border bg-transparent px-3 py-2 text-base font-mono text-xs shadow-xs transition-[color,box-shadow] outline-none file:inline-flex file:h-7 file:border-0 file:bg-transparent file:text-sm file:font-medium disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 md:text-sm focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive"
+                                className="border-input file:text-foreground placeholder:text-muted-foreground selection:bg-primary selection:text-primary-foreground flex h-24 w-full min-w-0 rounded-md border bg-transparent px-3 py-2 font-mono text-xs shadow-xs transition-[color,box-shadow] outline-none file:inline-flex file:h-7 file:border-0 file:bg-transparent file:text-sm file:font-medium disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 md:text-sm focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive"
                             />
                         ) : (
                             <Input
@@ -204,20 +294,26 @@ function EditDialog({
                             />
                         )}
                         {errors.value && (
-                            <p className="text-sm text-destructive">{errors.value}</p>
+                            <p className="text-sm text-destructive">
+                                {errors.value}
+                            </p>
                         )}
                     </div>
 
-                    {config.description && (
-                        <p className="text-sm text-muted-foreground">{config.description}</p>
-                    )}
                 </div>
 
                 <DialogFooter>
-                    <Button variant="outline" onClick={() => onOpenChange(false)}>
+                    <Button
+                        variant="outline"
+                        onClick={() => onOpenChange(false)}
+                    >
                         Cancelar
                     </Button>
-                    <Button onClick={handleSubmit} disabled={processing} data-testid="save-config-btn">
+                    <Button
+                        onClick={handleSubmit}
+                        disabled={processing}
+                        data-testid="save-config-btn"
+                    >
                         {processing ? 'Guardando...' : 'Guardar'}
                     </Button>
                 </DialogFooter>
@@ -242,15 +338,19 @@ export default function SystemConfigsIndex({ groups }: PageProps) {
         <>
             <Head title="Configuración del Sistema" />
 
-            <div className="flex h-full flex-1 flex-col gap-6 p-6">
-                <div className="flex items-center justify-between">
+            <div className="flex h-full flex-1 flex-col gap-4 overflow-auto rounded-xl p-4">
+                <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
+                        <Settings className="h-5 w-5 text-primary" />
+                    </div>
                     <div>
-                        <h1 className="text-2xl font-bold">Configuración del Sistema</h1>
-                        <p className="mt-1 text-sm text-muted-foreground">
-                            Gestionar configuraciones dinámicas del sistema
+                        <h1 className="text-2xl font-bold">
+                            Configuración del Sistema
+                        </h1>
+                        <p className="text-sm text-muted-foreground">
+                            Parámetros operacionales del sistema
                         </p>
                     </div>
-                    <Settings className="h-8 w-8 text-muted-foreground" />
                 </div>
 
                 {flash?.success && (
@@ -266,58 +366,111 @@ export default function SystemConfigsIndex({ groups }: PageProps) {
                         </CardContent>
                     </Card>
                 ) : (
-                    groupKeys.map((group) => (
-                        <Card key={group}>
-                            <CardHeader>
-                                <CardTitle className="capitalize">{group}</CardTitle>
-                            </CardHeader>
-                            <CardContent className="p-0">
-                                <div className="divide-y">
-                                    {groups[group].map((config) => (
-                                        <div
-                                            key={config.id}
-                                            className="flex items-center justify-between gap-4 px-6 py-4"
-                                        >
-                                            <div className="min-w-0 flex-1 space-y-1">
-                                                <div className="flex items-center gap-2">
-                                                    <code className="rounded bg-muted px-1.5 py-0.5 text-xs font-mono font-medium">
-                                                        {config.key}
-                                                    </code>
-                                                    <Badge
-                                                        variant={typeVariant[config.type] ?? 'secondary'}
-                                                    >
-                                                        {typeLabel[config.type] ?? config.type}
-                                                    </Badge>
-                                                </div>
-                                                <div className="truncate text-sm text-muted-foreground">
-                                                    {config.type === 'boolean'
-                                                        ? (config.value === '1' || config.value === 'true'
-                                                              ? 'Activado'
-                                                              : 'Desactivado')
-                                                        : config.value}
-                                                </div>
-                                                {config.description && (
-                                                    <p className="text-xs text-muted-foreground">
-                                                        {config.description}
-                                                    </p>
-                                                )}
-                                            </div>
-                                            <Button
-                                                variant="outline"
-                                                size="sm"
-                                                onClick={() => openEdit(config)}
-                                                className="shrink-0"
-                                                data-testid={`edit-config-${config.id}`}
-                                            >
-                                                <Pencil className="h-4 w-4" />
-                                                <span className="hidden sm:inline">Editar</span>
-                                            </Button>
+                    <div className="flex flex-col gap-4">
+                        {groupKeys.map((group) => {
+                            const meta = groupMeta[group] ?? {
+                                label: group,
+                                description: '',
+                                icon: Cpu,
+                            };
+                            const Icon = meta.icon;
+
+                            return (
+                                <Card key={group} className="overflow-hidden">
+                                    <CardHeader className="border-b bg-muted/30 py-3">
+                                        <div className="flex items-center gap-2">
+                                            <Icon className="h-4 w-4 text-muted-foreground" />
+                                            <CardTitle className="text-sm font-semibold">
+                                                {meta.label}
+                                            </CardTitle>
                                         </div>
-                                    ))}
-                                </div>
-                            </CardContent>
-                        </Card>
-                    ))
+                                        {meta.description && (
+                                            <p className="text-xs text-muted-foreground">
+                                                {meta.description}
+                                            </p>
+                                        )}
+                                    </CardHeader>
+                                    <CardContent className="p-0">
+                                        <div className="divide-y">
+                                            {groups[group].map((config) => (
+                                                <div
+                                                    key={config.id}
+                                                    className="flex items-center justify-between gap-3 px-4 py-3 transition-colors hover:bg-muted/20"
+                                                >
+                                                    <div className="min-w-0 flex-1 space-y-1">
+                                                        <div className="flex items-center gap-2">
+                                                            <code className="rounded bg-muted px-1.5 py-0.5 text-xs font-mono font-medium">
+                                                                {config.key
+                                                                    .split('.')
+                                                                    .pop()}
+                                                            </code>
+                                                            <Badge
+                                                                variant={
+                                                                    typeVariant[
+                                                                        config
+                                                                            .type
+                                                                    ] ??
+                                                                    'secondary'
+                                                                }
+                                                                className="text-[10px]"
+                                                            >
+                                                                {typeLabel[
+                                                                    config.type
+                                                                ] ?? config.type}
+                                                            </Badge>
+                                                        </div>
+                                                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                                            {config.type ===
+                                                            'boolean' ? (
+                                                                <span
+                                                                    className={`inline-block h-2 w-2 rounded-full ${
+                                                                        config.value ===
+                                                                            '1' ||
+                                                                        config.value ===
+                                                                            'true'
+                                                                            ? 'bg-green-500'
+                                                                            : 'bg-muted-foreground/30'
+                                                                    }`}
+                                                                />
+                                                            ) : config.key.startsWith(
+                                                                  'regex_',
+                                                              ) ? (
+                                                                <Zap className="h-3 w-3 text-amber-500" />
+                                                            ) : config.type ===
+                                                              'json' ? (
+                                                                <span className="inline-block h-2 w-2 rounded-full bg-blue-500" />
+                                                            ) : null}
+                                                            <span className="truncate">
+                                                                {formatValue(
+                                                                    config,
+                                                                )}
+                                                            </span>
+                                                        </div>
+                                                        {config.description && (
+                                                            <p className="text-xs text-muted-foreground/70 line-clamp-3">
+                                                                {config.description}
+                                                            </p>
+                                                        )}
+                                                    </div>
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        onClick={() =>
+                                                            openEdit(config)
+                                                        }
+                                                        className="h-8 w-8 p-0"
+                                                        data-testid={`edit-config-${config.id}`}
+                                                    >
+                                                        <Pencil className="h-3.5 w-3.5" />
+                                                    </Button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </CardContent>
+                                </Card>
+                            );
+                        })}
+                    </div>
                 )}
             </div>
 
@@ -327,7 +480,6 @@ export default function SystemConfigsIndex({ groups }: PageProps) {
                 onOpenChange={(open) => {
                     setDialogOpen(open);
                     if (!open) {
-                        // Reset edit config when dialog closes
                         setTimeout(() => setEditConfig(null), 200);
                     }
                 }}

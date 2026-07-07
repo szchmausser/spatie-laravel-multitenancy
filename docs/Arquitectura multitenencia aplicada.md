@@ -2210,7 +2210,7 @@ php artisan config:clear
 | 3 | `ResourcesSeeder` | landlord | 3 recursos de prueba: Getting Started Guide (free), Advanced PDF (premium, incluido en basic+premium), Video Course (premium, no asignado a ningún plan → buy-only) |
 | 4 | `TenantsSeeder` | landlord | 10 tenants + BDs físicas + suscripciones (3 free + 6 basic + 1 premium) |
 | 5 | `PaymentMethodConfigSeeder` | landlord | 4 métodos de pago: BDV y BNC (PagoMóvil + Transferencia) |
-| 6 | `SystemConfigSeeder` | landlord | 7 configs: gateway, expiry, heartbeat, shadow mode, regex BDV/BNC |
+| 6 | `SystemConfigSeeder` | landlord | 10 configs: order expiry (48h), match window (72h), shadow mode, polling interval (30s), device heartbeat (1min), heartbeat retention (30d), regex BDV/BNC por SMS y app bancaria |
 | 7 | `TenantPermissionsSeeder` | tenant (x10) | Roles: owner, member, tenant-admin + permiso `change-plan` |
 | 8 | `TenantUsersSeeder` | tenant (x10) | 1 usuario owner por tenant con password fijo |
 

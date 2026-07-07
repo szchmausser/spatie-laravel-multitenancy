@@ -11,9 +11,11 @@ use Database\Seeders\NotificationSampleSeeder;
 use Illuminate\Support\Facades\Artisan;
 
 beforeEach(function () {
-    // Real regex patterns from plan section 2.1 (with /i delimiters)
-    SystemConfig::create(['group' => 'reconciliation', 'key' => 'regex_bdv', 'value' => '/Recibiste\s+un\s+PagomovilBDV\s+por\s+Bs\.\s+(?<amount>[\d.,]+)\s+del\s+(?<phone>[\d-]+)\s+Ref:\s+(?<reference>\d+)\s+en\s+fecha:\s+(?<date>[\d-]+)\s+hora:\s+(?<time>[\d:]+)/i', 'type' => 'string']);
-    SystemConfig::create(['group' => 'reconciliation', 'key' => 'regex_bnc', 'value' => '/BNC\s+Pago\s+Movil\s+Recibido\s+Bs\.(?<amount>[\d.,]+)\s+Telf\.(?<phone>[\d*]+)\s+Dia:(?<date>[\d\/]+)-(?<time>[\d:]+)\s+Ref:(?<reference>\d+)/i', 'type' => 'string']);
+    // Per-channel regex patterns (no fallback — sourceType is required)
+    SystemConfig::create(['group' => 'reconciliation', 'key' => 'regex_bdv_sms', 'value' => '/Recibiste\s+un\s+PagomovilBDV\s+por\s+Bs\.\s+(?<amount>[\d.,]+)\s+del\s+(?<phone>[\d-]+)\s+Ref:\s+(?<reference>\d+)\s+en\s+fecha:\s+(?<date>[\d-]+)\s+hora:\s+(?<time>[\d:]+)/i', 'type' => 'string']);
+    SystemConfig::create(['group' => 'reconciliation', 'key' => 'regex_bdv_bank-app', 'value' => '/Recibiste\s+un\s+PagomovilBDV\s+por\s+Bs\.\s+(?<amount>[\d.,]+)\s+del\s+(?<phone>[\d-]+)\s+Ref:\s+(?<reference>\d+)\s+en\s+fecha:\s+(?<date>[\d-]+)\s+hora:\s+(?<time>[\d:]+)/i', 'type' => 'string']);
+    SystemConfig::create(['group' => 'reconciliation', 'key' => 'regex_bnc_sms', 'value' => '/BNC\s+Pago\s+Movil\s+Recibido\s+Bs\.(?<amount>[\d.,]+)\s+Telf\.(?<phone>[\d*]+)\s+Dia:(?<date>[\d\/]+)-(?<time>[\d:]+)\s+Ref:(?<reference>\d+)/i', 'type' => 'string']);
+    SystemConfig::create(['group' => 'reconciliation', 'key' => 'regex_bnc_bank-app', 'value' => '/BNC\s+Pago\s+Movil\s+Recibido\s+Bs\.(?<amount>[\d.,]+)\s+Telf\.(?<phone>[\d*]+)\s+Dia:(?<date>[\d\/]+)-(?<time>[\d:]+)\s+Ref:(?<reference>\d+)/i', 'type' => 'string']);
 });
 
 // --- Command Tests ---
@@ -42,7 +44,7 @@ it('creates notification with correct BDV format', function () {
     ]);
 
     $notification = PaymentNotification::first();
-    $expectedHash = PaymentNotification::computeDedupHash('bdv', $notification->raw_text);
+    $expectedHash = PaymentNotification::computeDedupHash('bdv', $notification->raw_text, 'sms');
 
     expect($notification->dedup_hash)->toBe($expectedHash);
     expect($notification->raw_text)->toContain('PagomovilBDV');
@@ -74,7 +76,7 @@ it('creates dedup_hash collision for duplicate notifications', function () {
     $notification = PaymentNotification::first();
     $hash1 = $notification->dedup_hash;
 
-    $hash2 = PaymentNotification::computeDedupHash('bdv', $notification->raw_text);
+    $hash2 = PaymentNotification::computeDedupHash('bdv', $notification->raw_text, 'sms');
 
     expect($hash1)->toBe($hash2);
     expect($hash1)->toHaveLength(64);
@@ -177,8 +179,8 @@ it('scopeFailed returns only failed notifications', function () {
 });
 
 it('computeDedupHash is deterministic', function () {
-    $hash1 = PaymentNotification::computeDedupHash('bdv', 'test raw text');
-    $hash2 = PaymentNotification::computeDedupHash('bdv', 'test raw text');
+    $hash1 = PaymentNotification::computeDedupHash('bdv', 'test raw text', 'sms');
+    $hash2 = PaymentNotification::computeDedupHash('bdv', 'test raw text', 'sms');
 
     expect($hash1)->toBe($hash2);
     expect($hash1)->toHaveLength(64);
@@ -188,8 +190,8 @@ it('computeDedupHash uses normalized input — same BNC payment from different s
     $maskedBody = 'BNC Pago Movil Recibido Bs.10455,00 Telf.0416***9503 Dia:31/05/26-20:25 Ref:603185603 Llamar al 0500-2625000 si no realizo esta Operacion';
     $fullBody = 'BNC Pago Movil Recibido Bs.10455,00 Telf.041612349503 Dia:31/05/2026-20:25 Ref:603185603 Llamar al 0500-2625000 si no realizo esta Operacion';
 
-    $hash1 = PaymentNotification::computeDedupHash('bnc', $maskedBody);
-    $hash2 = PaymentNotification::computeDedupHash('bnc', $fullBody);
+    $hash1 = PaymentNotification::computeDedupHash('bnc', $maskedBody, 'sms');
+    $hash2 = PaymentNotification::computeDedupHash('bnc', $fullBody, 'sms');
 
     expect($hash1)->toBe($hash2);
     expect($hash1)->toHaveLength(64);
@@ -198,7 +200,7 @@ it('computeDedupHash uses normalized input — same BNC payment from different s
 it('computeDedupHash for BDV uses full phone without canonicalization', function () {
     $body = 'Recibiste un PagomovilBDV por Bs. 3.000,00 del 0424-3153557 Ref: 006236568762 en fecha: 02-06-26 hora: 09:40';
 
-    $hash = PaymentNotification::computeDedupHash('bdv', $body);
+    $hash = PaymentNotification::computeDedupHash('bdv', $body, 'sms');
     expect($hash)->toHaveLength(64);
 });
 

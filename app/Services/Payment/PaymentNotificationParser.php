@@ -9,17 +9,15 @@ use Carbon\Carbon;
 class PaymentNotificationParser
 {
     /**
-     * Parse a raw notification text for a given bank.
+     * Parse a raw notification text for a given bank and channel.
      *
-     * When $sourceType is provided, looks for regex_{bankCode}_{sourceType}
-     * in SystemConfig. Returns null if the channel-specific key does not exist.
+     * Requires $sourceType — looks for regex_{bankCode}_{sourceType} in SystemConfig.
+     * Returns null if no regex is configured for the channel or if parsing fails.
      *
-     * When $sourceType is null (backward compat), uses the generic regex_{bankCode}.
-     *
-     * Returns null when the notification cannot be parsed (unknown bank,
-     * regex doesn't match, insufficient data).
+     * No fallback to generic regex_{bankCode}. If the channel regex is missing,
+     * the bank has likely changed its notification format and needs attention.
      */
-    public function parse(string $bankCode, string $text, ?string $sourceType = null): ?ParsedPayment
+    public function parse(string $bankCode, string $text, string $sourceType): ?ParsedPayment
     {
         // 1. Get regex for this bank+channel (cached 1h via SystemConfig)
         $regex = $this->resolveRegex($bankCode, $sourceType);
@@ -55,18 +53,15 @@ class PaymentNotificationParser
     }
 
     /**
-     * Resolve the regex key for a given bank and optional source type.
+     * Resolve the regex key for a given bank and source type.
      *
-     * When $sourceType is provided, looks for regex_{bankCode}_{sourceType}.
-     * When $sourceType is null, uses regex_{bankCode} (backward compat).
+     * Looks for regex_{bankCode}_{sourceType} only. No fallback.
      *
      * Returns the regex pattern string, or null if the key is not configured.
      */
-    private function resolveRegex(string $bankCode, ?string $sourceType): ?string
+    private function resolveRegex(string $bankCode, string $sourceType): ?string
     {
-        $key = $sourceType
-            ? "regex_{$bankCode}_{$sourceType}"
-            : "regex_{$bankCode}";
+        $key = "regex_{$bankCode}_{$sourceType}";
 
         return SystemConfig::get($key);
     }
@@ -158,7 +153,7 @@ class PaymentNotificationParser
      *
      * The result is intended for: hash('sha256', $bankCode . $normalized)
      */
-    public function normalizeForDedup(string $bankCode, string $rawBody, ?string $sourceType = null): string
+    public function normalizeForDedup(string $bankCode, string $rawBody, string $sourceType): string
     {
         $regex = $this->resolveRegex($bankCode, $sourceType);
 

@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Enums\BankCode;
+use App\Enums\SourceType;
 use App\Models\PaymentNotification;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
@@ -16,7 +17,8 @@ class SimulatePaymentNotification extends Command
         {--bank= : Bank code (bdv, bnc, banesco, mercantil, provincial)}
         {--amount= : Amount in Bs (e.g., 3000.00)}
         {--reference= : Bank reference (e.g., 006236568762)}
-        {--phone=04243153557 : Sender phone number}';
+        {--phone=04243153557 : Sender phone number}
+        {--source=sms : Source type (sms, bank-app)}';
 
     /**
      * The console command description.
@@ -32,6 +34,7 @@ class SimulatePaymentNotification extends Command
         $amount = $this->option('amount');
         $reference = $this->option('reference');
         $phone = $this->option('phone');
+        $source = $this->option('source');
 
         if (! $bank || ! $amount || ! $reference) {
             $this->error('Required options: --bank, --amount, --reference');
@@ -48,8 +51,17 @@ class SimulatePaymentNotification extends Command
             return Command::FAILURE;
         }
 
+        $validSources = SourceType::values();
+
+        if (! in_array($source, $validSources, true)) {
+            $display = implode(', ', $validSources);
+            $this->error("Invalid source type [{$source}]. Valid: {$display}");
+
+            return Command::FAILURE;
+        }
+
         $rawText = $this->formatNotification($bank, $amount, $reference, $phone);
-        $dedupHash = PaymentNotification::computeDedupHash($bank, $rawText);
+        $dedupHash = PaymentNotification::computeDedupHash($bank, $rawText, $source);
 
         $notification = PaymentNotification::forceCreate([
             'bank_code' => $bank,
