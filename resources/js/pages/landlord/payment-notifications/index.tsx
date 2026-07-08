@@ -440,7 +440,7 @@ export default function PaymentNotificationsIndex({
                                                                         Texto
                                                                         original
                                                                     </h4>
-                                                                    <pre className="max-h-40 overflow-auto rounded bg-background p-2 text-xs whitespace-pre-wrap break-words">
+                                                                    <pre className="max-h-none rounded bg-background p-2 text-xs whitespace-pre-wrap break-words">
                                                                         {
                                                                             item.raw_text
                                                                         }
@@ -455,10 +455,10 @@ export default function PaymentNotificationsIndex({
                                                                             Datos
                                                                             parseados
                                                                         </h4>
-                                                                        <pre className="max-h-40 overflow-auto rounded bg-background p-2 text-xs whitespace-pre-wrap break-words">
+                                                                        <pre className="rounded bg-background p-2 text-xs whitespace-pre-wrap break-words">
                                                                             {JSON.stringify(
                                                                                 item
-                                                                                    .parsed_data,
+                                                                                    .parsed_data_display ?? item.parsed_data,
                                                                                 null,
                                                                                 2,
                                                                             )}

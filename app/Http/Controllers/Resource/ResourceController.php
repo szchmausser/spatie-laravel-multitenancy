@@ -187,16 +187,21 @@ class ResourceController extends Controller
      */
     private function userCanAccess(?Tenant $tenant, Resource $resource): bool
     {
-        if (! $resource->is_premium) {
-            return true;
+        // If the resource is assigned to any plan, it's gated — treat as premium
+        // regardless of the is_premium flag.
+        if ($resource->is_premium || $resource->plans()->exists()) {
+            if ($tenant && $tenant->subscription?->plan
+                && $resource->plans()
+                    ->where('price_cents', '<=', $tenant->subscription->plan->price_cents)
+                    ->exists()) {
+                return true;
+            }
+
+            return $this->tenantHasExplicitEntitlement($tenant, $resource);
         }
 
-        if ($tenant && $tenant->subscription?->plan?->resources()
-            ->where('resource_id', $resource->id)->exists()) {
-            return true;
-        }
-
-        return $this->tenantHasExplicitEntitlement($tenant, $resource);
+        // Truly free resource — no plan assignment, not marked premium.
+        return true;
     }
 
     /**
@@ -233,14 +238,22 @@ class ResourceController extends Controller
             'slug' => $r->slug,
             'description' => $r->description,
             'is_premium' => $r->is_premium,
+            'has_plans_assigned' => $r->plans()->exists(),
             'price_cents' => $r->price_cents,
             'file_size_bytes' => $r->file_size_bytes,
             'formatted_file_size' => $r->formattedFileSize(),
             'mime_type' => $r->mime_type,
             'can_download' => $this->userCanAccess($tenant, $r),
             'has_explicit_entitlement' => $this->tenantHasExplicitEntitlement($tenant, $r),
-            'is_included_in_plan' => $tenant && $tenant->subscription?->plan?->resources()
-                ->where('resource_id', $r->id)->exists(),
+            'is_included_in_plan' => $tenant && $tenant->subscription?->plan
+                ? $r->plans()
+                    ->where('price_cents', '<=', $tenant->subscription->plan->price_cents)
+                    ->exists()
+                : false,
+            'included_in_plan_names' => $r->plans()
+                ->pluck('plans.name')
+                ->values()
+                ->all(),
         ];
     }
 

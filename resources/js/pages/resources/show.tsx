@@ -65,23 +65,34 @@ export default function ResourceShow({ resource }: { resource: Resource }) {
                                 </CardDescription>
                             )}
                         </div>
-                        {resource.is_premium ? (
-                            <Badge
-                                variant="default"
-                                data-testid={`resource-show-premium-badge-${resource.slug}`}
-                            >
-                                <Sparkles className="mr-1 h-3 w-3" />
-                                Premium
-                            </Badge>
-                        ) : (
+                        {(resource.has_plans_assigned || resource.is_premium) && !resource.is_included_in_plan && !resource.has_explicit_entitlement ? (
+                                <Badge
+                                    variant="secondary"
+                                    data-testid={`resource-show-buy-separate-badge-${resource.slug}`}
+                                >
+                                    <Sparkles className="mr-1 h-3 w-3" />
+                                    Comprar por separado
+                                </Badge>
+                            ) : !(resource.has_plans_assigned || resource.is_premium) && !resource.is_included_in_plan && !resource.has_explicit_entitlement ? (
+                                <Badge
+                                    variant="outline"
+                                    data-testid={`resource-show-free-badge-${resource.slug}`}
+                                >
+                                    Free
+                                </Badge>
+                            ) : null}
+                    </div>
+                    {!resource.is_included_in_plan && !resource.has_explicit_entitlement && (resource.included_in_plan_names?.length ?? 0) > 0 && (
+                        <div className="mt-2">
                             <Badge
                                 variant="outline"
-                                data-testid={`resource-show-free-badge-${resource.slug}`}
+                                className="text-xs text-muted-foreground"
+                                data-testid={`resource-show-other-plans-badge-${resource.slug}`}
                             >
-                                Free
+                                Incluido en plan{resource.included_in_plan_names!.length > 1 ? 'es' : ''}: {resource.included_in_plan_names!.join(', ')}
                             </Badge>
-                        )}
-                    </div>
+                        </div>
+                    )}
                 </CardHeader>
                 <CardContent className="space-y-4">
                     <Separator />

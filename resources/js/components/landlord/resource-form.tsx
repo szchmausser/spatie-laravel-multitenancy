@@ -52,9 +52,17 @@ export function ResourceForm({
     const [selectedPlanIdsState, setSelectedPlanIdsState] = useState<number[]>(selectedPlanIds);
 
     const togglePlan = (id: number, checked: boolean) => {
-        setSelectedPlanIdsState((prev) =>
-            checked ? [...prev, id] : prev.filter((pid) => pid !== id)
-        );
+        setSelectedPlanIdsState((prev) => {
+            const next = checked ? [...prev, id] : prev.filter((pid) => pid !== id);
+
+            // Selecting a plan implies the resource is premium.
+            // Auto-enable premium when the first plan is added.
+            if (next.length > 0 && !isPremium) {
+                setIsPremium(true);
+            }
+
+            return next;
+        });
     };
 
     return (
@@ -79,6 +87,9 @@ export function ResourceForm({
             <input type="hidden" name="is_premium" value={isPremium ? '1' : '0'} />
             <input type="hidden" name="is_active" value={(defaults?.is_active ?? true) ? '1' : '0'} />
             <input type="hidden" name="price_cents" value={Math.round(priceBs * 100)} />
+            {selectedPlanIdsState.map((id) => (
+                <input key={id} type="hidden" name="plan_ids[]" value={id} />
+            ))}
 
             <div className="space-y-4">
                 <Card>

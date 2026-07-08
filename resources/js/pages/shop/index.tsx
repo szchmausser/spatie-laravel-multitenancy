@@ -215,22 +215,22 @@ export default function ShopIndex({ currentPlan, plans, resources }: ShopProps) 
                                             {resource.name}
                                         </CardTitle>
                                         <div className="flex flex-wrap items-start gap-1">
-                                            {resource.is_premium ? (
+                                            {(resource.has_plans_assigned || resource.is_premium) && !resource.is_included_in_plan && !resource.has_entitlement ? (
                                                 <Badge
-                                                    variant="default"
-                                                    data-testid={`shop-resource-premium-badge-${resource.slug}`}
+                                                    variant="secondary"
+                                                    data-testid={`shop-resource-buy-separate-badge-${resource.slug}`}
                                                 >
                                                     <Sparkles className="mr-1 h-3 w-3" />
-                                                    Premium
+                                                    Comprar por separado
                                                 </Badge>
-                                            ) : (
+                                            ) : !(resource.has_plans_assigned || resource.is_premium) && !resource.is_included_in_plan && !resource.has_entitlement ? (
                                                 <Badge
                                                     variant="outline"
                                                     data-testid={`shop-resource-free-badge-${resource.slug}`}
                                                 >
                                                     Gratis
                                                 </Badge>
-                                            )}
+                                            ) : null}
                                             {resource.has_entitlement && (
                                                 <Badge
                                                     variant="secondary"
@@ -247,15 +247,21 @@ export default function ShopIndex({ currentPlan, plans, resources }: ShopProps) 
                                                     data-testid={`shop-resource-plan-badge-${resource.slug}`}
                                                 >
                                                     <CircleCheck className="mr-1 h-3 w-3" />
-                                                    Incluido
+                                                    Incluido en tu plan
                                                 </Badge>
                                             )}
                                         </div>
                                     </div>
-                                    {resource.description && (
-                                        <CardDescription className="line-clamp-3">
-                                            {resource.description}
-                                        </CardDescription>
+                                    {!resource.is_included_in_plan && !resource.has_entitlement && (resource.included_in_plan_names?.length ?? 0) > 0 && (
+                                        <div className="mt-2">
+                                            <Badge
+                                                variant="outline"
+                                                className="text-xs text-muted-foreground"
+                                                data-testid={`shop-resource-other-plans-badge-${resource.slug}`}
+                                            >
+                                                Incluido en plan{resource.included_in_plan_names!.length > 1 ? 'es' : ''}: {resource.included_in_plan_names!.join(', ')}
+                                            </Badge>
+                                        </div>
                                     )}
                                 </CardHeader>
                                 <CardContent className="flex-1 space-y-1 text-xs text-muted-foreground">
@@ -283,7 +289,7 @@ export default function ShopIndex({ currentPlan, plans, resources }: ShopProps) 
                                                 Download
                                             </a>
                                         </Button>
-                                    ) : resource.is_premium && resource.price_cents > 0 ? (
+                                    ) : (resource.has_plans_assigned || resource.is_premium) && resource.price_cents > 0 ? (
                                         <Button
                                             type="button"
                                             variant="secondary"
@@ -293,6 +299,20 @@ export default function ShopIndex({ currentPlan, plans, resources }: ShopProps) 
                                         >
                                             <ShoppingBag className="h-4 w-4" />
                                             Comprar
+                                        </Button>
+                                    ) : (resource.has_plans_assigned || resource.is_premium) && resource.price_cents === 0 ? (
+                                        <Button
+                                            asChild
+                                            variant="secondary"
+                                            className="w-full"
+                                            data-testid={`shop-resource-upgrade-btn-${resource.slug}`}
+                                        >
+                                            <a href="#shop-plans">
+                                                <Sparkles className="h-4 w-4" />
+                                                {resource.included_in_plan_names?.[0]
+                                                    ? `Disponible en ${resource.included_in_plan_names[0]}`
+                                                    : 'Ver planes disponibles'}
+                                            </a>
                                         </Button>
                                     ) : null}
                                 </CardFooter>

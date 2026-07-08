@@ -39,8 +39,13 @@ class ShopController extends Controller
                         ->exists()
                     : false;
 
-                $isIncludedInPlan = $tenant && $currentPlan?->resources()
-                    ->where('resource_id', $r->id)->exists();
+                $isIncludedInPlan = $tenant && $currentPlan
+                    ? $r->plans()
+                        ->where('price_cents', '<=', $currentPlan->price_cents)
+                        ->exists()
+                    : false;
+
+                $hasPlansAssigned = $r->plans()->exists();
 
                 return [
                     'id' => $r->id,
@@ -48,13 +53,19 @@ class ShopController extends Controller
                     'slug' => $r->slug,
                     'description' => $r->description,
                     'is_premium' => $r->is_premium,
+                    'has_plans_assigned' => $hasPlansAssigned,
                     'price_cents' => $r->price_cents,
                     'file_size_bytes' => $r->file_size_bytes,
                     'formatted_file_size' => $r->formattedFileSize(),
                     'mime_type' => $r->mime_type,
                     'has_entitlement' => $hasEntitlement,
                     'is_included_in_plan' => $isIncludedInPlan,
-                    'can_download' => $hasEntitlement || $isIncludedInPlan || ! $r->is_premium,
+                    'included_in_plan_names' => $r->plans()
+                        ->pluck('plans.name')
+                        ->values()
+                        ->all(),
+                    'can_download' => $hasEntitlement || $isIncludedInPlan
+                        || (! $r->is_premium && ! $hasPlansAssigned),
                 ];
             })
             ->all();

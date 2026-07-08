@@ -81,7 +81,7 @@ test('catalog page loads with free and premium resource cards', function () {
             ->assertVisible('[data-testid="resources-count-badge"]')
             ->assertSeeIn('[data-testid="resources-count-badge"]', '2 resources')
             ->assertVisible('[data-testid="resource-free-badge-getting-started-guide"]')
-            ->assertVisible('[data-testid="resource-premium-badge-advanced-analytics-report"]')
+            ->assertVisible('[data-testid="resource-buy-separate-badge-advanced-analytics-report"]')
             ->assertVisible('[data-testid="resource-card-getting-started-guide"]')
             ->assertVisible('[data-testid="resource-card-advanced-analytics-report"]')
             ->assertNoJavaScriptErrors();

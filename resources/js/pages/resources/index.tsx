@@ -97,23 +97,34 @@ export default function ResourcesIndex({
                                             {resource.name}
                                         </Link>
                                     </CardTitle>
-                                    {resource.is_premium ? (
+                                    {(resource.has_plans_assigned || resource.is_premium) && !resource.is_included_in_plan && !resource.has_explicit_entitlement ? (
                                         <Badge
-                                            variant="default"
-                                            data-testid={`resource-premium-badge-${resource.slug}`}
+                                            variant="secondary"
+                                            data-testid={`resource-buy-separate-badge-${resource.slug}`}
                                         >
                                             <Sparkles className="mr-1 h-3 w-3" />
-                                            Premium
+                                            Comprar por separado
                                         </Badge>
-                                    ) : (
+                                    ) : !(resource.has_plans_assigned || resource.is_premium) && !resource.is_included_in_plan && !resource.has_explicit_entitlement ? (
                                         <Badge
                                             variant="outline"
                                             data-testid={`resource-free-badge-${resource.slug}`}
                                         >
                                             Free
                                         </Badge>
-                                    )}
+                                    ) : null}
                                 </div>
+                                {!resource.is_included_in_plan && !resource.has_explicit_entitlement && (resource.included_in_plan_names?.length ?? 0) > 0 && (
+                                    <div className="mt-2">
+                                        <Badge
+                                            variant="outline"
+                                            className="text-xs text-muted-foreground"
+                                            data-testid={`resource-other-plans-badge-${resource.slug}`}
+                                        >
+                                            Incluido en plan{resource.included_in_plan_names!.length > 1 ? 'es' : ''}: {resource.included_in_plan_names!.join(', ')}
+                                        </Badge>
+                                    </div>
+                                )}
                                 {resource.description && (
                                     <CardDescription className="line-clamp-3">
                                         {resource.description}
@@ -147,6 +158,14 @@ export default function ResourcesIndex({
                                             >
                                                 <CircleCheck className="h-3 w-3" />
                                                 Incluido en tu plan
+                                            </div>
+                                        )}
+                                        {!resource.is_included_in_plan && !resource.has_explicit_entitlement && (resource.included_in_plan_names?.length ?? 0) > 0 && (
+                                            <div
+                                                className="inline-flex w-full items-center justify-center gap-1 rounded-md bg-muted px-3 py-1.5 text-xs text-muted-foreground"
+                                                data-testid={`resource-other-plans-badge-${resource.slug}`}
+                                            >
+                                                Incluido en plan{resource.included_in_plan_names!.length > 1 ? 'es' : ''}: {resource.included_in_plan_names!.join(', ')}
                                             </div>
                                         )}
                                         <Button

@@ -123,7 +123,8 @@ test('user with premium plan can download premium resource', function () {
             ->visit("/resources/{$premiumResource->slug}")
             ->waitForText('Premium eBook')
             ->assertSee('Premium eBook')
-            ->assertVisible('[data-testid="resource-show-premium-badge-premium-ebook"]')
+            ->assertDontSee('[data-testid="resource-show-premium-badge-premium-ebook"]')
+            ->assertDontSee('[data-testid="resource-show-buy-separate-badge-premium-ebook"]')
             ->assertVisible('[data-testid="resource-show-download-btn-premium-ebook"]')
             ->assertSeeIn('[data-testid="resource-show-download-btn-premium-ebook"]', 'Download')
             ->assertNoJavaScriptErrors();
@@ -175,7 +176,7 @@ test('user without premium access sees buy button for premium resource', functio
             ->visit("/resources/{$premiumResource->slug}")
             ->waitForText('Premium Video')
             ->assertSee('Premium Video')
-            ->assertVisible('[data-testid="resource-show-premium-badge-premium-video"]')
+            ->assertVisible('[data-testid="resource-show-buy-separate-badge-premium-video"]')
             ->assertVisible('[data-testid="resource-show-buy-btn-premium-video"]')
             ->assertSeeIn('[data-testid="resource-show-buy-btn-premium-video"]', 'Buy')
             ->assertDontSee('Download')

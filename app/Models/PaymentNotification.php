@@ -6,6 +6,7 @@ use App\Enums\SourceType;
 use App\Services\Payment\ParsedPayment;
 use App\Services\Payment\PaymentNotificationParser;
 use Database\Factories\PaymentNotificationFactory;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasOne;
@@ -40,6 +41,14 @@ class PaymentNotification extends Model
             'parsed_at' => 'datetime',
             'source_type' => SourceType::class,
         ];
+    }
+
+    /**
+     * @return string[]
+     */
+    public function getAppends(): array
+    {
+        return ['parsed_data_display'];
     }
 
     /**
@@ -102,6 +111,23 @@ class PaymentNotification extends Model
     public function scopeFailed($query)
     {
         return $query->where('parse_status', 'failed');
+    }
+
+    /**
+     * Accessor: parsed_data without raw_groups, for frontend display.
+     * raw_groups stays in the database for debugging but is not sent to the UI.
+     */
+    protected function parsedDataDisplay(): Attribute
+    {
+        return Attribute::get(function () {
+            if ($this->parsed_data === null) {
+                return null;
+            }
+
+            return collect($this->parsed_data)
+                ->except('raw_groups')
+                ->all();
+        });
     }
 
     /**

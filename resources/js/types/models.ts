@@ -26,6 +26,8 @@ export type Resource = {
     has_entitlement?: boolean;
     /** Tenant-only: whether the resource is included in the current tenant's plan. */
     is_included_in_plan?: boolean;
+    has_plans_assigned?: boolean;
+    included_in_plan_names?: string[];
     /** Plans that include this resource (loaded on edit). */
     plans?: Plan[];
 };
@@ -82,6 +84,7 @@ export type PaymentNotificationItem = {
     raw_text: string;
     parse_status: 'pending' | 'parsed' | 'failed';
     parsed_data: Record<string, unknown> | null;
+    parsed_data_display: Record<string, unknown> | null;
     parse_error: string | null;
     parsed_at: string | null;
     created_at: string;
