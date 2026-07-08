@@ -86,7 +86,7 @@ test('gateway creates both payment and detail in transaction', function () {
         'amount_cents' => 1000,
         'payment_method_config_id' => $config->id,
         'sender_bank' => 'Banco Mercantil',
-        'sender_phone' => '0414-1234567',
+        'sender_phone' => '04141234567',
         'sender_id' => 'V-12345678',
         'payment_date' => '2026-06-13',
     ]);

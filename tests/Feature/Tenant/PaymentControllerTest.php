@@ -41,7 +41,7 @@ beforeEach(function () {
     $this->senderData = [
         'amount_cents' => $this->plan->price_cents,
         'sender_bank' => 'Banco Mercantil',
-        'sender_phone' => '0414-1234567',
+        'sender_phone' => '04141234567',
         'sender_id' => 'V-12345678',
         'payment_date' => now()->format('Y-m-d'),
         'concept' => 'Test payment',
@@ -442,7 +442,7 @@ test('sender_bank is required for pago_movil', function () {
         'reference' => '1234567',
         'payment_method' => 'pago_movil',
         'payment_method_config_id' => $this->pagoMovilConfig->id,
-        'sender_phone' => '0414-1234567',
+        'sender_phone' => '04141234567',
         'payment_date' => now()->format('Y-m-d'),
     ]);
 
@@ -481,7 +481,7 @@ test('payment_date is required for pago_movil', function () {
         'payment_method' => 'pago_movil',
         'payment_method_config_id' => $this->pagoMovilConfig->id,
         'sender_bank' => 'Banco Mercantil',
-        'sender_phone' => '0414-1234567',
+        'sender_phone' => '04141234567',
     ]);
 
     $response->assertSessionHasErrors('payment_date');
@@ -519,7 +519,7 @@ test('pago_movil payment is created with correct sender fields', function () {
     $senderData = [
         'amount_cents' => $order->total_cents,
         'sender_bank' => 'Banesco',
-        'sender_phone' => '0424-9876543',
+        'sender_phone' => '04249876543',
         'sender_id' => 'V-87654321',
         'payment_date' => '2026-06-10',
         'concept' => 'Pago plan mensual',
@@ -537,7 +537,7 @@ test('pago_movil payment is created with correct sender fields', function () {
     $detail = $payment->pagoMovilDetail;
     expect($detail)->not->toBeNull();
     expect($detail->sender_bank)->toBe('Banesco');
-    expect($detail->sender_phone)->toBe('0424-9876543');
+    expect($detail->sender_phone)->toBe('04249876543');
     expect($detail->payment_date->format('Y-m-d'))->toBe('2026-06-10');
     expect($detail->concept)->toBe('Pago plan mensual');
 });
@@ -556,7 +556,7 @@ test('concept is optional for pago_movil', function () {
         'payment_method' => 'pago_movil',
         'payment_method_config_id' => $this->pagoMovilConfig->id,
         'sender_bank' => 'Banco Mercantil',
-        'sender_phone' => '0414-1234567',
+        'sender_phone' => '04141234567',
         'sender_id' => 'V-12345678',
         'payment_date' => now()->format('Y-m-d'),
     ]);
@@ -588,4 +588,58 @@ test('bank_transfer requires sender fields', function () {
     ]);
 
     $response->assertSessionHasErrors(['sender_bank', 'sender_name', 'sender_id', 'payment_date']);
+});
+
+// ─── sender_phone validation (size:11, digits only) ───
+
+test('pago_movil rejects sender_phone with non-digit chars', function () {
+    $order = Order::factory()->createQuietly([
+        'tenant_id' => $this->tenant->id,
+        'plan_id' => $this->plan->id,
+        'status' => OrderStatus::Pending,
+        'total_cents' => $this->plan->price_cents,
+    ]);
+
+    $response = $this->post(route('billing.orders.payments.store', $order), array_merge(
+        $this->senderData,
+        ['sender_phone' => '0414-1234567'],
+    ));
+
+    $response->assertSessionHasErrors('sender_phone');
+});
+
+test('pago_movil rejects sender_phone with wrong length', function () {
+    $order = Order::factory()->createQuietly([
+        'tenant_id' => $this->tenant->id,
+        'plan_id' => $this->plan->id,
+        'status' => OrderStatus::Pending,
+        'total_cents' => $this->plan->price_cents,
+    ]);
+
+    $response = $this->post(route('billing.orders.payments.store', $order), array_merge(
+        $this->senderData,
+        ['sender_phone' => '0424123456'],
+    ));
+
+    $response->assertSessionHasErrors('sender_phone');
+});
+
+test('pago_movil accepts sender_phone with exactly 11 digits', function () {
+    $config = PaymentMethodConfig::factory()->ofPagoMovil()->createQuietly(['is_active' => true]);
+    $order = Order::factory()->createQuietly([
+        'tenant_id' => $this->tenant->id,
+        'plan_id' => $this->plan->id,
+        'status' => OrderStatus::Pending,
+        'total_cents' => $this->plan->price_cents,
+    ]);
+
+    $response = $this->post(route('billing.orders.payments.store', $order), array_merge(
+        $this->senderData,
+        [
+            'sender_phone' => '04241234567',
+            'payment_method_config_id' => $config->id,
+        ],
+    ));
+
+    $response->assertRedirect();
 });

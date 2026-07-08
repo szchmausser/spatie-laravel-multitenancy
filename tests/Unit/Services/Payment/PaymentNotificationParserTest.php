@@ -2,6 +2,7 @@
 
 use App\Models\SystemConfig;
 use App\Services\Payment\PaymentNotificationParser;
+use ReflectionMethod;
 
 beforeEach(function () {
     $this->parser = new PaymentNotificationParser;
@@ -23,6 +24,8 @@ test('parses BDV notification correctly', function () {
     expect($result->amountCents)->toBe(300000);
     expect($result->reference)->toBe('006236568762');
     expect($result->senderPhoneLast4)->toBe('3557');
+    expect($result->senderPhoneNumber)->toBe('0424-3153557');
+    expect($result->senderPhoneFirst4)->toBe('0424');
 });
 
 test('parses BDV with different amount', function () {
@@ -32,6 +35,8 @@ test('parses BDV with different amount', function () {
     expect($result->amountCents)->toBe(1575050);
     expect($result->reference)->toBe('009988776655');
     expect($result->senderPhoneLast4)->toBe('6543');
+    expect($result->senderPhoneNumber)->toBe('0412-9876543');
+    expect($result->senderPhoneFirst4)->toBe('0412');
 });
 
 test('parses BDV with no decimals', function () {
@@ -51,6 +56,8 @@ test('parses BNC notification correctly', function () {
     expect($result->amountCents)->toBe(1045500);
     expect($result->reference)->toBe('603185603');
     expect($result->senderPhoneLast4)->toBe('9503');
+    expect($result->senderPhoneNumber)->toBe('0416***9503');
+    expect($result->senderPhoneFirst4)->toBe('0416');
 });
 
 test('parses BNC with different amount', function () {
@@ -60,6 +67,8 @@ test('parses BNC with different amount', function () {
     expect($result->amountCents)->toBe(25075);
     expect($result->reference)->toBe('998877665');
     expect($result->senderPhoneLast4)->toBe('1234');
+    expect($result->senderPhoneNumber)->toBe('0412***1234');
+    expect($result->senderPhoneFirst4)->toBe('0412');
 });
 
 // --- normalizeAmount Tests ---
@@ -131,6 +140,28 @@ test('extractLast4 handles null', function () {
 
 test('extractLast4 handles short string', function () {
     expect($this->parser->extractLast4('12'))->toBe('12');
+});
+
+// --- extractFirst4 Tests ---
+
+test('extractFirst4 handles normal phone', function () {
+    $ref = new ReflectionMethod($this->parser, 'extractFirst4');
+    expect($ref->invoke($this->parser, '04243153557'))->toBe('0424');
+});
+
+test('extractFirst4 handles masked phone', function () {
+    $ref = new ReflectionMethod($this->parser, 'extractFirst4');
+    expect($ref->invoke($this->parser, '0416***9503'))->toBe('0416');
+});
+
+test('extractFirst4 handles null', function () {
+    $ref = new ReflectionMethod($this->parser, 'extractFirst4');
+    expect($ref->invoke($this->parser, null))->toBeNull();
+});
+
+test('extractFirst4 handles short string', function () {
+    $ref = new ReflectionMethod($this->parser, 'extractFirst4');
+    expect($ref->invoke($this->parser, '123'))->toBeNull();
 });
 
 // --- canonicalPhone Tests ---

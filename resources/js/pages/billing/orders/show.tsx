@@ -89,6 +89,8 @@ export default function OrderShow({ order, paymentMethodConfigs, errors }: Order
     const [selectedConfigId, setSelectedConfigId] = useState<number | null>(null);
     const [senderBank, setSenderBank] = useState('');
     const [senderPhone, setSenderPhone] = useState('');
+    const [operadora, setOperadora] = useState('');
+    const [phoneDigits, setPhoneDigits] = useState('');
     const [senderId, setSenderId] = useState('');
     const [senderName, setSenderName] = useState('');
     const [senderAccountNumber, setSenderAccountNumber] = useState('');
@@ -126,7 +128,7 @@ export default function OrderShow({ order, paymentMethodConfigs, errors }: Order
     const handleReportPayment = (e: React.FormEvent) => {
         e.preventDefault();
         if (!reference.trim() || !amountCents) return;
-        if (selectedMethod === 'pago_movil' && (!senderBank || !senderPhone || !senderId || !paymentDate)) return;
+        if (selectedMethod === 'pago_movil' && (!senderBank || !operadora || !phoneDigits || !senderId || !paymentDate)) return;
         if (selectedMethod === 'bank_transfer' && (!senderBank || !senderName || !senderId || !paymentDate)) return;
         setSubmitting(true);
         router.post(
@@ -137,7 +139,7 @@ export default function OrderShow({ order, paymentMethodConfigs, errors }: Order
                 payment_method: selectedMethod,
                 payment_method_config_id: selectedConfigId,
                 sender_bank: senderBank || undefined,
-                sender_phone: selectedMethod === 'pago_movil' ? senderPhone || undefined : undefined,
+                sender_phone: selectedMethod === 'pago_movil' ? (operadora && phoneDigits ? operadora + phoneDigits : undefined) : undefined,
                 sender_name: selectedMethod === 'bank_transfer' ? senderName || undefined : undefined,
                 sender_account_number: selectedMethod === 'bank_transfer' ? senderAccountNumber || undefined : undefined,
                 sender_id: senderId || undefined,
@@ -388,17 +390,35 @@ export default function OrderShow({ order, paymentMethodConfigs, errors }: Order
 
                                         <div className="space-y-2">
                                             <Label htmlFor="sender_phone">Teléfono emisor</Label>
-                                            <Input
-                                                id="sender_phone"
-                                                type="text"
-                                                placeholder="04129338026"
-                                                value={senderPhone}
-                                                onChange={(e) => setSenderPhone(e.target.value)}
-                                                required
-                                                maxLength={20}
-                                            />
+                                            <div className="flex gap-2">
+                                                <select
+                                                    id="sender_phone_operadora"
+                                                    value={operadora}
+                                                    onChange={(e) => setOperadora(e.target.value)}
+                                                    required
+                                                    className="flex h-10 w-[110px] rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                                                >
+                                                    <option value="">Op.</option>
+                                                    <option value="0412">0412</option>
+                                                    <option value="0414">0414</option>
+                                                    <option value="0416">0416</option>
+                                                    <option value="0424">0424</option>
+                                                    <option value="0426">0426</option>
+                                                </select>
+                                                <Input
+                                                    id="sender_phone_digits"
+                                                    type="text"
+                                                    pattern="[0-9]{7}"
+                                                    maxLength={7}
+                                                    placeholder="1234567"
+                                                    value={phoneDigits}
+                                                    onChange={(e) => setPhoneDigits(e.target.value.replace(/\D/g, '').slice(0, 7))}
+                                                    required
+                                                    className="flex-1"
+                                                />
+                                            </div>
                                             <p className="text-xs text-muted-foreground">
-                                                Número de teléfono desde el que realizaste el pago (ej: 04129338026)
+                                                Selecciona la operadora (0412, 0414, 0416, 0424, 0426) e ingresa los 7 dígitos de tu número
                                             </p>
                                         </div>
 
@@ -565,7 +585,7 @@ export default function OrderShow({ order, paymentMethodConfigs, errors }: Order
                                         !reference.trim() ||
                                         !amountCents ||
                                         parseFloat(amountCents) <= 0 ||
-                                        (selectedMethod === 'pago_movil' && (!senderBank || !senderPhone || !senderId || !paymentDate)) ||
+                                        (selectedMethod === 'pago_movil' && (!senderBank || !operadora || !phoneDigits || !senderId || !paymentDate)) ||
                                         (selectedMethod === 'bank_transfer' && (!senderBank || !senderName || !senderId || !paymentDate))
                                     }
                                 >

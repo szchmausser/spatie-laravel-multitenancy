@@ -10,7 +10,6 @@ use App\Models\PaymentNotification;
 use App\Models\SystemConfig;
 use App\Models\Tenant;
 use App\Notifications\SystemAlert;
-use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Inertia\Response;
@@ -292,5 +291,4 @@ class ReconciliationDashboardController extends Controller
     {
         return PaymentNotification::failed()->count();
     }
-
 }

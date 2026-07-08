@@ -20,6 +20,9 @@ class PaymentMatch extends Model
         'parsed_reference',
         'parsed_amount_cents',
         'parsed_sender_phone_last4',
+        'parsed_sender_phone_number',
+        'parsed_sender_phone_first4',
+        'parsed_bank_code',
         'match_status',
         'matched_at',
     ];
@@ -85,6 +88,9 @@ class PaymentMatch extends Model
                     'parsed_reference' => $reference,
                     'parsed_amount_cents' => $parsed->amountCents,
                     'parsed_sender_phone_last4' => $parsed->senderPhoneLast4,
+                    'parsed_sender_phone_number' => $parsed->senderPhoneNumber,
+                    'parsed_sender_phone_first4' => $parsed->senderPhoneFirst4,
+                    'parsed_bank_code' => $notification->bank_code,
                     'match_status' => 'duplicate_attempt',
                 ]);
             }
@@ -96,6 +102,9 @@ class PaymentMatch extends Model
             'parsed_reference' => $reference,
             'parsed_amount_cents' => $parsed->amountCents,
             'parsed_sender_phone_last4' => $parsed->senderPhoneLast4,
+            'parsed_sender_phone_number' => $parsed->senderPhoneNumber,
+            'parsed_sender_phone_first4' => $parsed->senderPhoneFirst4,
+            'parsed_bank_code' => $notification->bank_code,
             'match_status' => 'unmatched',
         ]);
     }

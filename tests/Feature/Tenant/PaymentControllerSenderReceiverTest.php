@@ -47,7 +47,7 @@ test('pago_movil requires sender_id', function () {
         'reference' => '1234567',
         'payment_method' => 'pago_movil',
         'sender_bank' => 'Banco Mercantil',
-        'sender_phone' => '0414-1234567',
+        'sender_phone' => '04141234567',
         'payment_date' => now()->format('Y-m-d'),
     ]);
 
@@ -72,7 +72,7 @@ test('pago_movil with sender_id creates payment successfully', function () {
         'payment_method' => 'pago_movil',
         'payment_method_config_id' => $config->id,
         'sender_bank' => 'Banco Mercantil',
-        'sender_phone' => '0414-1234567',
+        'sender_phone' => '04141234567',
         'sender_id' => 'V-12345678',
         'payment_date' => now()->format('Y-m-d'),
     ]);

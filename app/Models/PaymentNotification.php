@@ -68,6 +68,8 @@ class PaymentNotification extends Model
                 'amount_cents' => $parsed->amountCents,
                 'reference' => $parsed->reference,
                 'sender_phone_last4' => $parsed->senderPhoneLast4,
+                'sender_phone_number' => $parsed->senderPhoneNumber,
+                'sender_phone_first4' => $parsed->senderPhoneFirst4,
             ], $parsed->rawGroups ? ['raw_groups' => $parsed->rawGroups] : []),
             'parsed_at' => now(),
             'parse_error' => null,
@@ -125,6 +127,8 @@ class PaymentNotification extends Model
             senderPhoneLast4: $this->parsed_data['sender_phone_last4'] ?? null,
             parsedAt: $this->parsed_at ? $this->parsed_at->copy() : null,
             rawGroups: $this->parsed_data['raw_groups'] ?? null,
+            senderPhoneNumber: $this->parsed_data['sender_phone_number'] ?? null,
+            senderPhoneFirst4: $this->parsed_data['sender_phone_first4'] ?? null,
         );
     }
 }

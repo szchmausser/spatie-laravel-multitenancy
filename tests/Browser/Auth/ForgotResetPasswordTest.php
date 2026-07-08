@@ -20,7 +20,8 @@ beforeEach(function () {
 });
 
 test('forgot password page renders', function () {
-    $this->visit(route('password.request'))
+    $this->visit('/forgot-password')
+        ->waitForText('Forgot password')
         ->assertSee('Forgot password')
         ->assertSee('Email address')
         ->assertSee('Email password reset link')
@@ -30,7 +31,7 @@ test('forgot password page renders', function () {
 test('forgot password form can be filled and submitted', function () {
     Notification::fake();
 
-    $this->visit(route('password.request'))
+    $this->visit('/forgot-password')
         ->fill('email', $this->admin->email)
         ->click('[data-testid="email-password-reset-link-button"]')
         // The Inertia <Form> submits via XHR and Fortify redirects back
@@ -54,9 +55,10 @@ test('reset password page renders with valid token', function () {
             'created_at' => now(),
         ]);
 
-    $url = route('password.reset', $token).'?email='.urlencode($this->admin->email);
+    $url = '/reset-password/'.$token.'?email='.urlencode($this->admin->email);
 
     $this->visit($url)
+        ->waitForText('Reset password')
         ->assertSee('Reset password')
         ->assertSee('Password')
         ->assertSee('Confirm password')
@@ -76,7 +78,7 @@ test('reset password form submits and redirects', function () {
         ]);
 
     $newPassword = 'NewSecure123!';
-    $url = route('password.reset', $token).'?email='.urlencode($this->admin->email);
+    $url = '/reset-password/'.$token.'?email='.urlencode($this->admin->email);
 
     $this->visit($url)
         ->fill('password', $newPassword)
@@ -92,7 +94,8 @@ test('reset password form submits and redirects', function () {
 });
 
 test('reset password with invalid token shows error', function () {
-    $this->visit(route('password.reset', 'invalid-token'))
+    $this->visit('/reset-password/invalid-token')
+        ->waitForText('Reset password')
         ->assertSee('Reset password')
         ->assertNoJavaScriptErrors();
 });

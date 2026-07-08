@@ -24,6 +24,8 @@ it('parses real BDV notification with comma decimals', function () {
     expect($parsed->amountCents)->toBe(300000);
     expect($parsed->reference)->toBe('006236568762');
     expect($parsed->senderPhoneLast4)->toBe('3557');
+    expect($parsed->senderPhoneNumber)->toBe('0424-3153557');
+    expect($parsed->senderPhoneFirst4)->toBe('0424');
 });
 
 it('parses real BDV notification with large amount', function () {
@@ -33,6 +35,8 @@ it('parses real BDV notification with large amount', function () {
     expect($parsed)->not->toBeNull();
     expect($parsed->amountCents)->toBe(1575050);
     expect($parsed->reference)->toBe('009988776655');
+    expect($parsed->senderPhoneNumber)->toBe('0412-9876543');
+    expect($parsed->senderPhoneFirst4)->toBe('0412');
 });
 
 // --- BNC Integration ---
@@ -45,6 +49,8 @@ it('parses real BNC notification', function () {
     expect($parsed->amountCents)->toBe(1045500);
     expect($parsed->reference)->toBe('603185603');
     expect($parsed->senderPhoneLast4)->toBe('9503');
+    expect($parsed->senderPhoneNumber)->toBe('0416***9503');
+    expect($parsed->senderPhoneFirst4)->toBe('0416');
 });
 
 it('parses real BNC notification with small amount', function () {
@@ -54,6 +60,8 @@ it('parses real BNC notification with small amount', function () {
     expect($parsed)->not->toBeNull();
     expect($parsed->amountCents)->toBe(25075);
     expect($parsed->reference)->toBe('998877665');
+    expect($parsed->senderPhoneNumber)->toBe('0412***1234');
+    expect($parsed->senderPhoneFirst4)->toBe('0412');
 });
 
 // --- End-to-End: Simulator → Parser Pipeline ---

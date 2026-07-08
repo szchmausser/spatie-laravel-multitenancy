@@ -12,5 +12,7 @@ class ParsedPayment
         public readonly ?string $senderPhoneLast4,
         public readonly ?Carbon $parsedAt,
         public readonly ?array $rawGroups = null,
+        public readonly ?string $senderPhoneNumber = null,
+        public readonly ?string $senderPhoneFirst4 = null,
     ) {}
 }

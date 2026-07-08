@@ -121,8 +121,8 @@ class PaymentController extends Controller
             ],
             'sender_phone' => [
                 ...($request->input('payment_method') === 'pago_movil'
-                    ? ['required', 'string', 'max:20']
-                    : ['nullable', 'string', 'max:20']),
+                    ? ['required', 'string', 'size:11', 'regex:/^[0-9]+$/']
+                    : ['nullable', 'string', 'size:11', 'regex:/^[0-9]+$/']),
             ],
             'sender_id' => [
                 ...in_array($request->input('payment_method'), ['pago_movil', 'bank_transfer'])

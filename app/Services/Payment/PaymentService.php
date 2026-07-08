@@ -111,6 +111,12 @@ class PaymentService
             return;
         }
 
+        // Multifield guard — early exit on mismatch
+        $mismatch = PaymentMatchGuard::validate($match, $payment);
+        if ($mismatch !== null) {
+            return;
+        }
+
         /** @var ReconciliationOrchestrator $orchestrator */
         $orchestrator = app(ReconciliationOrchestrator::class);
         $result = $orchestrator->runReverse($match, $payment);

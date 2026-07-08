@@ -50,6 +50,9 @@ type PaymentMatch = {
     parsed_reference: string | null;
     parsed_amount_cents: number;
     parsed_sender_phone_last4: string | null;
+    parsed_sender_phone_number: string | null;
+    parsed_sender_phone_first4: string | null;
+    parsed_bank_code: string | null;
 };
 
 type Payment = {

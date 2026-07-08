@@ -39,6 +39,9 @@ class PaymentNotificationParser
         // 4. Normalize and return
         $namedGroups = array_filter($matches, fn ($key) => is_string($key), ARRAY_FILTER_USE_KEY);
 
+        $senderPhoneNumber = $matches['phone'] ?? null;
+        $senderPhoneFirst4 = $this->extractFirst4($matches['phone'] ?? null);
+
         return new ParsedPayment(
             amountCents: $this->normalizeAmount($matches['amount']),
             reference: normalizeRef($matches['reference']),
@@ -49,6 +52,8 @@ class PaymentNotificationParser
                 $this->getDateFormat($bankCode)
             ),
             rawGroups: $namedGroups,
+            senderPhoneNumber: $senderPhoneNumber,
+            senderPhoneFirst4: $senderPhoneFirst4,
         );
     }
 
@@ -105,6 +110,21 @@ class PaymentNotificationParser
         $digits = preg_replace('/[^0-9]/', '', $phone);
 
         return strlen($digits) >= 4 ? substr($digits, -4) : $digits;
+    }
+
+    /**
+     * Extract the first 4 digits from a phone number.
+     * Handles masked phones like "0416***9503".
+     */
+    private function extractFirst4(?string $phone): ?string
+    {
+        if ($phone === null) {
+            return null;
+        }
+
+        $digits = preg_replace('/[^0-9]/', '', $phone);
+
+        return strlen($digits) >= 4 ? substr($digits, 0, 4) : null;
     }
 
     /**

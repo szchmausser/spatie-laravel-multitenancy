@@ -4,9 +4,13 @@ namespace App\Services\Payment;
 
 use App\Enums\CancellationType;
 use App\Enums\PaymentStatus;
+use App\Models\Landlord;
 use App\Models\Payment;
 use App\Models\PaymentMatch;
 use App\Models\SystemConfig;
+use App\Notifications\SystemAlert;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Notification;
 
 class ReconciliationOrchestrator
 {
@@ -119,6 +123,18 @@ class ReconciliationOrchestrator
                 return $result;
             }
 
+            // Multifield guard
+            $mismatch = PaymentMatchGuard::validate($match, $payment);
+            if ($mismatch !== null) {
+                $match->update([
+                    'payment_id' => $payment->id,
+                    'match_status' => 'pending',
+                ]);
+                $this->sendMismatchAlert($mismatch);
+
+                return $result;
+            }
+
             if ($this->shouldShadow($match)) {
                 $match->update([
                     'payment_id' => $payment->id,
@@ -177,6 +193,15 @@ class ReconciliationOrchestrator
 
         $result = new ReconciliationResult;
 
+        // Multifield guard
+        $mismatch = PaymentMatchGuard::validate($match, $payment);
+        if ($mismatch !== null) {
+            $match->update(['match_status' => 'pending']);
+            $this->sendMismatchAlert($mismatch);
+
+            return $result;
+        }
+
         if ($this->shouldShadow($match)) {
             $match->update(['match_status' => 'pending']);
         } else {
@@ -189,5 +214,44 @@ class ReconciliationOrchestrator
         }
 
         return $result;
+    }
+
+    private function sendMismatchAlert(array $mismatch): void
+    {
+        try {
+            $fieldLabels = [
+                'sender_bank' => 'Banco emisor',
+                'sender_phone' => 'Teléfono emisor',
+            ];
+
+            $fieldName = $fieldLabels[$mismatch['field']] ?? $mismatch['field'];
+            $paymentValue = $mismatch['payment_value'] ?? 'N/A';
+            $notificationValue = $mismatch['notification_value'] ?? 'N/A';
+
+            $admins = Landlord::all();
+
+            if ($admins->isEmpty()) {
+                return;
+            }
+
+            $message = sprintf(
+                'Mismatch en validación multifield: %s. Pago: "%s". Notificación: "%s". Match #%d.',
+                $fieldName,
+                $paymentValue,
+                $notificationValue,
+                $mismatch['match_id'],
+            );
+
+            Notification::send($admins, new SystemAlert(
+                type: 'payment_multifield_mismatch',
+                message: $message,
+                severity: 'warning',
+            ));
+        } catch (\Throwable $e) {
+            Log::warning('Failed to send multifield mismatch alert', [
+                'match_id' => $mismatch['match_id'] ?? null,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 }

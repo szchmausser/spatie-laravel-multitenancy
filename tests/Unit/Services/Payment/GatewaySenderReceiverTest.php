@@ -24,7 +24,7 @@ test('PagoMovilGateway persists payment_method_config_id on payment', function (
         'amount_cents' => 5000,
         'payment_method_config_id' => $config->id,
         'sender_bank' => 'Banco Mercantil',
-        'sender_phone' => '0414-1234567',
+        'sender_phone' => '04141234567',
         'sender_id' => 'V-12345678',
         'payment_date' => '2026-06-14',
         'concept' => 'Test payment',
@@ -47,7 +47,7 @@ test('PagoMovilGateway persists sender_id on PagoMovilDetail', function () {
         'amount_cents' => 5000,
         'payment_method_config_id' => $config->id,
         'sender_bank' => 'Banco Mercantil',
-        'sender_phone' => '0414-1234567',
+        'sender_phone' => '04141234567',
         'sender_id' => 'V-12345678',
         'payment_date' => '2026-06-14',
     ]);
@@ -70,7 +70,7 @@ test('PagoMovilGateway requires payment_method_config_id', function () {
     expect(fn () => $gateway->recordPayment($order, [
         'amount_cents' => 5000,
         'sender_bank' => 'Banco Mercantil',
-        'sender_phone' => '0414-1234567',
+        'sender_phone' => '04141234567',
         'sender_id' => 'V-12345678',
         'payment_date' => '2026-06-14',
     ]))->toThrow(HttpException::class, 'Se requiere una configuración de método de pago para Pago Móvil.');

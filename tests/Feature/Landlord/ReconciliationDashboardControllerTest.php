@@ -183,8 +183,6 @@ test('index returns match rate statistics', function () {
         );
 });
 
-
-
 // ─── PENDING PAYMENTS (R1-R4) ─────────────────────────────────────────────
 
 test('pending returns only unmatched pending payments', function () {

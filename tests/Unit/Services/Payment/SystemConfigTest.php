@@ -124,11 +124,11 @@ test('shadow_mode_channels accepts empty list', function () {
 
 test('shadow_mode_channels rejects invalid channel', function () {
     SystemConfig::set('reconciliation.shadow_mode_channels', ['invalid'], 'json');
-})->throws(\InvalidArgumentException::class, 'Invalid channel(s)');
+})->throws(InvalidArgumentException::class, 'Invalid channel(s)');
 
 test('shadow_mode_channels rejects non-array value', function () {
     SystemConfig::set('reconciliation.shadow_mode_channels', 'not-an-array', 'json');
-})->throws(\InvalidArgumentException::class, 'must be a JSON array');
+})->throws(InvalidArgumentException::class, 'must be a JSON array');
 
 test('shadow_mode_channels validation fires on direct create too', function () {
     SystemConfig::create([
@@ -137,7 +137,7 @@ test('shadow_mode_channels validation fires on direct create too', function () {
         'value' => json_encode(['bad-channel']),
         'type' => 'json',
     ]);
-})->throws(\InvalidArgumentException::class, 'Invalid channel(s)');
+})->throws(InvalidArgumentException::class, 'Invalid channel(s)');
 
 test('detectType returns correct types', function () {
     SystemConfig::set('type.string', 'hello');

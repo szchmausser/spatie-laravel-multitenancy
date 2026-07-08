@@ -132,7 +132,99 @@ test('createFromParsed creates unmatched match when parsed reference is empty st
 
 // ─── Two different references → two separate unmatched matches ───
 
-test('createFromParsed creates separate matches for different references', function () {
+// ─── New fields: phone + bank ───
+
+test('createFromParsed stores sender phone first4 and number from parsed data', function () {
+    $notification = PaymentNotification::forceCreate([
+        'bank_code' => 'bnc',
+        'raw_text' => 'BNC phone test',
+        'dedup_hash' => hash('sha256', 'bnc|phone-test'),
+        'parse_status' => 'pending',
+        'source_type' => SourceType::Sms,
+    ]);
+
+    $parsed = new ParsedPayment(
+        amountCents: 300000,
+        reference: 'PHONE-TEST',
+        senderPhoneLast4: '6568',
+        parsedAt: Carbon::now(),
+        senderPhoneNumber: '0426***6568',
+        senderPhoneFirst4: '0426',
+    );
+
+    $match = PaymentMatch::createFromParsed($notification, $parsed);
+
+    expect($match->parsed_sender_phone_number)->toBe('0426***6568');
+    expect($match->parsed_sender_phone_first4)->toBe('0426');
+    expect($match->parsed_bank_code)->toBe('bnc');
+    expect($match->parsed_sender_phone_last4)->toBe('6568');
+});
+
+test('createFromParsed stores bank code from notification', function () {
+    $notification = PaymentNotification::forceCreate([
+        'bank_code' => 'bdv',
+        'raw_text' => 'BDV bank code test',
+        'dedup_hash' => hash('sha256', 'bdv|bank-code'),
+        'parse_status' => 'pending',
+        'source_type' => SourceType::BankApp,
+    ]);
+
+    $parsed = new ParsedPayment(
+        amountCents: 500000,
+        reference: 'BANK-TEST',
+        senderPhoneLast4: '1234',
+        parsedAt: Carbon::now(),
+        senderPhoneNumber: '0412-9876543',
+        senderPhoneFirst4: '0412',
+    );
+
+    $match = PaymentMatch::createFromParsed($notification, $parsed);
+
+    expect($match->parsed_bank_code)->toBe('bdv');
+    expect($match->parsed_sender_phone_number)->toBe('0412-9876543');
+    expect($match->parsed_sender_phone_first4)->toBe('0412');
+});
+
+test('createFromParsed stores phone fields on duplicate_attempt match', function () {
+    $notification1 = PaymentNotification::forceCreate([
+        'bank_code' => 'bnc',
+        'raw_text' => 'First notification',
+        'dedup_hash' => hash('sha256', 'bnc|dup-first'),
+        'parse_status' => 'pending',
+        'source_type' => SourceType::Sms,
+    ]);
+
+    $notification2 = PaymentNotification::forceCreate([
+        'bank_code' => 'bnc',
+        'raw_text' => 'Second notification (duplicate)',
+        'dedup_hash' => hash('sha256', 'bnc|dup-second'),
+        'parse_status' => 'pending',
+        'source_type' => SourceType::Sms,
+    ]);
+
+    $parsed = new ParsedPayment(
+        amountCents: 300000,
+        reference: 'DUP-REF',
+        senderPhoneLast4: '6568',
+        parsedAt: Carbon::now(),
+        senderPhoneNumber: '0426***6568',
+        senderPhoneFirst4: '0426',
+    );
+
+    // First match: unmatched
+    $first = PaymentMatch::createFromParsed($notification1, $parsed);
+    $first->forceFill(['match_status' => 'matched', 'payment_id' => null])->save();
+
+    // Second match → duplicate_attempt
+    $second = PaymentMatch::createFromParsed($notification2, $parsed);
+
+    expect($second->parsed_sender_phone_number)->toBe('0426***6568');
+    expect($second->parsed_sender_phone_first4)->toBe('0426');
+    expect($second->parsed_bank_code)->toBe('bnc');
+    expect($second->match_status)->toBe('duplicate_attempt');
+});
+
+test('createFromParsed separates matches for different references', function () {
     $parsedA = new ParsedPayment(
         amountCents: 100000,
         reference: 'REF-A',
