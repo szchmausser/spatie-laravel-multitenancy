@@ -44,6 +44,31 @@ class Resource extends Model
         'is_active',
     ];
 
+    /**
+     * The accessors to append — defaults to empty so we only append
+     * what the current request needs (landlord index sets this).
+     *
+     * @var list<string>
+     */
+    protected $appends = [];
+
+    /**
+     * Temporary appends for the landlord resource index.
+     * These are set by the controller before serialization.
+     */
+    public bool $has_plans_assigned = false;
+    public array $included_in_plan_names = [];
+
+    public function getHasPlansAssignedAttribute(): bool
+    {
+        return $this->plans()->exists();
+    }
+
+    public function getIncludedInPlanNamesAttribute(): array
+    {
+        return $this->plans()->pluck('plans.name')->toArray();
+    }
+
     protected function casts(): array
     {
         return [

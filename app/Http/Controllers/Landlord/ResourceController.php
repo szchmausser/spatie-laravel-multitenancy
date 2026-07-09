@@ -43,7 +43,10 @@ class ResourceController extends Controller
         $resources = Resource::query()
             ->orderByDesc('is_active')
             ->orderBy('name')
-            ->get();
+            ->get()
+            ->each(function (Resource $resource) {
+                $resource->setAppends(['has_plans_assigned', 'included_in_plan_names']);
+            });
 
         return Inertia::render('landlord/resources/index', [
             'resources' => $resources,
