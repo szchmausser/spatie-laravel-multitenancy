@@ -97,7 +97,24 @@ export default function ResourcesIndex({
                                             {resource.name}
                                         </Link>
                                     </CardTitle>
-                                    {(resource.has_plans_assigned || resource.is_premium) && !resource.is_included_in_plan && !resource.has_explicit_entitlement ? (
+                                    {resource.has_explicit_entitlement ? (
+                                        <Badge
+                                            variant="secondary"
+                                            data-testid={`resource-acquired-badge-${resource.slug}`}
+                                        >
+                                            <CircleCheck className="mr-1 h-3 w-3" />
+                                            Adquirido
+                                        </Badge>
+                                    ) : resource.is_included_in_plan ? (
+                                        <Badge
+                                            variant="secondary"
+                                            className="bg-green-100 text-green-700 hover:bg-green-100"
+                                            data-testid={`resource-plan-badge-${resource.slug}`}
+                                        >
+                                            <CircleCheck className="mr-1 h-3 w-3" />
+                                            Incluido en tu plan
+                                        </Badge>
+                                    ) : (resource.has_plans_assigned || resource.is_premium) ? (
                                         <Badge
                                             variant="secondary"
                                             data-testid={`resource-buy-separate-badge-${resource.slug}`}
@@ -105,14 +122,14 @@ export default function ResourcesIndex({
                                             <Sparkles className="mr-1 h-3 w-3" />
                                             Comprar por separado
                                         </Badge>
-                                    ) : !(resource.has_plans_assigned || resource.is_premium) && !resource.is_included_in_plan && !resource.has_explicit_entitlement ? (
+                                    ) : (
                                         <Badge
                                             variant="outline"
                                             data-testid={`resource-free-badge-${resource.slug}`}
                                         >
                                             Free
                                         </Badge>
-                                    ) : null}
+                                    )}
                                 </div>
                                 {!resource.is_included_in_plan && !resource.has_explicit_entitlement && (resource.included_in_plan_names?.length ?? 0) > 0 && (
                                     <div className="mt-2">
@@ -151,23 +168,6 @@ export default function ResourcesIndex({
                             <CardFooter className="flex-col gap-2">
                                 {resource.can_download ? (
                                     <>
-                                        {resource.is_included_in_plan && !resource.has_explicit_entitlement && (
-                                            <div
-                                                className="inline-flex w-full items-center justify-center gap-1 rounded-md bg-green-100 px-3 py-1.5 text-xs font-medium text-green-700"
-                                                data-testid={`resource-plan-badge-${resource.slug}`}
-                                            >
-                                                <CircleCheck className="h-3 w-3" />
-                                                Incluido en tu plan
-                                            </div>
-                                        )}
-                                        {!resource.is_included_in_plan && !resource.has_explicit_entitlement && (resource.included_in_plan_names?.length ?? 0) > 0 && (
-                                            <div
-                                                className="inline-flex w-full items-center justify-center gap-1 rounded-md bg-muted px-3 py-1.5 text-xs text-muted-foreground"
-                                                data-testid={`resource-other-plans-badge-${resource.slug}`}
-                                            >
-                                                Incluido en plan{resource.included_in_plan_names!.length > 1 ? 'es' : ''}: {resource.included_in_plan_names!.join(', ')}
-                                            </div>
-                                        )}
                                         <Button
                                             asChild
                                             className="w-full"
@@ -182,6 +182,20 @@ export default function ResourcesIndex({
                                             </a>
                                         </Button>
                                     </>
+                                ) : (resource.has_plans_assigned || resource.is_premium) && resource.price_cents === 0 ? (
+                                    <Button
+                                        asChild
+                                        variant="secondary"
+                                        className="w-full"
+                                        data-testid={`resource-upgrade-btn-${resource.slug}`}
+                                    >
+                                        <Link href="/billing/change-plan">
+                                            <Sparkles className="h-4 w-4" />
+                                            {resource.included_in_plan_names?.[0]
+                                                ? `Disponible en ${resource.included_in_plan_names[0]}`
+                                                : 'Ver planes disponibles'}
+                                        </Link>
+                                    </Button>
                                 ) : (
                                     <Button
                                         type="button"

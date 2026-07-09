@@ -85,7 +85,8 @@ test('payment form fields are visible and submit is disabled when empty', functi
             ->assertVisible('#amount')
             ->assertVisible('#reference')
             ->assertVisible('#sender_bank')
-            ->assertVisible('#sender_phone')
+            ->assertVisible('#sender_phone_operadora')
+            ->assertVisible('#sender_phone_digits')
             ->assertVisible('#sender_id')
             ->assertVisible('#payment_date')
             // Submit button should be disabled when fields are empty
@@ -141,7 +142,8 @@ test('filling payment fields enables submit button', function () {
             ->type('#amount', '29.00')
             ->type('#reference', '1234567890')
             ->select('#sender_bank', 'Banco de Venezuela')
-            ->type('#sender_phone', '04129338026')
+            ->select('#sender_phone_operadora', '0412')
+            ->type('#sender_phone_digits', '9338026')
             ->type('#sender_id', 'V-12345678')
             ->type('#payment_date', '2025-06-15')
             // Submit button should now be enabled

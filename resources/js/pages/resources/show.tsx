@@ -1,5 +1,5 @@
 import { Link } from '@inertiajs/react';
-import { ArrowLeft, Download, FileText, Lock, Sparkles } from 'lucide-react';
+import { ArrowLeft, CircleCheck, Download, FileText, Lock, Sparkles } from 'lucide-react';
 import { useState } from 'react';
 import { formatPrice } from '@/lib/utils';
 import {
@@ -65,22 +65,39 @@ export default function ResourceShow({ resource }: { resource: Resource }) {
                                 </CardDescription>
                             )}
                         </div>
-                        {(resource.has_plans_assigned || resource.is_premium) && !resource.is_included_in_plan && !resource.has_explicit_entitlement ? (
-                                <Badge
-                                    variant="secondary"
-                                    data-testid={`resource-show-buy-separate-badge-${resource.slug}`}
-                                >
-                                    <Sparkles className="mr-1 h-3 w-3" />
-                                    Comprar por separado
-                                </Badge>
-                            ) : !(resource.has_plans_assigned || resource.is_premium) && !resource.is_included_in_plan && !resource.has_explicit_entitlement ? (
-                                <Badge
-                                    variant="outline"
-                                    data-testid={`resource-show-free-badge-${resource.slug}`}
-                                >
-                                    Free
-                                </Badge>
-                            ) : null}
+                        {resource.has_explicit_entitlement ? (
+                            <Badge
+                                variant="secondary"
+                                data-testid={`resource-show-acquired-badge-${resource.slug}`}
+                            >
+                                <CircleCheck className="mr-1 h-3 w-3" />
+                                Adquirido
+                            </Badge>
+                        ) : resource.is_included_in_plan ? (
+                            <Badge
+                                variant="secondary"
+                                className="bg-green-100 text-green-700 hover:bg-green-100"
+                                data-testid={`resource-show-plan-badge-${resource.slug}`}
+                            >
+                                <CircleCheck className="mr-1 h-3 w-3" />
+                                Incluido en tu plan
+                            </Badge>
+                        ) : (resource.has_plans_assigned || resource.is_premium) ? (
+                            <Badge
+                                variant="secondary"
+                                data-testid={`resource-show-buy-separate-badge-${resource.slug}`}
+                            >
+                                <Sparkles className="mr-1 h-3 w-3" />
+                                Comprar por separado
+                            </Badge>
+                        ) : (
+                            <Badge
+                                variant="outline"
+                                data-testid={`resource-show-free-badge-${resource.slug}`}
+                            >
+                                Free
+                            </Badge>
+                        )}
                     </div>
                     {!resource.is_included_in_plan && !resource.has_explicit_entitlement && (resource.included_in_plan_names?.length ?? 0) > 0 && (
                         <div className="mt-2">
@@ -141,6 +158,21 @@ export default function ResourceShow({ resource }: { resource: Resource }) {
                                 <Download className="h-4 w-4" />
                                 Download
                             </a>
+                        </Button>
+                    ) : (resource.has_plans_assigned || resource.is_premium) && resource.price_cents === 0 ? (
+                        <Button
+                            asChild
+                            variant="secondary"
+                            size="lg"
+                            className="w-full"
+                            data-testid={`resource-show-upgrade-btn-${resource.slug}`}
+                        >
+                            <Link href="/billing/change-plan">
+                                <Sparkles className="h-4 w-4" />
+                                {resource.included_in_plan_names?.[0]
+                                    ? `Disponible en ${resource.included_in_plan_names[0]}`
+                                    : 'Ver planes disponibles'}
+                            </Link>
                         </Button>
                     ) : (
                         <Button

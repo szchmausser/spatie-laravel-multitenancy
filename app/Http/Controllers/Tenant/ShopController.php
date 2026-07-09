@@ -40,8 +40,8 @@ class ShopController extends Controller
                     : false;
 
                 $isIncludedInPlan = $tenant && $currentPlan
-                    ? $r->plans()
-                        ->where('price_cents', '<=', $currentPlan->price_cents)
+                    ? $currentPlan->resources()
+                        ->where('resource_id', $r->id)
                         ->exists()
                     : false;
 

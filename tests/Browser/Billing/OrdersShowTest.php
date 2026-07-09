@@ -125,7 +125,8 @@ test('orders show pago movil payment flow', function () {
             ->assertVisible('#amount')
             ->assertVisible('#reference')
             ->assertVisible('#sender_bank')
-            ->assertVisible('#sender_phone')
+            ->assertVisible('#sender_phone_operadora')
+            ->assertVisible('#sender_phone_digits')
             ->assertVisible('#sender_id')
             ->assertVisible('#payment_date')
             // Verify submit button exists and is disabled when fields are empty

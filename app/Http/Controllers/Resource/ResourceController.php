@@ -191,8 +191,8 @@ class ResourceController extends Controller
         // regardless of the is_premium flag.
         if ($resource->is_premium || $resource->plans()->exists()) {
             if ($tenant && $tenant->subscription?->plan
-                && $resource->plans()
-                    ->where('price_cents', '<=', $tenant->subscription->plan->price_cents)
+                && $tenant->subscription->plan->resources()
+                    ->where('resource_id', $resource->id)
                     ->exists()) {
                 return true;
             }
@@ -246,8 +246,8 @@ class ResourceController extends Controller
             'can_download' => $this->userCanAccess($tenant, $r),
             'has_explicit_entitlement' => $this->tenantHasExplicitEntitlement($tenant, $r),
             'is_included_in_plan' => $tenant && $tenant->subscription?->plan
-                ? $r->plans()
-                    ->where('price_cents', '<=', $tenant->subscription->plan->price_cents)
+                ? $tenant->subscription->plan->resources()
+                    ->where('resource_id', $r->id)
                     ->exists()
                 : false,
             'included_in_plan_names' => $r->plans()
