@@ -15,6 +15,7 @@ export type Auth = {
     is_admin: boolean;
     unread_notifications_count: number;
     unread_system_alerts_count: number;
+    unread_payment_notifications_count: number;
 };
 
 /* @chisel-passkeys */

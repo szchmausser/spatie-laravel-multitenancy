@@ -299,7 +299,7 @@ test('read action marks notification as read', function () {
 
     $response = $this->post(route('landlord.alerts.read', ['notification' => $notification->id]));
 
-    $response->assertRedirect();
+    $response->assertOk();
 
     $this->assertNotNull($this->admin->notifications()->find($notification->id)?->read_at);
 });
@@ -325,7 +325,7 @@ test('read action is idempotent when already read', function () {
 
     $response = $this->post(route('landlord.alerts.read', ['notification' => $notification->id]));
 
-    $response->assertRedirect();
+    $response->assertOk();
 
     $fresh = $this->admin->notifications()->find($notification->id);
     expect($fresh->read_at->toISOString())->toBe($readAt->toISOString());

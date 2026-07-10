@@ -57,6 +57,7 @@ class Resource extends Model
      * These are set by the controller before serialization.
      */
     public bool $has_plans_assigned = false;
+
     public array $included_in_plan_names = [];
 
     public function getHasPlansAssignedAttribute(): bool

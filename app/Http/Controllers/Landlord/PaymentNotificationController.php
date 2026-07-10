@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Landlord;
 use App\Http\Controllers\Controller;
 use App\Jobs\IngestPaymentNotification;
 use App\Models\PaymentNotification;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Response as InertiaResponse;
@@ -19,6 +20,11 @@ class PaymentNotificationController extends Controller
      */
     public function index(Request $request): InertiaResponse
     {
+        // Mark the current timestamp so the badge knows this admin has seen the page
+        $request->user()->update([
+            'last_viewed_payment_notifications_at' => now(),
+        ]);
+
         $validated = $request->validate([
             'parse_status' => ['nullable', 'string', 'in:pending,parsed,failed'],
             'bank_code' => ['nullable', 'string', 'max:20'],
@@ -64,6 +70,25 @@ class PaymentNotificationController extends Controller
                 ->orderBy('bank_code')
                 ->pluck('bank_code'),
         ]);
+    }
+
+    /**
+     * Return the count of new payment notifications since the admin last visited.
+     *
+     * Lightweight JSON endpoint for polling, so the frontend can display
+     * a live badge without triggering a full Inertia page refresh.
+     */
+    public function count(Request $request): JsonResponse
+    {
+        $lastViewed = $request->user()->last_viewed_payment_notifications_at;
+
+        $query = PaymentNotification::query();
+
+        if ($lastViewed) {
+            $query->where('created_at', '>', $lastViewed);
+        }
+
+        return response()->json(['count' => $query->count()]);
     }
 
     /**

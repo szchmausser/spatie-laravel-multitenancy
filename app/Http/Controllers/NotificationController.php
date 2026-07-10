@@ -4,6 +4,8 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Notifications\DatabaseNotification;
+use Illuminate\Support\Collection;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -14,18 +16,8 @@ class NotificationController extends Controller
      */
     public function index(Request $request): Response
     {
-        $user = $request->user();
-
-        $unread = $user->notifications()
-            ->whereNull('read_at')
-            ->latest()
-            ->get();
-
-        $read = $user->notifications()
-            ->whereNotNull('read_at')
-            ->latest()
-            ->take(50)
-            ->get();
+        $unread = $this->unreadNotifications($request);
+        $read = $this->readNotifications($request);
 
         return Inertia::render('notifications/index', [
             'unread' => $unread,
@@ -43,23 +35,62 @@ class NotificationController extends Controller
      */
     public function update(Request $request, string $notification): RedirectResponse
     {
-        $notification = $request->user()
+        $request->user()
             ->notifications()
             ->where('id', $notification)
-            ->firstOrFail();
-
-        $notification->markAsRead();
+            ->firstOrFail()
+            ->markAsRead();
 
         return redirect()->back();
     }
 
     /**
      * Mark all notifications as read for the authenticated user.
+     *
+     * Returns the notifications page directly instead of a redirect so
+     * Inertia refreshes all shared props (including the sidebar badge
+     * unread count) in a single response, avoiding stale badge state
+     * on client-side navigation.
      */
-    public function markAllRead(Request $request): RedirectResponse
+    public function markAllRead(Request $request): Response
     {
         $request->user()->unreadNotifications->each->markAsRead();
 
-        return redirect()->back();
+        $unread = $this->unreadNotifications($request);
+        $read = $this->readNotifications($request);
+
+        return Inertia::render('notifications/index', [
+            'unread' => $unread,
+            'read' => $read,
+        ]);
+    }
+
+    /**
+     * Load unread notifications for the authenticated user.
+     *
+     * @return Collection<int, DatabaseNotification>
+     */
+    private function unreadNotifications(Request $request): Collection
+    {
+        return $request->user()
+            ->notifications()
+            ->whereNull('read_at')
+            ->latest()
+            ->get();
+    }
+
+    /**
+     * Load read notifications for the authenticated user (latest 50).
+     *
+     * @return Collection<int, DatabaseNotification>
+     */
+    private function readNotifications(Request $request): Collection
+    {
+        return $request->user()
+            ->notifications()
+            ->whereNotNull('read_at')
+            ->latest()
+            ->take(50)
+            ->get();
     }
 }

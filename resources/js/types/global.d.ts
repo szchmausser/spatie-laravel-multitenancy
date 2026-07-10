@@ -29,6 +29,8 @@ declare module '@inertiajs/core' {
                 has_premium_zone: boolean;
             } | null;
             sidebarOpen: boolean;
+            /** Auto-refresh interval (seconds) for admin payment notification badge. */
+            polling_interval_seconds: number;
             [key: string]: unknown;
         };
     }

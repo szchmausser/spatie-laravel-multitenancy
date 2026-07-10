@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Landlord;
 
 use App\Http\Controllers\Controller;
+use App\Models\PaymentNotification;
 use Inertia\Inertia;
 
 /**
@@ -24,6 +25,19 @@ class AdminPanelController extends Controller
      */
     public function index()
     {
-        return Inertia::render('landlord/admin-panel');
+        $user = auth()->user();
+        $lastViewed = $user?->last_viewed_payment_notifications_at;
+
+        $query = PaymentNotification::query();
+
+        if ($lastViewed) {
+            $query->where('created_at', '>', $lastViewed);
+        }
+
+        $unreadPaymentNotificationsCount = $query->count();
+
+        return Inertia::render('landlord/admin-panel', [
+            'unread_payment_notifications_count' => $unreadPaymentNotificationsCount,
+        ]);
     }
 }

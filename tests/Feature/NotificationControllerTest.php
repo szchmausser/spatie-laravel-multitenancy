@@ -114,7 +114,7 @@ test('marks all notifications as read', function () {
 
     $response = $this->put('/notifications/read-all');
 
-    $response->assertRedirect();
+    $response->assertOk();
 
     expect($user->unreadNotifications()->count())->toBe(0);
 });

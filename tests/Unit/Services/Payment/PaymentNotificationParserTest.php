@@ -3,7 +3,6 @@
 use App\Models\SystemConfig;
 use App\Services\Payment\PaymentNotificationParser;
 
-
 beforeEach(function () {
     $this->parser = new PaymentNotificationParser;
 

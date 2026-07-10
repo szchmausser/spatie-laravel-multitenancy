@@ -13,6 +13,9 @@ class SystemConfigSeeder extends Seeder
     public function run(): void
     {
         $configs = [
+            // ─── Admin ──────────────────────────────────────────────────
+            ['group' => 'admin', 'key' => 'admin.polling_interval_seconds', 'value' => 30, 'type' => 'integer', 'description' => 'Segundos entre cada auto-refresh del badge de notificaciones bancarias en el admin. Afecta el dashboard y la página de notificaciones. 0 = desactivado, refresca manualmente.'],
+
             // ─── Payment ────────────────────────────────────────────────
             ['group' => 'payment', 'key' => 'payment.order_expiry_hours', 'value' => 48, 'type' => 'integer', 'description' => 'Horas antes de que una orden pendiente de pago expire automáticamente. Se calcula desde que se crea la orden. Cuando expira, el sistema la marca como expirada y notifica al admin del tenant. Sube si tus usuarios tardan más en pagar. Bájalo si quieres que las órdenes pendientes se liberen más rápido.'],
 

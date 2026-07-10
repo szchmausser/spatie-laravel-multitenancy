@@ -54,6 +54,11 @@ type PageProps = {
 };
 
 const groupMeta: Record<string, { label: string; description: string; icon: typeof Settings }> = {
+    admin: {
+        label: 'Admin',
+        description: 'Configuración general del panel de administración',
+        icon: Settings,
+    },
     payment: {
         label: 'Pagos',
         description: 'Expiración de órdenes',

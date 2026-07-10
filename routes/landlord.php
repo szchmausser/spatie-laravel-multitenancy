@@ -115,6 +115,7 @@ Route::middleware(['auth', 'verified', EnsureUserIsAdmin::class])->prefix('admin
 
     // Payment notifications — monitor and reprocess failed notifications
     Route::get('payment-notifications', [PaymentNotificationController::class, 'index'])->name('payment-notifications.index');
+    Route::get('payment-notifications/count', [PaymentNotificationController::class, 'count'])->name('payment-notifications.count');
     Route::post('payment-notifications/{notification}/reprocess', [PaymentNotificationController::class, 'reprocess'])->name('payment-notifications.reprocess');
 
     // Reconciliation dashboard — KPIs, tabs, and management endpoints

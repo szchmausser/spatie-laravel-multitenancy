@@ -1,4 +1,4 @@
-import { Head, Link, router } from '@inertiajs/react';
+import { Head, Link, router, usePage } from '@inertiajs/react';
 import {
     Banknote,
     ChevronDown,
@@ -19,8 +19,9 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
+import { usePaymentNotificationPolling } from '@/hooks/use-payment-notification-polling';
 import { cn, formatDateTime } from '@/lib/utils';
-import type { BreadcrumbItem } from '@/types';
+import type { Auth, BreadcrumbItem } from '@/types';
 import type { PaymentNotificationPageProps } from '@/types/models';
 
 const breadcrumbs: BreadcrumbItem[] = [
@@ -40,6 +41,11 @@ export default function PaymentNotificationsIndex({
     bank_codes,
     flash,
 }: PaymentNotificationPageProps & { flash?: { success?: string; error?: string } }) {
+    const { auth, polling_interval_seconds } = usePage<{ auth: Auth; polling_interval_seconds: number }>().props;
+    const pendingCount = usePaymentNotificationPolling(
+        auth.unread_payment_notifications_count ?? 0,
+        polling_interval_seconds,
+    );
     const [parseStatus, setParseStatus] = useState(filters.parse_status ?? '');
     const [bankCode, setBankCode] = useState(filters.bank_code ?? '');
     const [reference, setReference] = useState(filters.reference ?? '');
@@ -107,7 +113,17 @@ export default function PaymentNotificationsIndex({
         <>
             <Head title="Notificaciones Bancarias" />
             <div className="flex h-full flex-1 flex-col gap-4 overflow-x-auto rounded-xl p-4">
-                <h1 className="text-2xl font-bold">Notificaciones Bancarias</h1>
+                <div className="flex items-center gap-3">
+                    <h1 className="text-2xl font-bold">Notificaciones Bancarias</h1>
+                    {pendingCount > 0 && (
+                        <Badge
+                            variant="default"
+                            className="h-6 min-w-6 rounded-full px-2 text-xs font-medium"
+                        >
+                            {pendingCount > 99 ? '99+' : pendingCount} sin procesar
+                        </Badge>
+                    )}
+                </div>
                 <p className="text-sm text-muted-foreground">
                     Monitorear notificaciones bancarias entrantes del sistema de
                     conciliación.

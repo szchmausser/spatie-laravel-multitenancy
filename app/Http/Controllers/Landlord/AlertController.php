@@ -3,7 +3,6 @@
 namespace App\Http\Controllers\Landlord;
 
 use App\Http\Controllers\Controller;
-use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Inertia\Response as InertiaResponse;
@@ -71,8 +70,10 @@ class AlertController extends Controller
      * Uses the user's notifications() relationship to scope the query,
      * ensuring the notification belongs to the authenticated user and
      * has category = 'system'. Returns 404 if not found.
+     * Returns the alerts page directly with fresh shared props instead of
+     * redirecting, to avoid stale Inertia shared props on the dashboard.
      */
-    public function read(Request $request, string $notification): RedirectResponse
+    public function read(Request $request, string $notification): InertiaResponse
     {
         $notification = $request->user()
             ->notifications()
@@ -82,6 +83,7 @@ class AlertController extends Controller
 
         $notification->markAsRead();
 
-        return redirect()->back();
+        // Re-run the index query to return fresh page + shared props
+        return $this->index($request);
     }
 }

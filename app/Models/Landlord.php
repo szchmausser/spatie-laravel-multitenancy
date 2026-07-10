@@ -14,7 +14,7 @@ use Spatie\MediaLibrary\HasMedia;
 use Spatie\MediaLibrary\InteractsWithMedia;
 use Spatie\Multitenancy\Models\Concerns\UsesLandlordConnection;
 
-#[Fillable(['name', 'email', 'password'])]
+#[Fillable(['name', 'email', 'password', 'last_viewed_payment_notifications_at'])]
 #[Hidden(['password', 'two_factor_secret', 'two_factor_recovery_codes', 'remember_token'])]
 class Landlord extends Authenticatable implements HasMedia
 {
@@ -36,6 +36,7 @@ class Landlord extends Authenticatable implements HasMedia
     {
         return [
             'email_verified_at' => 'datetime',
+            'last_viewed_payment_notifications_at' => 'datetime',
             'password' => 'hashed',
         ];
     }

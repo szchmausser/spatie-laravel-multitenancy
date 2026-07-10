@@ -1,4 +1,4 @@
-import { Head, Link } from '@inertiajs/react';
+import { Head, Link, usePage } from '@inertiajs/react';
 import {
     Banknote,
     Bell,
@@ -19,137 +19,161 @@ import {
     CardHeader,
     CardTitle,
 } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { usePaymentNotificationPolling } from '@/hooks/use-payment-notification-polling';
 import { index as plansIndex } from '@/routes/landlord/plans';
 import { index as resourcesIndex } from '@/routes/landlord/resources';
 import { index as subscriptionsIndex } from '@/routes/landlord/subscriptions';
 import { index as tenantsIndex } from '@/routes/landlord/tenants';
 import { create as notificationsIndex } from '@/routes/landlord/notifications';
-import type { BreadcrumbItem } from '@/types';
+import type { Auth, BreadcrumbItem } from '@/types';
 
 const breadcrumbs: BreadcrumbItem[] = [{ title: 'Panel', href: '/admin' }];
 
-const groups = [
-    {
-        label: 'SERVICE',
-        items: [
-            {
-                title: 'Tenants',
-                description: 'Create, edit and manage tenant databases.',
-                href: tenantsIndex().url,
-                icon: Building,
-                testId: 'admin-card-tenants',
-            },
-            {
-                title: 'Plans',
-                description: 'Define pricing tiers and feature catalogues.',
-                href: plansIndex().url,
-                icon: CreditCard,
-                testId: 'admin-card-plans',
-            },
-            {
-                title: 'Resources',
-                description: 'Downloadable files for paid tenants.',
-                href: resourcesIndex().url,
-                icon: Download,
-                testId: 'admin-card-resources',
-            },
-        ],
-    },
-    {
-        label: 'BILLING',
-        items: [
-            {
-                title: 'Subscriptions',
-                description: 'Review every tenant subscription across the platform.',
-                href: subscriptionsIndex().url,
-                icon: Users,
-                testId: 'admin-card-subscriptions',
-            },
-            {
-                title: 'Orders',
-                description: 'Purchase orders and payment verification.',
-                href: '/admin/orders',
-                icon: ShoppingCart,
-                testId: 'admin-card-orders',
-            },
-            {
-                title: 'Pagos',
-                description: 'Pagos reportados por los tenants.',
-                href: '/admin/payments',
-                icon: Wallet,
-                testId: 'admin-card-payments',
-            },
-            {
-                title: 'Cuentas Bancarias',
-                description: 'Cuentas receptoras PagoMóvil y Transferencia.',
-                href: '/admin/payment-configs',
-                icon: CreditCard,
-                testId: 'admin-card-payment-configs',
-            },
-        ],
-    },
-    {
-        label: 'PAGO MÓVIL',
-        items: [
-            {
-                title: 'Notificaciones Bancarias',
-                description: 'SMS de pago entrantes de los bancos.',
-                href: '/admin/payment-notifications',
-                icon: Banknote,
-                testId: 'admin-card-payment-notifications',
-            },
-            {
-                title: 'Conciliación',
-                description: 'KPIs, pagos huérfanos y timeline.',
-                href: '/admin/reconciliation',
-                icon: LayoutDashboard,
-                testId: 'admin-card-reconciliation',
-            },
-            {
-                title: 'Dispositivos',
-                description: 'Teléfonos que capturan notificaciones.',
-                href: '/admin/devices',
-                icon: Smartphone,
-                testId: 'admin-card-devices',
-            },
-            {
-                title: 'Códigos de Invitación',
-                description: 'Registro de dispositivos, scoped por tenant.',
-                href: '/admin/invite-codes',
-                icon: KeyRound,
-                testId: 'admin-card-invite-codes',
-            },
-        ],
-    },
-    {
-        label: 'SYSTEM',
-        items: [
-            {
-                title: 'Configuración',
-                description: 'Configuraciones dinámicas del sistema.',
-                href: '/admin/system-configs',
-                icon: Settings,
-                testId: 'admin-card-system-configs',
-            },
-            {
-                title: 'Anuncios',
-                description: 'Comunicados a los tenants.',
-                href: notificationsIndex().url,
-                icon: Bell,
-                testId: 'admin-card-notifications',
-            },
-            {
-                title: 'Alertas',
-                description: 'Fallas y advertencias críticas.',
-                href: '/admin/alerts',
-                icon: Bell,
-                testId: 'admin-card-alerts',
-            },
-        ],
-    },
-] as const;
+type Props = {
+    /** Count of payment notifications pending or failed (needs attention). */
+    unread_payment_notifications_count: number;
+};
 
-export default function AdminPanel() {
+export default function AdminPanel({ unread_payment_notifications_count }: Props) {
+    const { auth, polling_interval_seconds } = usePage<{ auth: Auth; polling_interval_seconds: number }>().props;
+    const unreadAlerts = auth.unread_system_alerts_count;
+    const pendingCount = usePaymentNotificationPolling(
+        unread_payment_notifications_count,
+        polling_interval_seconds,
+    );
+
+    const groups = [
+        {
+            label: 'SERVICE',
+            items: [
+                {
+                    title: 'Tenants',
+                    description: 'Create, edit and manage tenant databases.',
+                    href: tenantsIndex().url,
+                    icon: Building,
+                    testId: 'admin-card-tenants',
+                },
+                {
+                    title: 'Plans',
+                    description: 'Define pricing tiers and feature catalogues.',
+                    href: plansIndex().url,
+                    icon: CreditCard,
+                    testId: 'admin-card-plans',
+                },
+                {
+                    title: 'Resources',
+                    description: 'Downloadable files for paid tenants.',
+                    href: resourcesIndex().url,
+                    icon: Download,
+                    testId: 'admin-card-resources',
+                },
+            ],
+        },
+        {
+            label: 'BILLING',
+            items: [
+                {
+                    title: 'Subscriptions',
+                    description: 'Review every tenant subscription across the platform.',
+                    href: subscriptionsIndex().url,
+                    icon: Users,
+                    testId: 'admin-card-subscriptions',
+                },
+                {
+                    title: 'Orders',
+                    description: 'Purchase orders and payment verification.',
+                    href: '/admin/orders',
+                    icon: ShoppingCart,
+                    testId: 'admin-card-orders',
+                },
+                {
+                    title: 'Pagos',
+                    description: 'Pagos reportados por los tenants.',
+                    href: '/admin/payments',
+                    icon: Wallet,
+                    testId: 'admin-card-payments',
+                },
+                {
+                    title: 'Cuentas Bancarias',
+                    description: 'Cuentas receptoras PagoMóvil y Transferencia.',
+                    href: '/admin/payment-configs',
+                    icon: CreditCard,
+                    testId: 'admin-card-payment-configs',
+                },
+            ],
+        },
+        {
+            label: 'PAGO MÓVIL',
+            items: [
+                {
+                    title: 'Notificaciones Bancarias',
+                    description: pendingCount > 0
+                        ? `${pendingCount} sin procesar`
+                        : 'SMS de pago entrantes de los bancos.',
+                    href: '/admin/payment-notifications',
+                    icon: Banknote,
+                    testId: 'admin-card-payment-notifications',
+                    badge: pendingCount > 0
+                        ? pendingCount
+                        : undefined,
+                },
+                {
+                    title: 'Conciliación',
+                    description: 'KPIs, pagos huérfanos y timeline.',
+                    href: '/admin/reconciliation',
+                    icon: LayoutDashboard,
+                    testId: 'admin-card-reconciliation',
+                },
+                {
+                    title: 'Dispositivos',
+                    description: 'Teléfonos que capturan notificaciones.',
+                    href: '/admin/devices',
+                    icon: Smartphone,
+                    testId: 'admin-card-devices',
+                },
+                {
+                    title: 'Códigos de Invitación',
+                    description: 'Registro de dispositivos, scoped por tenant.',
+                    href: '/admin/invite-codes',
+                    icon: KeyRound,
+                    testId: 'admin-card-invite-codes',
+                },
+            ],
+        },
+        {
+            label: 'SYSTEM',
+            items: [
+                {
+                    title: 'Configuración',
+                    description: 'Configuraciones dinámicas del sistema.',
+                    href: '/admin/system-configs',
+                    icon: Settings,
+                    testId: 'admin-card-system-configs',
+                },
+                {
+                    title: 'Anuncios',
+                    description: 'Comunicados a los tenants.',
+                    href: notificationsIndex().url,
+                    icon: Bell,
+                    testId: 'admin-card-notifications',
+                },
+                {
+                    title: 'Alertas',
+                    description: unreadAlerts > 0
+                        ? `${unreadAlerts} sin leer`
+                        : 'Fallas y advertencias críticas.',
+                    href: '/admin/alerts',
+                    icon: Bell,
+                    testId: 'admin-card-alerts',
+                    badge: unreadAlerts > 0
+                        ? unreadAlerts
+                        : undefined,
+                },
+            ],
+        },
+    ];
+
     return (
         <>
             <Head title="Panel" />
@@ -172,6 +196,7 @@ export default function AdminPanel() {
                                         href,
                                         icon: Icon,
                                         testId,
+                                        badge,
                                     }) => (
                                         <Link
                                             key={title}
@@ -186,6 +211,15 @@ export default function AdminPanel() {
                                                         <CardTitle className="text-sm">
                                                             {title}
                                                         </CardTitle>
+                                                        {badge !== undefined && (
+                                                            <Badge
+                                                                variant="default"
+                                                                className="ml-auto h-5 min-w-5 rounded-full px-1.5 text-[10px] font-medium"
+                                                                data-testid={`${testId}-badge`}
+                                                            >
+                                                                {badge > 99 ? '99+' : badge}
+                                                            </Badge>
+                                                        )}
                                                     </div>
                                                     <CardDescription className="text-xs">
                                                         {description}
