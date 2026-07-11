@@ -5,8 +5,8 @@ flowchart TB
     %% ==================== SINOPSIS GENERAL ====================
     subgraph SYNOPSIS["📖 Sinopsis — Narrativa del Sistema"]
         direction LR
-        s_fwd["Forward — La notificación llega primero<br/>Un tenant paga → el banco del landlord envía un SMS.<br/>El teléfono Android lo captura y lo procesa.<br/>Busca si el pago ya fue reportado por el tenant.<br/>Si hay un payment pendiente → verificación automática.<br/>Si no → espera a que el tenant reporte (Reverse)."]:::synopsis
-        s_rev["Reverse — El usuario reporta antes del SMS<br/>El tenant ingresa manualmente su pago desde el frontend.<br/>El sistema registra el pago y busca si el SMS ya llegó.<br/>Si hay un payment_match esperando → lo vincula.<br/>Con shadow off → verificación inmediata.<br/>Si no → el pago queda pendiente al Forward."]:::synopsis
+        s_fwd["Forward — La notificación llega primero<br/>Un tenant paga → el banco del landlord envía un SMS o push.<br/>El teléfono Android lo captura y lo envía al backend.<br/>El job IngestPaymentNotification parsea la notificación<br/>y busca si el pago ya fue reportado por el tenant.<br/>Si hay un payment pendiente → verificación automática.<br/>Si no → espera a que el tenant reporte (Reverse)."]:::synopsis
+        s_rev["Reverse — El usuario reporta antes del SMS<br/>El tenant ingresa manualmente su pago desde el frontend.<br/>El sistema registra el pago y busca en la BD si ya hay<br/>un payment_match sin vincular. Primero intenta match<br/>estricto (ref+monto), luego fallback a solo ref.<br/>Si hay match → el pago se resuelve en segundos.<br/>Si no → el pago queda pendiente al Forward."]:::synopsis
     end
 
     %% ==================== BANNER DE LEYENDA (Superior) ====================
@@ -23,72 +23,93 @@ flowchart TB
     ancora --> REV
 
     %% ==================== COLUMNA IZQUIERDA: FORWARD ====================
-    subgraph FWD["Forward Flow (S5a+S5b) — La notificación bancaria llega antes que el usuario reporte el pago"]
+    subgraph FWD["Forward Flow (S5a+S5b+S7+S8f) — La notificación bancaria llega antes que el usuario reporte el pago"]
         direction TB
 
-        fwd_narr["📌 Un tenant acaba de pagar. El banco del landlord envía un SMS.<br/>El sistema procesa la notificación e intenta vincularla<br/>con un payment existente.<br/><i>Si no hay payment todavía, el Reverse flow completa el círculo.</i>"]:::narrative_inline
+        fwd_narr["📌 Un tenant acaba de pagar. El banco del landlord envía un SMS o push.<br/>El sistema procesa la notificación (con regex según banco+canal)<br/>e intenta vincularla con un payment existente.<br/><i>Si no hay payment todavía, el Reverse flow completa el círculo.</i>"]:::narrative_inline
         fwd_narr ~~~ f1
 
-        subgraph F1["Fase 1: Ingesta — Recibir SMS desde el dispositivo Android"]
-            f1["Recibir la notificación bancaria que el dispositivo capturó<br/>DeviceController::storeNotification() — POST /api/device/notifications<br/>Valida: bank_code, raw_body (SMS completo), dedup_hash"]:::controller
-            f2["Persistir con dedup: si el hash existe, es duplicado y se ignora<br/>PaymentNotification::forceCreate() — UNIQUE(dedup_hash)<br/>parse_status → 'pending' · bank_code, raw_text inmutables"]:::state
-            f2dup{"El hash ya existe<br/>en la BD?"}:::query
-            f2dup_dup["DUPLICADO → descartar silenciosamente<br/>QueryException 23505 → return 200 duplicate_ignored<br/>Sin job. Terminal."]:::terminal
+        subgraph F1["Fase 1: Ingesta — Recibir notificación desde el dispositivo Android"]
+            f1["Recibir la notificación bancaria que el dispositivo capturó<br/>IngestController::store() — POST /api/device/notifications<br/>Valida: bank_code, raw_text (SMS/push completo), source_type<br/>source_type → 'sms' o 'bank-app'"]:::controller
+            f2["Persistir: bank_code, raw_text, source_type y dedup_hash<br/>Dedup hash calculado semánticamente vía computeDedupHash():<br/>normaliza amount, phone (canonical según banco), date, ref → SHA256<br/>parse_status → 'pending' · raw_text inmutable"]:::state
+            f2dup{"El dedup_hash ya existe<br/>en la BD (UNIQUE)?"}:::query
+            f2dup_dup["DUPLICADO → ignorar silenciosamente<br/>QueryException 23505 → return 200 duplicate_ignored<br/>Sin job. Terminal."]:::terminal
             f3["NUEVA → encolar procesamiento asíncrono<br/>IngestPaymentNotification::dispatch() → return 201<br/>El trabajo pesado va a un worker, no bloquea al dispositivo"]:::queue
         end
 
-        subgraph F2["Fase 2: Parseo — Extraer datos estructurados del SMS"]
+        subgraph F2["Fase 2: Parseo — Extraer datos estructurados de la notificación"]
             f4["Worker toma la notificación de la cola<br/>IngestPaymentNotification::handle()<br/>Carga la notificación desde BD"]:::queue
-            f5["Aplicar regex del banco para extraer: ref, monto (cents), teléfono<br/>Cada banco tiene su patrón configurable (BDV/BNC)<br/>PaymentNotificationParser::parse(bank_code, raw_text)<br/>Regex via SystemConfig (cache 1h) · normalizeAmount (VE→cents)<br/>normalizeRef (trim+uppercase) · extractLast4 phone<br/>→ ParsedPayment DTO o null"]:::parser
-            f6{"El SMS coincide con<br/>el formato esperado?"}:::query
-            f6n["NO → notificación fallida, no generará match<br/>markFailed('Regex did not match')<br/>parse_status → 'failed' · Terminal"]:::terminal
+            f5["Aplicar regex del banco Y canal para extraer datos<br/>El parser resuelve regex_{bankCode}_{sourceType}, NO hay fallback genérico.<br/>PaymentNotificationParser::parse(bank_code, raw_text, source_type)<br/>Regex via SystemConfig (cache 1h) · normalizeAmount (VE→cents)<br/>normalizeRef (trim+uppercase) · extractLast4 · extractFirst4<br/>→ ParsedPayment DTO (incluye senderPhoneNumber, senderPhoneFirst4, rawGroups)"]:::parser
+            f6{"¿El regex coincide con<br/>el texto de la notificación?"}:::query
+            f6n["NO → notificación fallida, no generará match<br/>markFailed('Regex did not match')<br/>parse_status → 'failed' · parse_error guardado · Terminal"]:::terminal
         end
 
         subgraph F3["Fase 3: Matching — Vincular la notificación con un payment pendiente"]
-            f8["Registrar intento de match (cada notificación ok → un PaymentMatch)<br/>DB::transaction · PaymentMatch::createFromParsed() — firstOrCreate<br/>match_status → 'unmatched' (esperando un payment que calce)"]:::state
-            f9["Buscar payments que calcen: misma ref + monto + ventana 72h<br/>Si el tenant ya reportó este pago, se vinculan automáticamente<br/>ReconciliationOrchestrator::run($match)<br/>Guard: 'unmatched' · FOR UPDATE (lock pesimista)<br/>Window: SystemConfig('reconciliation.match_window_hours', 72)<br/>Excluye payments que ya tienen otro match 'matched'"]:::service
+            f8["Registrar intento de match (4-step dedup algorithm)<br/>DB::transaction · PaymentMatch::createFromParsed()<br/>1. Misma notificación → return existente (idempotencia)<br/>2. Misma ref unmatched → reusar (linkear nueva notificación)<br/>3. Misma ref matched → crear duplicate_attempt<br/>4. Ninguna → crear nuevo unmatched<br/>Guarda parsed_sender_phone_number, parsed_sender_phone_first4, parsed_bank_code"]:::state
+            f9["Buscar payments que calcen: misma ref + monto + ventana<br/>Ventana desde match.created_at - match_window_hours (default 72h)<br/>ReconciliationOrchestrator::run($match)<br/>Guard: 'unmatched' · FOR UPDATE (lock pesimista)<br/>Excluye payments que ya tienen otro match 'matched'"]:::service
             f10{"¿Cuántos payments<br/>candidatos?"}:::query
             f10_0["0: nadie reportó este pago aún<br/>match_status stays 'unmatched'<br/>→ Espera al Reverse flow"]:::terminal
             f10_1_guard{"1 candidato → ¿sigue Pending<br/>(race guard)?"}:::query
             f10_1_guard_n["Ya lo verificó otro proceso (race)<br/>match_status stays 'unmatched'<br/>→ Terminal · abortado"]:::terminal
-            f11a{"¿Shadow mode?<br/>(sugerencia vs auto)"}:::query
+            f10_1_multifield{"PaymentMatchGuard<br/>valida banco+teléfono?"}:::query
+            f10_1_multifield_n["MISMATCH → alerta admin sin bloquear<br/>match_status → 'pending'<br/>SystemAlert: 'payment_multifield_mismatch'<br/>→ Dashboard conciliación"]:::terminal
+            f11a{"¿Shadow mode?<br/>(canal en shadow_mode_channels)"}:::query
             f11b["SHADOW ON: sugerido, admin debe confirmar<br/>match_status → 'pending' · payment_id linked<br/>Payment sigue 'pending' · Terminal"]:::terminal
             f11c["SHADOW OFF: auto-verificación inmediata<br/>PaymentService::verifyPayment(null)<br/>payment.status → 'verified' · verified_by → null<br/>match_status → 'matched' · matched_at → now()"]:::state
             f10_N[">1: múltiples candidatos, revisión manual<br/>match_status → 'pending'<br/>→ Dashboard conciliación"]:::terminal
         end
 
-        subgraph F4["Fase 4: Post-procesamiento — Eventos de dominio"]
-            f7["Marcar notificación como parseada (DESPUÉS de transacción commit)<br/>markParsed(parsedPayment)<br/>parse_status → 'parsed' · parsed_data JSON<br/>(amount_cents, reference, sender_phone_last4, raw_groups opt)"]:::state
+        subgraph F4["Fase 4: Duplicado — Detección de referencia ya verificada"]
+            f_dup0["Paso 0 (ejecuta ANTES que matching normal):<br/>Buscar Payment::Verified con misma ref + monto"]:::service
+            f_dup1{"Existe un Verified<br/>con esta ref + monto?"}:::query
+            f_dup_no["No → continuar a matching normal<br/>(Paso 1)"]:::terminal
+            f_dup_yes["Sí → marcar match como duplicate_attempt<br/>Buscar pending con misma ref + monto"]:::state
+            f_dup_cancel{"Hay un Payment Pending<br/>con esta ref?"}:::query
+            f_dup_cancel_yes["Cancelar pending via PaymentService<br/>cancellation_type → SystemDuplicate<br/>cancelled_by → 'system'"]:::state
+            f_dup_cancel_no["Solo marcar duplicate_attempt<br/>sin payment que cancelar"]:::terminal
+        end
+
+        subgraph F5["Fase 5: Post-procesamiento — Eventos de dominio"]
+            f7["Marcar notificación como parseada (DESPUÉS de transacción commit)<br/>markParsed(parsedPayment)<br/>parse_status → 'parsed' · parsed_data JSON<br/>(amount_cents, reference, sender_phone_last4,<br/>sender_phone_number, sender_phone_first4, raw_groups opt)"]:::state
             f12["Disparar eventos fuera de la transacción (IC-4)<br/>dispatchPostCommitEvents()<br/>Si shadow OFF y auto-verificado → event(PaymentVerified)<br/>  → ActivateSubscription: order→Paid, crea/actualiza Subscription<br/>Si hubo duplicado cancelado → event(PaymentCancelled)"]:::queue
             f_fail["ERROR: worker falla → notificación marcada como fallida<br/>IngestPaymentNotification::failed()<br/>markFailed(exception message) · parse_status → 'failed'"]:::terminal
             f12_note["ℹ️ PaymentCancelled solo se dispara desde<br/>detección de duplicados (no desde forward run())"]:::note
         end
 
         f1 --> f2 --> f2dup
-        f2dup -->|Sí dup 23505| f2dup_dup
-        f2dup -->|No| f3 --> f4
+        f2dup -->|"Sí dup 23505"| f2dup_dup
+        f2dup -->|"No"| f3 --> f4
         f4 --> f5 --> f6
-        f6 -->|No| f6n
-        f6 -->|Sí| f8 --> f9 --> f10
+        f6 -->|"No"| f6n
+        f6 -->|"Sí"| f8 --> f_dup0 --> f_dup1
+        f_dup1 -->|"No"| f9 --> f10
+        f_dup1 -->|"Sí"| f_dup_yes --> f_dup_cancel
+        f_dup_cancel -->|"Sí"| f_dup_cancel_yes
+        f_dup_cancel -->|"No"| f_dup_cancel_no
         f10 -->|"0"| f10_0
         f10 -->|"1"| f10_1_guard
-        f10_1_guard -->|No| f10_1_guard_n
-        f10_1_guard -->|Sí| f11a
-        f11a -->|Sí| f11b
-        f11a -->|No| f11c
-        f10 -->|">1"| f10_N
+        f10_1_guard -->|"No"| f10_1_guard_n
+        f10_1_guard -->|"Sí"| f10_1_multifield
+        f10_1_multifield -->|"MISMATCH"| f10_1_multifield_n
+        f10_1_multifield -->|"OK"| f11a
+        f11a -->|"Sí"| f11b
+        f11a -->|"No"| f11c
+        f10 -->|"`>1`"| f10_N
 
-        f8 -.->|fin tx| f7
-        f10_0 -.->|fin tx| f7
-        f11b -.->|fin tx| f7
-        f11c -.->|fin tx| f7
-        f10_N -.->|fin tx| f7
-        f10_1_guard_n -.->|fin tx| f7
+        f8 -.->|"fin tx"| f7
+        f_dup_cancel_yes -.->|"fin tx"| f7
+        f_dup_cancel_no -.->|"fin tx"| f7
+        f10_0 -.->|"fin tx"| f7
+        f11b -.->|"fin tx"| f7
+        f11c -.->|"fin tx"| f7
+        f10_N -.->|"fin tx"| f7
+        f10_1_guard_n -.->|"fin tx"| f7
+        f10_1_multifield_n -.->|"fin tx"| f7
         f7 --> f12
-        f12 -.->|aclaración| f12_note
+        f12 -.->|"aclaración"| f12_note
 
-        f4 -.->|Exception| f_fail
-        f8 -.->|Exception| f_fail
+        f4 -.->|"Exception"| f_fail
+        f8 -.->|"Exception"| f_fail
 
     end
 
@@ -96,46 +117,62 @@ flowchart TB
     subgraph REV["Reverse Flow (S6) — El usuario reporta el pago antes de que llegue la notificación bancaria"]
         direction TB
 
-        rev_narr["📌 El usuario reporta su pago antes de que llegue el SMS.<br/>El sistema registra el payment como pendiente y busca<br/>en la BD si ya hay una notificación SMS esperando.<br/><i>Si hay match → el pago se resuelve en segundos.</i>"]:::narrative_inline
+        rev_narr["📌 El usuario reporta su pago antes de que llegue el SMS.<br/>El sistema registra el payment como pendiente y busca<br/>en la BD si ya hay un payment_match sin vincular.<br/>Primero intenta match estricto (ref+monto),<br/>luego fallback a solo ref (amountMismatch).<br/><i>Si hay match → el pago se resuelve en segundos.</i>"]:::narrative_inline
         rev_narr ~~~ r1
 
         subgraph R1["Fase 1: Reporte — El tenant ingresa el pago desde el frontend"]
             r1["El usuario reporta manualmente su pago (se adelanta al SMS)<br/>Tenant PaymentController::store() — POST /billing/orders/{order}/payments<br/>Valida: orden Pending · amount ≤ remaining · ref 6-10 dígitos<br/>ref UNIQUE cross-tenant · payment method válido"]:::controller
-            r2["Preparar datos del método de pago elegido<br/>Construye gatewayData:<br/>pago_movil: bank, phone, id, date, concept<br/>bank_transfer: bank, name, id, account, rif, date"]:::controller
+            r2["Preparar datos del método de pago elegido<br/>Construye gatewayData:<br/>pago_movil: sender_bank, sender_phone, sender_id, date, concept<br/>bank_transfer: sender_bank, sender_name, sender_id, account, rif, date"]:::controller
         end
 
-        subgraph R2["Fase 2: Registro — Crear el payment y notificar admins"]
-            r3["Registrar el pago. Si ya hay uno pendiente mismo método → reusar (idempotencia)<br/>Si cambió de método → cancelar el anterior (MethodChanged)<br/>PaymentService::recordPayment(order, amount, method, config, data, ref)<br/>Resuelve gateway: resolveGateway($method)"]:::service
-            r4["Gateway crea Payment + detalle atómicamente<br/>PagoMovilGateway o BankTransferGateway<br/>payment.status → 'pending' · ref normalizada via normalizeRef()<br/>→ Payment listo para verificar"]:::state
-            r5["Notificar admins landlord: nuevo pago pendiente de verificación<br/>notifyLandlordAdmins()<br/>Landlord::all() → Notification PendingPaymentCreated"]:::queue
+        subgraph R2["Fase 2: Registro — Crear el payment con guards de idempotencia"]
+            r3["Guard temprano: ¿ref ya verificada en otro pago?<br/>Si transaction_id provisto → buscar Payment::Verified con misma ref<br/>Si existe → lanzar DuplicatePaymentReferenceException (no crear pago)"]:::service
+            r3_dup{"Ya existe Verified<br/>con esta ref?"}:::query
+            r3_dup_yes["SÍ → rechazar con 409 Conflict<br/>DuplicatePaymentReferenceException<br/>Terminal · pago no creado"]:::terminal
+            r3_dup_no["No → continuar registro normal"]:::terminal
+
+            r4["Idempotencia: ¿orden ya tiene pago Pending?<br/>Si sí y mismo método → retornar payment existente<br/>Si sí y método diferente → cancelar anterior (MethodChanged)"]:::service
+            r5["Gateway crea Payment + detalle atómicamente<br/>PagoMovilGateway o BankTransferGateway<br/>payment.status → 'pending'<br/>transaction_id normalizado via normalizeRef()"]:::state
+            r6["Notificar admins landlord: nuevo pago pendiente de verificación<br/>notifyLandlordAdmins()<br/>Landlord::all() → Notification PendingPaymentCreated"]:::queue
         end
 
         subgraph R3["Fase 3: Reverse Match — Buscar notificación SMS que coincida con este pago"]
-            r6{"¿Puede hacer reverse match?<br/>Solo pago_movil + Pending<br/>Transferencias no tienen SMS"}:::query
-            r6_skip["No aplica → pago queda pendiente<br/>Cuando llegue el SMS, Forward flow lo vincula<br/>Terminal · espera Forward"]:::terminal
-            r6_dup{"¿Esta referencia ya<br/>tiene un match 'matched'?"}:::query
-            r6_dup_yes["Sí → ya vinculada a otro pago<br/>Validación en código lo impide<br/>Skip reverse match · Terminal"]:::terminal
-            r7["Buscar payment_matches unmatched con misma ref + monto<br/>SELECT payment_matches WHERE<br/>match_status='unmatched' AND parsed_reference = transaction_id (del payment)<br/>AND parsed_amount_cents = amount_cents (del payment) → first()"]:::service
-            r8{"¿Hay un match<br/>esperando?"}:::query
-            r9["Vincular notificación con pago (~80% de los casos: SMS llegó primero)<br/>ReconciliationOrchestrator::runReverse(match, payment)<br/>Guard 1: payment.status === Pending<br/>Guard 2: match.match_status === 'unmatched'<br/>payment_id → $payment->id"]:::service
-            r10{"¿Shadow mode?"}:::query
+            r7{"¿Puede hacer reverse match?<br/>Solo pago_movil + Pending<br/>Transferencias no tienen SMS"}:::query
+            r7_skip["No aplica → pago queda pendiente<br/>Cuando llegue el SMS, Forward flow lo vincula<br/>Terminal · espera Forward"]:::terminal
+            r8["Paso 1: Match estricto (ref + monto)<br/>attemptReverseMatch() — síncrono, en recordPayment()<br/>SELECT payment_matches WHERE match_status='unmatched'<br/>AND parsed_reference = transaction_id (normalizado)<br/>AND parsed_amount_cents = amount_cents"]:::service
+            r8_strict{"¿Step 1<br/>encontró match?"}:::query
+            r8_step2["Step 2: Fallback — solo referencia<br/>SELECT WHERE match_status='unmatched'<br/>AND parsed_reference = transaction_id<br/>(sin filtro de monto)<br/>amountMismatch = true"]:::service
+            r8_step2_result{"¿Step 2<br/>encontró match?"}:::query
+            r8a{"¿Hay un match<br/>esperando?"}:::query
+            r8a_no["No → pago queda Pending<br/>Forward flow lo resolverá cuando llegue la notificación<br/>Terminal"]:::terminal
+            r9["Vincular notificación con pago (~80% de los casos)<br/>ReconciliationOrchestrator::runReverse(match, payment)<br/>Guard 1: payment.status === Pending<br/>Guard 2: match.match_status === 'unmatched'<br/>payment_id → $payment->id"]:::service
+            r9_guard{"PaymentMatchGuard valida banco+teléfono<br/>(Ejecutado en attemptReverseMatch<br/>ANTES de llamar al orchestrator)"}:::query
+            r9_guard_n["MISMATCH → alerta sin bloquear<br/>match_status → 'pending'<br/>SystemAlert · Dashboard conciliación"]:::terminal
+            r10{"¿Shadow mode?<br/>(canal en shadow_mode_channels)"}:::query
             r10_on["SHADOW ON: sugerencia, admin confirma<br/>match_status → 'pending'<br/>Payment sigue 'pending' · Terminal"]:::terminal
             r10_off["SHADOW OFF: auto-verificación inmediata<br/>PaymentService::verifyPayment(null)<br/>payment.status → 'verified' · verified_by → null<br/>match_status → 'matched' · matched_at → now()"]:::state
+            r10_off_alert["payment_amount_mismatch SystemAlert<br/>Admin: discrepancia de monto<br/>Reportado: Bs. X · Bancario: Bs. Y<br/>(Solo cuando amountMismatch = true)"]:::note
         end
 
         subgraph R4["Fase 4: Respuesta — Eventos y redirect al frontend"]
-            r11["Despachar eventos después de la transacción DB (IC-4)<br/>getPendingEvents() → event(PaymentVerified) si auto-verify<br/>Verificar payment.fresh().status<br/>Redirect con flash auto_verified al frontend"]:::controller
+            r11["Despachar eventos después del commit (IC-4)<br/>getPendingEvents() → event(PaymentVerified) si auto-verify<br/>Verificar payment.fresh().status<br/>Redirect con flash auto_verified al frontend"]:::controller
         end
 
-        r1 --> r2 --> r3 --> r4 --> r5 --> r6
-        r6 -->|No| r6_skip
-        r6 -->|Sí| r6_dup
-        r6_dup -->|Sí| r6_dup_yes
-        r6_dup -->|No| r7 --> r8
-        r8 -->|No| r6_skip
-        r8 -->|Sí| r9 --> r10
-        r10 -->|Sí| r10_on --> r11
-        r10 -->|No| r10_off --> r11
+        r1 --> r2 --> r3 --> r3_dup
+        r3_dup -->|"Sí"| r3_dup_yes
+        r3_dup -->|"No"| r3_dup_no --> r4 --> r5 --> r6 --> r7
+        r7 -->|"No"| r7_skip
+        r7 -->|"Sí"| r8 --> r8_strict
+        r8_strict -->|"Sí"| r8a
+        r8_strict -->|"No"| r8_step2 --> r8_step2_result
+        r8_step2_result -->|"Sí"| r8a
+        r8_step2_result -->|"No"| r8a_no
+        r8a -->|"No"| r8a_no
+        r8a -->|"Sí"| r9 --> r9_guard
+        r9_guard -->|"MISMATCH"| r9_guard_n
+        r9_guard -->|"OK"| r10
+        r10 -->|"Sí"| r10_on --> r11
+        r10 -->|"No"| r10_off --> r10_off_alert --> r11
 
     end
 
@@ -161,6 +198,7 @@ flowchart TB
     classDef narrative_inline fill:#fef9e7,stroke:#f39c12,stroke-width:2px,stroke-dasharray:6 3,color:#7d6608
 
     class f12_note note
+    class r10_off_alert note
     class l1 legendController
     class l2 legendQueue
     class l3 legendParser
