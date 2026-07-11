@@ -111,6 +111,7 @@ Route::middleware(['auth', 'verified', EnsureUserIsAdmin::class])->prefix('admin
 
     // System alerts dashboard — filterable, paginated system notification viewer
     Route::get('alerts', [AlertController::class, 'index'])->name('alerts.index');
+    Route::get('alerts/count', [AlertController::class, 'count'])->name('alerts.count');
     Route::post('alerts/{notification}/read', [AlertController::class, 'read'])->name('alerts.read');
 
     // Payment notifications — monitor and reprocess failed notifications

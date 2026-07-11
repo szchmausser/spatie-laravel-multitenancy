@@ -132,6 +132,7 @@ Route::middleware(['tenant', 'auth', 'verified'])->group(function () {
 
     // Notifications — in-app notification center.
     Route::get('notifications', [NotificationController::class, 'index'])->name('notifications.index');
+    Route::get('notifications/count', [NotificationController::class, 'count'])->name('notifications.count');
     Route::put('notifications/read-all', [NotificationController::class, 'markAllRead'])->name('notifications.markAllRead');
     Route::put('notifications/{notification}', [NotificationController::class, 'update'])->name('notifications.update');
 });

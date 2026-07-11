@@ -4,6 +4,7 @@ use App\Models\Landlord;
 use App\Models\User;
 use Database\Seeders\TenantPermissionsSeeder;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
@@ -282,6 +283,7 @@ test('invalid severity filter is silently ignored', function () {
 });
 
 test('read action marks notification as read', function () {
+    $this->withoutMiddleware(ValidateCsrfToken::class);
     $this->actingAs($this->admin);
 
     $notification = $this->admin->notifications()->create([
@@ -305,6 +307,7 @@ test('read action marks notification as read', function () {
 });
 
 test('read action is idempotent when already read', function () {
+    $this->withoutMiddleware(ValidateCsrfToken::class);
     $this->actingAs($this->admin);
 
     $notification = $this->admin->notifications()->create([
@@ -332,6 +335,7 @@ test('read action is idempotent when already read', function () {
 });
 
 test('read action returns 404 for non-system notification', function () {
+    $this->withoutMiddleware(ValidateCsrfToken::class);
     $this->actingAs($this->admin);
 
     $notification = $this->admin->notifications()->create([
@@ -350,6 +354,7 @@ test('read action returns 404 for non-system notification', function () {
 });
 
 test('read action returns 404 for non-owned notification', function () {
+    $this->withoutMiddleware(ValidateCsrfToken::class);
     $otherAdmin = Landlord::factory()->create();
     $this->actingAs($this->admin);
 
@@ -372,6 +377,7 @@ test('read action returns 404 for non-owned notification', function () {
 });
 
 test('read action returns 404 for non-existent notification', function () {
+    $this->withoutMiddleware(ValidateCsrfToken::class);
     $this->actingAs($this->admin);
 
     $response = $this->post(route('landlord.alerts.read', ['notification' => Str::uuid()->toString()]));

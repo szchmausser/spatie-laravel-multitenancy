@@ -23,13 +23,18 @@ import {
     SidebarMenuItem,
 } from '@/components/ui/sidebar';
 import { useCurrentUrl } from '@/hooks/use-current-url';
+import { useNotificationPolling } from '@/hooks/use-notification-polling';
 import { dashboard } from '@/routes';
 import type { NavItem } from '@/types';
 
 const footerNavItems: NavItem[] = [];
 
 export function AppSidebar() {
-    const { auth, tenant } = usePage().props;
+    const { auth, tenant, polling_interval_seconds } = usePage<{
+        auth: { unread_notifications_count?: number; is_admin?: boolean; user?: unknown };
+        tenant: { is_free_tier: boolean; has_premium_zone: boolean };
+        polling_interval_seconds?: number;
+    }>().props;
     const { isCurrentUrl } = useCurrentUrl();
     const isAdmin = auth?.is_admin ?? false;
     const isFreeTier = tenant?.is_free_tier ?? true;
@@ -45,7 +50,7 @@ export function AppSidebar() {
     const showAnalytics = hasPremiumZone;
 
     const mainNavItems: NavItem[] = isAdmin
-        ? [{ title: 'Panel', href: '/admin', icon: Shield }]
+        ? [{ title: 'Panel', href: '/admin', icon: Shield, prefetch: false }]
         : [
               { title: 'Dashboard', href: dashboard(), icon: LayoutGrid },
               ...(showAnalytics
@@ -59,7 +64,10 @@ export function AppSidebar() {
                   : []),
           ];
 
-    const unreadCount = auth?.unread_notifications_count ?? 0;
+    const unreadCount = useNotificationPolling(
+        auth?.unread_notifications_count ?? 0,
+        polling_interval_seconds,
+    );
 
     return (
         <Sidebar collapsible="icon" variant="inset">
@@ -69,7 +77,7 @@ export function AppSidebar() {
                         <SidebarMenuButton size="lg" asChild>
                             <Link
                                 href={isAdmin ? '/admin' : dashboard()}
-                                prefetch
+                                prefetch={!isAdmin}
                             >
                                 <AppLogo />
                             </Link>
@@ -102,7 +110,7 @@ export function AppSidebar() {
                                     isActive={isCurrentUrl('/notifications')}
                                     tooltip={{ children: 'Notificaciones' }}
                                 >
-                                    <Link href="/notifications" prefetch>
+                                    <Link href="/notifications" prefetch={false}>
                                         <Bell />
                                         <span>Notificaciones</span>
                                         {unreadCount > 0 && (

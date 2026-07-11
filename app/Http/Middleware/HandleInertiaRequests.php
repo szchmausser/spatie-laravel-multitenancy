@@ -37,9 +37,13 @@ class HandleInertiaRequests extends Middleware
             'auth' => [
                 'user' => $this->resolveUserProp($user),
                 'is_admin' => $user instanceof Landlord,
-                'unread_notifications_count' => $this->resolveUnreadNotificationsCount($user),
-                'unread_system_alerts_count' => $this->resolveUnreadSystemAlertsCount($user),
-                'unread_payment_notifications_count' => $this->resolveUnreadPaymentNotificationsCount($user),
+                // Lazy closures: evaluated when Inertia renders the response,
+                // AFTER the controller has run. This ensures counts reflect
+                // any changes made by the controller (e.g. markAsRead).
+                'unread_notifications_count' => fn () => $this->resolveUnreadNotificationsCount($user),
+                'unread_system_alerts_count' => fn () => $this->resolveUnreadSystemAlertsCount($user),
+                'unread_unread_system_alerts_count' => fn () => $this->resolveUnreadUnreadSystemAlertsCount($user),
+                'unread_payment_notifications_count' => fn () => $this->resolveUnreadPaymentNotificationsCount($user),
             ],
             'tenant' => $this->resolveTenantData(),
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
@@ -191,6 +195,33 @@ class HandleInertiaRequests extends Middleware
                 return 0;
             }
         } catch (\Throwable) {
+            return 0;
+        }
+
+        try {
+            $lastViewed = $user->last_viewed_system_alerts_at;
+
+            $query = $user->notifications()
+                ->whereRaw("data::json->>'category' = ?", ['system']);
+
+            if ($lastViewed) {
+                $query->where('created_at', '>', $lastViewed);
+            }
+
+            return $query->count();
+        } catch (\Throwable) {
+            return 0;
+        }
+    }
+
+    /**
+     * Count system alerts not marked as read (read_at IS NULL).
+     *
+     * Distinct from resolveUnreadSystemAlertsCount which counts new-since-last-visit.
+     */
+    private function resolveUnreadUnreadSystemAlertsCount(?Authenticatable $user): int
+    {
+        if (! $user instanceof Landlord) {
             return 0;
         }
 

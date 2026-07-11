@@ -90,7 +90,7 @@ test('marks a notification as read', function () {
 
     $response = $this->put("/notifications/{$notification->id}");
 
-    $response->assertRedirect();
+    $response->assertOk();
 
     expect($user->fresh()->notifications()->whereNull('read_at')->count())->toBe(0);
 });
@@ -117,6 +117,29 @@ test('marks all notifications as read', function () {
     $response->assertOk();
 
     expect($user->unreadNotifications()->count())->toBe(0);
+});
+
+test('returns unread count via count endpoint', function () {
+    $user = User::factory()->createQuietly(['name' => 'Test User']);
+    $user->assignRole('owner');
+
+    // Create 2 unread notifications
+    for ($i = 0; $i < 2; $i++) {
+        $user->notifications()->create([
+            'id' => Str::uuid(),
+            'type' => 'App\\Notifications\\SubscriptionExpiringWarning',
+            'notifiable_type' => User::class,
+            'notifiable_id' => $user->id,
+            'data' => json_encode(['message' => "Notification {$i}"]),
+        ]);
+    }
+
+    $this->actingAs($user);
+
+    $response = $this->getJson('/notifications/count');
+
+    $response->assertOk();
+    $response->assertJson(['unread_count' => 2]);
 });
 
 test('returns 403 when marking notification of another user', function () {

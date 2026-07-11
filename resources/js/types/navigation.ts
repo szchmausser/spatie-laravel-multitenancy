@@ -11,4 +11,10 @@ export type NavItem = {
     href: NonNullable<InertiaLinkProps['href']>;
     icon?: LucideIcon | null;
     isActive?: boolean;
+    /**
+     * Whether to prefetch the page on hover. Defaults to true.
+     * Set to false for pages where fresh server data is critical
+     * (e.g. admin panel after marking alerts as read).
+     */
+    prefetch?: boolean;
 };

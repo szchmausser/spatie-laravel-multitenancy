@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers;
 
-use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Notifications\DatabaseNotification;
 use Illuminate\Support\Collection;
@@ -33,7 +33,7 @@ class NotificationController extends Controller
      * (landlord) connection, but notifications live on the tenant connection.
      * The relationship inherits the correct connection from the User model.
      */
-    public function update(Request $request, string $notification): RedirectResponse
+    public function update(Request $request, string $notification): Response
     {
         $request->user()
             ->notifications()
@@ -41,7 +41,13 @@ class NotificationController extends Controller
             ->firstOrFail()
             ->markAsRead();
 
-        return redirect()->back();
+        $unread = $this->unreadNotifications($request);
+        $read = $this->readNotifications($request);
+
+        return Inertia::render('notifications/index', [
+            'unread' => $unread,
+            'read' => $read,
+        ]);
     }
 
     /**
@@ -63,6 +69,22 @@ class NotificationController extends Controller
             'unread' => $unread,
             'read' => $read,
         ]);
+    }
+
+    /**
+     * Return the unread notification count as JSON.
+     *
+     * Lightweight endpoint for polling — avoids sending the full
+     * notification list just to update the sidebar badge.
+     */
+    public function count(Request $request): JsonResponse
+    {
+        $count = $request->user()
+            ->notifications()
+            ->whereNull('read_at')
+            ->count();
+
+        return response()->json(['unread_count' => $count]);
     }
 
     /**

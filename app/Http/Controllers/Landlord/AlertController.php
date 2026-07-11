@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Landlord;
 
 use App\Http\Controllers\Controller;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Inertia\Response as InertiaResponse;
@@ -15,10 +16,14 @@ class AlertController extends Controller
      * Returns notifications where data->>'category' = 'system', ordered by
      * creation date descending. Supports filtering by severity, read status,
      * and date range. Invalid severity values are silently ignored.
+     *
+     * Updates last_viewed_system_alerts_at so the badge count resets.
      */
     public function index(Request $request): InertiaResponse
     {
-        $query = Auth::user()->notifications()
+        $user = Auth::user();
+
+        $query = $user->notifications()
             ->whereRaw("data::json->>'category' = ?", ['system']);
 
         // Filter by severity (comma-separated CSV), only allowing valid values
@@ -58,9 +63,42 @@ class AlertController extends Controller
             ->paginate(20)
             ->withQueryString();
 
+        // Update last viewed timestamp (after query, before render)
+        $user->update(['last_viewed_system_alerts_at' => now()]);
+
         return inertia('landlord/alerts', [
             'alerts' => $alerts,
             'filters' => $request->only(['severity', 'read', 'from', 'to']),
+        ]);
+    }
+
+    /**
+     * Count unread system alerts (created since last viewed) and
+     * un-read system alerts (not marked as read).
+     *
+     * Lightweight endpoint for polling from the dashboard and alerts page.
+     */
+    public function count(): JsonResponse
+    {
+        $user = Auth::user();
+        $lastViewed = $user->last_viewed_system_alerts_at;
+
+        $baseQuery = fn () => $user->notifications()
+            ->whereRaw("data::json->>'category' = ?", ['system']);
+
+        // New since last visit
+        $newQuery = $baseQuery();
+        if ($lastViewed) {
+            $newQuery->where('created_at', '>', $lastViewed);
+        }
+        $newCount = $newQuery->count();
+
+        // Not marked as read
+        $unreadCount = $baseQuery()->whereNull('read_at')->count();
+
+        return response()->json([
+            'new_count' => $newCount,
+            'unread_count' => $unreadCount,
         ]);
     }
 

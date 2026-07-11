@@ -21,6 +21,7 @@ import {
 } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { usePaymentNotificationPolling } from '@/hooks/use-payment-notification-polling';
+import { useAlertPolling } from '@/hooks/use-alert-polling';
 import { index as plansIndex } from '@/routes/landlord/plans';
 import { index as resourcesIndex } from '@/routes/landlord/resources';
 import { index as subscriptionsIndex } from '@/routes/landlord/subscriptions';
@@ -37,7 +38,11 @@ type Props = {
 
 export default function AdminPanel({ unread_payment_notifications_count }: Props) {
     const { auth, polling_interval_seconds } = usePage<{ auth: Auth; polling_interval_seconds: number }>().props;
-    const unreadAlerts = auth.unread_system_alerts_count;
+    const { newCount: newAlerts, unreadCount: unreadAlerts } = useAlertPolling(
+        auth.unread_system_alerts_count ?? 0,
+        auth.unread_unread_system_alerts_count ?? 0,
+        polling_interval_seconds,
+    );
     const pendingCount = usePaymentNotificationPolling(
         unread_payment_notifications_count,
         polling_interval_seconds,
@@ -75,7 +80,7 @@ export default function AdminPanel({ unread_payment_notifications_count }: Props
             items: [
                 {
                     title: 'Subscriptions',
-                    description: 'Review every tenant subscription across the platform.',
+                    description: 'Review every tenant subscription.',
                     href: subscriptionsIndex().url,
                     icon: Users,
                     testId: 'admin-card-subscriptions',
@@ -114,9 +119,15 @@ export default function AdminPanel({ unread_payment_notifications_count }: Props
                     href: '/admin/payment-notifications',
                     icon: Banknote,
                     testId: 'admin-card-payment-notifications',
-                    badge: pendingCount > 0
-                        ? pendingCount
-                        : undefined,
+                    badge: pendingCount > 0 ? (
+                        <Badge
+                            variant="default"
+                            className="ml-auto h-5 min-w-5 rounded-full px-1.5 text-[10px] font-medium"
+                            data-testid="admin-card-payment-notifications-badge"
+                        >
+                            {pendingCount > 99 ? '99+' : pendingCount}
+                        </Badge>
+                    ) : undefined,
                 },
                 {
                     title: 'Conciliación',
@@ -160,15 +171,36 @@ export default function AdminPanel({ unread_payment_notifications_count }: Props
                 },
                 {
                     title: 'Alertas',
-                    description: unreadAlerts > 0
-                        ? `${unreadAlerts} sin leer`
-                        : 'Fallas y advertencias críticas.',
+                    description: newAlerts > 0
+                        ? `${newAlerts} nuevas`
+                        : unreadAlerts > 0
+                            ? `${unreadAlerts} sin leer`
+                            : 'Fallas y advertencias críticas.',
                     href: '/admin/alerts',
                     icon: Bell,
                     testId: 'admin-card-alerts',
-                    badge: unreadAlerts > 0
-                        ? unreadAlerts
-                        : undefined,
+                    badge: (
+                        <>
+                            {newAlerts > 0 && (
+                                <Badge
+                                    variant="destructive"
+                                    className="ml-auto h-5 min-w-5 rounded-full px-1.5 text-[10px] font-medium"
+                                    data-testid="admin-card-alerts-new-badge"
+                                >
+                                    {newAlerts > 99 ? '99+' : `${newAlerts}n`}
+                                </Badge>
+                            )}
+                            {unreadAlerts > 0 && (
+                                <Badge
+                                    variant="outline"
+                                    className="ml-auto h-5 min-w-5 rounded-full border-amber-300 bg-amber-50 px-1.5 text-[10px] font-medium text-amber-700"
+                                    data-testid="admin-card-alerts-unread-badge"
+                                >
+                                    {unreadAlerts > 99 ? '99+' : `${unreadAlerts}⚠`}
+                                </Badge>
+                            )}
+                        </>
+                    ),
                 },
             ],
         },
@@ -211,15 +243,7 @@ export default function AdminPanel({ unread_payment_notifications_count }: Props
                                                         <CardTitle className="text-sm">
                                                             {title}
                                                         </CardTitle>
-                                                        {badge !== undefined && (
-                                                            <Badge
-                                                                variant="default"
-                                                                className="ml-auto h-5 min-w-5 rounded-full px-1.5 text-[10px] font-medium"
-                                                                data-testid={`${testId}-badge`}
-                                                            >
-                                                                {badge > 99 ? '99+' : badge}
-                                                            </Badge>
-                                                        )}
+                                                        {badge !== undefined && badge}
                                                     </div>
                                                     <CardDescription className="text-xs">
                                                         {description}

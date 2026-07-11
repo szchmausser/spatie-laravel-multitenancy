@@ -1,4 +1,4 @@
-import { Head, Link, router } from '@inertiajs/react';
+import { Head, Link, router, usePage } from '@inertiajs/react';
 import { Bell, Check, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useState } from 'react';
 import { Badge } from '@/components/ui/badge';
@@ -12,7 +12,9 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
+import { useAlertPolling } from '@/hooks/use-alert-polling';
 import { cn, formatDateTime } from '@/lib/utils';
+import type { Auth } from '@/types/auth';
 import type { BreadcrumbItem } from '@/types';
 
 const breadcrumbs: BreadcrumbItem[] = [
@@ -82,6 +84,12 @@ function timeAgo(dateStr: string): string {
 }
 
 export default function AlertsIndex({ alerts, filters }: AlertPageProps) {
+    const { auth, polling_interval_seconds } = usePage<{ auth: Auth; polling_interval_seconds: number }>().props;
+    const { newCount, unreadCount } = useAlertPolling(
+        auth.unread_system_alerts_count ?? 0,
+        auth.unread_unread_system_alerts_count ?? 0,
+        polling_interval_seconds,
+    );
     const [severity, setSeverity] = useState(filters.severity ?? '');
     const [readFilter, setReadFilter] = useState(filters.read ?? '');
     const [from, setFrom] = useState(filters.from ?? '');
@@ -120,7 +128,15 @@ export default function AlertsIndex({ alerts, filters }: AlertPageProps) {
         <>
             <Head title="Alertas del Sistema" />
             <div className="flex h-full flex-1 flex-col gap-4 overflow-x-auto rounded-xl p-4">
-                <h1 className="text-2xl font-bold">Alertas del Sistema</h1>
+                <div className="flex items-center gap-3">
+                    <h1 className="text-2xl font-bold">Alertas del Sistema</h1>
+                    {newCount > 0 && (
+                        <Badge variant="destructive">{newCount} nuevas</Badge>
+                    )}
+                    {unreadCount > 0 && (
+                        <Badge variant="outline" className="border-amber-300 bg-amber-50 text-amber-700">{unreadCount} sin leer</Badge>
+                    )}
+                </div>
                 <p className="text-sm text-muted-foreground">
                     Monitoreo de incidentes automáticos del sistema de
                     conciliación.
