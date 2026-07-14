@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Landlord;
 
 use App\Http\Controllers\Controller;
+use App\Models\Order;
 use App\Models\Plan;
 use App\Models\Tenant;
 use Illuminate\Http\Request;
@@ -80,10 +81,25 @@ class TenantController extends Controller
     {
         $tenant->load('subscription.plan');
 
+        $orders = Order::with(['plan', 'resource'])
+            ->where('tenant_id', $tenant->id)
+            ->orderByDesc('created_at')
+            ->limit(20)
+            ->get()
+            ->map(fn (Order $order) => [
+                'id' => $order->id,
+                'total_cents' => $order->total_cents,
+                'status' => $order->status->value,
+                'created_at' => $order->created_at->toIso8601String(),
+                'buyable' => $order->buyable ? ['name' => $order->buyable->name] : null,
+                'buyable_type' => $order->buyable_type,
+            ]);
+
         return Inertia::render('landlord/tenants/show', [
             'tenant' => $tenant,
             'subscription' => $tenant->subscription,
             'availablePlans' => Plan::query()->where('is_active', true)->orderBy('price_cents')->get(),
+            'orders' => $orders,
         ]);
     }
 

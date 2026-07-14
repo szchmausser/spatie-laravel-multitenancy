@@ -10,6 +10,7 @@ import {
     Settings,
     ShoppingCart,
     Smartphone,
+    TrendingUp,
     Users,
     Wallet,
 } from 'lucide-react';
@@ -84,6 +85,13 @@ export default function AdminPanel({ unread_payment_notifications_count }: Props
                     href: subscriptionsIndex().url,
                     icon: Users,
                     testId: 'admin-card-subscriptions',
+                },
+                {
+                    title: 'Sales',
+                    description: 'Revenue KPIs, orders, and payment trends.',
+                    href: '/admin/sales',
+                    icon: TrendingUp,
+                    testId: 'admin-card-sales',
                 },
                 {
                     title: 'Orders',

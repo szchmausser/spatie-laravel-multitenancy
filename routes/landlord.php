@@ -12,6 +12,7 @@ use App\Http\Controllers\Landlord\PaymentNotificationController;
 use App\Http\Controllers\Landlord\PlanController;
 use App\Http\Controllers\Landlord\ReconciliationDashboardController;
 use App\Http\Controllers\Landlord\ResourceController;
+use App\Http\Controllers\Landlord\SalesDashboardController;
 use App\Http\Controllers\Landlord\SubscriptionChangeController;
 use App\Http\Controllers\Landlord\SubscriptionController;
 use App\Http\Controllers\Landlord\SubscriptionHistoryController;
@@ -71,6 +72,9 @@ Route::middleware(['auth', 'verified', EnsureUserIsAdmin::class])->prefix('admin
     // Subscription history
     Route::get('tenants/{tenant}/subscription-history', [SubscriptionHistoryController::class, 'index'])
         ->name('subscriptions.history');
+
+    // Sales reporting dashboard — revenue KPIs, breakdowns, and trends
+    Route::get('sales', [SalesDashboardController::class, 'index'])->name('sales.index');
 
     // Order management — visibility into tenant purchase requests
     Route::get('orders', [OrderController::class, 'index'])->name('orders.index');

@@ -1,5 +1,5 @@
 import { router, Link } from '@inertiajs/react';
-import { Building, Globe, Database, Calendar, ArrowLeft, Pencil, Trash2, CreditCard, Check, History } from 'lucide-react';
+import { Building, Globe, Database, Calendar, ArrowLeft, Pencil, Trash2, CreditCard, Check, History, ShoppingCart } from 'lucide-react';
 import { useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -20,7 +20,7 @@ import {
     DialogTrigger,
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
-import { formatDateTime } from '@/lib/utils';
+import { formatPrice, formatDateTime } from '@/lib/utils';
 import { assign } from '@/routes/landlord/subscriptions';
 import { destroy, edit, index } from '@/routes/landlord/tenants';
 import type {BreadcrumbItem, Plan, Subscription} from '@/types';
@@ -35,10 +35,19 @@ export default function TenantShow({
     tenant,
     subscription,
     availablePlans,
+    orders = [],
 }: {
     tenant: { id: number; name: string; domain: string; database: string; created_at: string };
     subscription: Subscription;
     availablePlans: Plan[];
+    orders?: Array<{
+        id: number;
+        total_cents: number;
+        status: string;
+        created_at: string;
+        buyable: { name: string } | null;
+        buyable_type: string;
+    }>;
 }) {
     const [selectedPlanId, setSelectedPlanId] = useState<number>(
         subscription?.plan_id ?? availablePlans[0]?.id ?? 0,
@@ -250,6 +259,53 @@ return;
                             </Button>
                         </div>
                     </div>
+                </CardContent>
+            </Card>
+
+            <Card data-testid="orders-card">
+                <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                        <ShoppingCart className="h-4 w-4" />
+                        Orders
+                    </CardTitle>
+                    <CardDescription>
+                        Purchase orders created by this tenant.
+                    </CardDescription>
+                </CardHeader>
+                <CardContent>
+                    {orders.length === 0 ? (
+                        <p className="text-sm text-muted-foreground" data-testid="no-orders">
+                            This tenant has no orders yet.
+                        </p>
+                    ) : (
+                        <div className="space-y-3" data-testid="orders-list">
+                            {orders.map((order) => (
+                                <div
+                                    key={order.id}
+                                    className="flex items-center justify-between rounded-lg border p-3"
+                                >
+                                    <div className="space-y-1">
+                                        <div className="flex items-center gap-2">
+                                            <span className="font-medium">
+                                                {order.buyable?.name ?? 'Unknown'}
+                                            </span>
+                                            <Badge
+                                                variant={order.status === 'paid' ? 'default' : order.status === 'cancelled' ? 'destructive' : 'secondary'}
+                                            >
+                                                {order.status}
+                                            </Badge>
+                                        </div>
+                                        <div className="text-sm text-muted-foreground">
+                                            {formatPrice(order.total_cents)}
+                                        </div>
+                                        <div className="text-xs text-muted-foreground">
+                                            {formatDateTime(order.created_at)}
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
                 </CardContent>
             </Card>
         </div>
